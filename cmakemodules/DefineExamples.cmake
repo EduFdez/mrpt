@@ -149,6 +149,7 @@ IF(BUILD_EXAMPLES)
 		multipleCheckerboards
 		voronoi_test
 		keypoint_matching
+		LRF_calibrator
 		)
 	SET(CMAKE_EXAMPLE_DEPS mrpt-slam mrpt-vision mrpt-gui mrpt-topography)
 	SET(CMAKE_EXAMPLE_LINK_LIBS ${MRPT_LINKER_LIBS})
@@ -317,13 +318,6 @@ IF(BUILD_EXAMPLES)
 	# === PbMap examples ===
 	IF(BUILD_mrpt-pbmap)
 		ADD_SAMPLES_DIRECTORY(pbmap-examples)
-#		SET(LIST_EXAMPLES_IN_THIS_DIR
-#			pbmap_example
-#			pbmap_visualizer
-#			)
-#		SET(CMAKE_EXAMPLE_DEPS mrpt-pbmap mrpt-gui)
-#		SET(CMAKE_EXAMPLE_LINK_LIBS ${MRPT_LINKER_LIBS})
-#		GENERATE_CMAKE_FILES_SAMPLES_DIRECTORY()
 	ENDIF(BUILD_mrpt-pbmap)
 
 	# Generate the CMakeLists.txt in the "/samples" directory
