@@ -1,254 +1,205 @@
-///* +---------------------------------------------------------------------------+
-//   |                     Mobile Robot Programming Toolkit (MRPT)               |
-//   |                          http://www.mrpt.org/                             |
-//   |                                                                           |
-//   | Copyright (c) 2005-2014, Individual contributors, see AUTHORS file        |
-//   | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-//   | Released under BSD License. See details in http://www.mrpt.org/License    |
-//   +---------------------------------------------------------------------------+ */
-//
-//#include <mrpt/base.h>
+/* +---------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)               |
+   |                          http://www.mrpt.org/                             |
+   |                                                                           |
+   | Copyright (c) 2005-2014, Individual contributors, see AUTHORS file        |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                   |
+   | Released under BSD License. See details in http://www.mrpt.org/License    |
+   +---------------------------------------------------------------------------+ */
+
+#include <mrpt/base.h>
 //#include <mrpt/gui.h>
 //#include <mrpt/opengl.h>
-//#include <mrpt/slam.h>
-//#include <mrpt/utils.h>
-//#include <mrpt/obs.h>
-//
-//#include <pcl/filters/extract_indices.h>
-//#include <pcl/point_types.h>
-//#include <pcl/sample_consensus/ransac.h>
-//#include <pcl/sample_consensus/sac_model_plane.h>
-//
-//#include <pcl/segmentation/organized_multi_plane_segmentation.h>
-//#include <pcl/features/normal_3d.h>
-//#include <pcl/common/common.h>
-//#include <pcl/common/transforms.h>
-//
-//#include <opencv2/core/core.hpp>
-//#include <opencv2/highgui/highgui.hpp>
-//#include <opencv2/imgproc/imgproc.hpp>
-//#include <opencv2/calib3d/calib3d.hpp>
-//
-//#include <Frame360.h>
-//#include <Frame360_Visualizer.h>
-//#include <RegisterRGBD360.h>
-//#include <Calibrator.h>
-//
-//#include <RGBDGrabber_OpenNI2.h>
-//#include <SerializeFrameRGBD.h> // For time-stamp conversion
-//
-//#include <pcl/console/parse.h>
-//
-////#include "opencv2/highgui/highgui.hpp"
-////#include "opencv2/imgproc/imgproc.hpp"
-//
-//#include <stdio.h>
-//#include <signal.h>
-//
-//#define USE_DEBUG_SEQUENCE 0
-//#define NUM_SENSORS 2
-////const int NUM_SENSORS = 2;
-//
-//using namespace std;
-//using namespace Eigen;
-//using namespace mrpt;
+#include <mrpt/slam.h>
+#include <mrpt/utils.h>
+#include <mrpt/obs.h>
+
+#define USE_DEBUG_SEQUENCE 0
+#define NUM_SENSORS 2
+
+using namespace std;
+using namespace Eigen;
+using namespace mrpt;
 //using namespace mrpt::gui;
 //using namespace mrpt::opengl;
-//using namespace mrpt::math;
-//using namespace mrpt::utils;
-//using namespace mrpt::slam;
-//using namespace mrpt::poses;
+using namespace mrpt::math;
+using namespace mrpt::utils;
+using namespace mrpt::slam;
+using namespace mrpt::poses;
+
+#define SIGMA2 0.01
+#define RECORD_VIDEO 0
+int numScreenshot = 0;
+
+typedef Eigen::Matrix<float,12,1> line_CL;
+
+/*---------------------------------------------------------------
+		Aux. functions needed by ransac_detect_2D_lines
+ ---------------------------------------------------------------*/
+void  ransac2Dline_fit_(
+  const CMatrixTemplateNumeric<float> &allData,
+  const vector_size_t &useIndices,
+  vector< CMatrixTemplateNumeric<float> > &fitModels )
+{
+  ASSERT_(useIndices.size()==2);
+
+  TPoint2D p1( allData(0,useIndices[0]),allData(1,useIndices[0]) );
+  TPoint2D p2( allData(0,useIndices[1]),allData(1,useIndices[1]) );
+
+  try
+  {
+    TLine2D  line(p1,p2);
+    fitModels.resize(1);
+    CMatrixTemplateNumeric<float> &M = fitModels[0];
+
+    M.setSize(1,3);
+    for (size_t i=0;i<3;i++)
+      M(0,i)=line.coefs[i];
+//  cout << "Line model " << allData(0,useIndices[0]) << " " << allData(1,useIndices[0]) << " " << allData(0,useIndices[1]) << " " << allData(1,useIndices[1]) << " M " << M << endl;
+  }
+  catch(exception &)
+  {
+    fitModels.clear();
+    return;
+  }
+}
+
+
+void ransac2Dline_distance_(
+  const CMatrixTemplateNumeric<float> &allData,
+  const vector< CMatrixTemplateNumeric<float> > & testModels,
+  const float distanceThreshold,
+  unsigned int & out_bestModelIndex,
+  vector_size_t & out_inlierIndices )
+{
+  out_inlierIndices.clear();
+  out_bestModelIndex = 0;
+
+  if (testModels.empty()) return; // No model, no inliers.
+
+  ASSERTMSG_( testModels.size()==1, format("Expected testModels.size()=1, but it's = %u",static_cast<unsigned int>(testModels.size()) ) )
+  const CMatrixTemplateNumeric<float> &M = testModels[0];
+
+  ASSERT_( size(M,1)==1 && size(M,2)==3 )
+
+  TLine2D  line;
+  line.coefs[0] = M(0,0);
+  line.coefs[1] = M(0,1);
+  line.coefs[2] = M(0,2);
+
+  const size_t N = size(allData,2);
+  out_inlierIndices.reserve(100);
+  for (size_t i=0;i<N;i++)
+  {
+    const double d = line.distance( TPoint2D( allData.get_unsafe(0,i),allData.get_unsafe(1,i) ) );
+//  cout << "distance " << d << " " << allData.get_unsafe(0,i) << " " << allData.get_unsafe(1,i) << endl;
+    if (d<distanceThreshold)
+      out_inlierIndices.push_back(i);
+  }
+}
+
+/** Return "true" if the selected points are a degenerate (invalid) case.
+  */
+bool ransac2Dline_degenerate_(
+  const CMatrixTemplateNumeric<float> &allData,
+  const mrpt::vector_size_t &useIndices )
+{
+//  ASSERT_( useIndices.size()==2 )
 //
-//#define SIGMA2 0.01
-//#define RECORD_VIDEO 0
-//int numScreenshot = 0;
+//  const Eigen::Vector2d origin = Eigen::Vector2d(allData(0,useIndices[0]), allData(1,useIndices[0]));
+//  const Eigen::Vector2d end = Eigen::Vector2d(allData(0,useIndices[1]), allData(1,useIndices[1]));
 //
-//RGBDGrabber_OpenNI2 *grabber[NUM_SENSORS]; // This object is declared as global to be able to use it after capturing Ctrl-C interruptions
+//  if( (end-origin).norm() < 0.01 )
+//    return true;
+  return false;
+}
+
+/*---------------------------------------------------------------
+				ransac_detect_3D_lines
+ ---------------------------------------------------------------*/
+template <typename NUMTYPE>
+void mrpt::math::ransac_detect_2D_lines(
+	const Eigen::Matrix<NUMTYPE,Eigen::Dynamic,1>  &x,
+	const Eigen::Matrix<NUMTYPE,Eigen::Dynamic,1>  &y,
+	std::vector<std::pair<size_t,TLine2D> >   &out_detected_lines,
+	const double           threshold,
+	const size_t           min_inliers_for_valid_line
+	)
+{
+	MRPT_START
+
+	ASSERT_(x.size()==y.size())
+
+	out_detected_lines.clear();
+
+	if (x.empty())
+		return;
+
+	// The running lists of remaining points after each plane, as a matrix:
+	CMatrixTemplateNumeric<NUMTYPE> remainingPoints( 2, x.size() );
+	remainingPoints.insertRow(0,x);
+	remainingPoints.insertRow(1,y);
+
+	// ---------------------------------------------
+	// For each line:
+	// ---------------------------------------------
+	while (size(remainingPoints,2)>=2)
+	{
+		mrpt::vector_size_t				this_best_inliers;
+		CMatrixTemplateNumeric<NUMTYPE> this_best_model;
+
+		math::RANSAC_Template<NUMTYPE>::execute(
+			remainingPoints,
+			ransac2Dline_fit_,
+			ransac2Dline_distance_,
+			ransac2Dline_degenerate_,
+			threshold,
+			2,  // Minimum set of points
+			this_best_inliers,
+			this_best_model,
+			false, // Verbose
+			0.99999  // Prob. of good result
+			);
+
+		// Is this plane good enough?
+		if (this_best_inliers.size()>=min_inliers_for_valid_line)
+		{
+//		  line_CL this_line_CL;
+//		  this_best_model = this_best_model / sqrt(this_best_model(0,0)*this_best_model(0,0) + this_best_model(0,1)*this_best_model(0,1));
+//		  this_line_CL[0] = this_best_model(0,1);
+//		  this_line_CL[1] = -this_best_model(0,0);
 //
-//const int min_inliers = 1000;
-//
-///*! Catch interruptions like Ctrl-C */
-//void INThandler(int sig)
-//{
-//  char c;
-//
-//  signal(sig, SIG_IGN);
-//  printf("\n  Do you really want to quit? [y/n] ");
-//  c = getchar();
-//  if (c == 'y' || c == 'Y')
-//  {
-//    for(unsigned sensor_id = 0; sensor_id < NUM_SENSORS; sensor_id++)
-//    {
-//      delete grabber[sensor_id]; // Turn off each Asus XPL sensor before exiting the program
-//    }
-//    exit(0);
-//  }
-//}
-//
-///*---------------------------------------------------------------
-//		Aux. functions needed by ransac_detect_2D_lines
-// ---------------------------------------------------------------*/
-//void  ransac2Dline_fit_(
-//  const CMatrixTemplateNumeric<float> &allData,
-//  const vector_size_t &useIndices,
-//  vector< CMatrixTemplateNumeric<float> > &fitModels )
-//{
-//  ASSERT_(useIndices.size()==2);
-//
-//  TPoint2D p1( allData(0,useIndices[0]),allData(1,useIndices[0]) );
-//  TPoint2D p2( allData(0,useIndices[1]),allData(1,useIndices[1]) );
-//
-//  try
-//  {
-//    TLine2D  line(p1,p2);
-//    fitModels.resize(1);
-//    CMatrixTemplateNumeric<float> &M = fitModels[0];
-//
-//    M.setSize(1,3);
-//    for (size_t i=0;i<3;i++)
-//      M(0,i)=line.coefs[i];
-////  cout << "Line model " << allData(0,useIndices[0]) << " " << allData(1,useIndices[0]) << " " << allData(0,useIndices[1]) << " " << allData(1,useIndices[1]) << " M " << M << endl;
-//  }
-//  catch(exception &)
-//  {
-//    fitModels.clear();
-//    return;
-//  }
-//}
-//
-//
-//void ransac2Dline_distance_(
-//  const CMatrixTemplateNumeric<float> &allData,
-//  const vector< CMatrixTemplateNumeric<float> > & testModels,
-//  const float distanceThreshold,
-//  unsigned int & out_bestModelIndex,
-//  vector_size_t & out_inlierIndices )
-//{
-//  out_inlierIndices.clear();
-//  out_bestModelIndex = 0;
-//
-//  if (testModels.empty()) return; // No model, no inliers.
-//
-//  ASSERTMSG_( testModels.size()==1, format("Expected testModels.size()=1, but it's = %u",static_cast<unsigned int>(testModels.size()) ) )
-//  const CMatrixTemplateNumeric<float> &M = testModels[0];
-//
-//  ASSERT_( size(M,1)==1 && size(M,2)==3 )
-//
-//  TLine2D  line;
-//  line.coefs[0] = M(0,0);
-//  line.coefs[1] = M(0,1);
-//  line.coefs[2] = M(0,2);
-//
-//  const size_t N = size(allData,2);
-//  out_inlierIndices.reserve(100);
-//  for (size_t i=0;i<N;i++)
-//  {
-//    const double d = line.distance( TPoint2D( allData.get_unsafe(0,i),allData.get_unsafe(1,i) ) );
-////  cout << "distance " << d << " " << allData.get_unsafe(0,i) << " " << allData.get_unsafe(1,i) << endl;
-//    if (d<distanceThreshold)
-//      out_inlierIndices.push_back(i);
-//  }
-//}
-//
-///** Return "true" if the selected points are a degenerate (invalid) case.
-//  */
-//bool ransac2Dline_degenerate_(
-//  const CMatrixTemplateNumeric<float> &allData,
-//  const mrpt::vector_size_t &useIndices )
-//{
-////  ASSERT_( useIndices.size()==2 )
-////
-////  const Eigen::Vector2d origin = Eigen::Vector2d(allData(0,useIndices[0]), allData(1,useIndices[0]));
-////  const Eigen::Vector2d end = Eigen::Vector2d(allData(0,useIndices[1]), allData(1,useIndices[1]));
-////
-////  if( (end-origin).norm() < 0.01 )
-////    return true;
-//  return false;
-//}
-//
-///*---------------------------------------------------------------
-//				ransac_detect_3D_lines
-// ---------------------------------------------------------------*/
-//void ransac_detect_3D_lines(
-//	const pcl::PointCloud<PointT>::Ptr &scan,
-//	Eigen::Matrix<float,Eigen::Dynamic,6> &lines,
-////	CMatrixTemplateNumeric<float,Eigen::Dynamic,6> &lines,
-//	const double           threshold,
-//	const size_t           min_inliers_for_valid_line
-//	)
-//{
-//	ASSERT_(scan->size() )
-////cout << "ransac_detect_2D_lines \n";
-//
-//	if(scan->empty())
-//		return;
-//
-//	// The running lists of remaining points after each plane, as a matrix:
-//	CMatrixTemplateNumeric<float> remainingPoints( 2, scan->size() );
-//	for(unsigned i=0; i < scan->size(); i++)
-//	{
-//    remainingPoints(0,i) = scan->points[i].y;
-//    remainingPoints(1,i) = scan->points[i].z;
-//	}
-//
-////cout << "Size remaining pts " << size(remainingPoints,1) << " " << size(remainingPoints,2) << endl;
-//
-//	// ---------------------------------------------
-//	// For each line:
-//	// ---------------------------------------------
-//	std::vector<std::pair<size_t,TLine2D> > out_detected_lines;
-////	while (size(remainingPoints,2)>=2)
-//	{
-//		mrpt::vector_size_t				this_best_inliers;
-//		CMatrixTemplateNumeric<float> this_best_model;
-//
-//		math::RANSAC_Template<float>::execute(
-//			remainingPoints,
-//			ransac2Dline_fit_,
-//			ransac2Dline_distance_,
-//			ransac2Dline_degenerate_,
-//			threshold,
-//			2,  // Minimum set of points
-//			this_best_inliers,
-//			this_best_model,
-//			false, // Verbose
-//			0.99  // Prob. of good result
-//			);
-////cout << "Size this_best_inliers " << this_best_inliers.size() << endl;
-//
-//		// Is this plane good enough?
-//		if (this_best_inliers.size()>=min_inliers_for_valid_line)
-//		{
-//			// Add this plane to the output list:
-//			out_detected_lines.push_back(
-//				std::make_pair<size_t,TLine2D>(
-//					this_best_inliers.size(),
-//					TLine2D(this_best_model(0,0), this_best_model(0,1),this_best_model(0,2) )
-//					) );
-//
-//			out_detected_lines.rbegin()->second.unitarize();
-//
-//			int prev_size = size(lines,1);
-////    cout << "prevSize lines " << prev_size << endl;
-//			lines.setSize(prev_size+1,6);
-//			float mod_dir = sqrt(1+pow(this_best_model(0,0)/this_best_model(0,1),2));
-//			lines(prev_size,0) = 0; // The reference system for the laser is aligned in the horizontal axis
-//			lines(prev_size,1) = 1/mod_dir;
-//			lines(prev_size,2) = -(this_best_model(0,0)/this_best_model(0,1))/mod_dir;
-//			lines(prev_size,3) = 0;
-//			lines(prev_size,4) = scan->points[this_best_inliers[0]].y;
-////			lines(prev_size,4) = scan->points[this_best_inliers[0]].x;
-//			lines(prev_size,5) = scan->points[this_best_inliers[0]].z;
-//			// Discard the selected points so they are not used again for finding subsequent planes:
-//			remainingPoints.removeColumns(this_best_inliers);
-//		}
-////		else
-////		{
-////			break; // Do not search for more planes.
-////		}
-//	}
-//}
-//
+//		  vector<2,float> line_center(2,0.0);
+//		  for(int i=0; i < this_best_inliers.size(); i++)
+//		  {
+//        line_center(0) += x[this_best_inliers(i)];
+//        line_center(1) += y[this_best_inliers(i)];
+//		  }
+//		  line_center = line_center / this_best_inliers.size();
+
+			// Add this plane to the output list:
+			out_detected_lines.push_back(
+				std::make_pair<size_t,TLine2D>(
+					this_best_inliers.size(),
+					TLine2D(this_best_model(0,0), this_best_model(0,1),this_best_model(0,2) )
+					) );
+
+			out_detected_lines.rbegin()->second.unitarize();
+
+			// Discard the selected points so they are not used again for finding subsequent planes:
+			remainingPoints.removeColumns(this_best_inliers);
+		}
+		else
+		{
+			break; // Do not search for more planes.
+		}
+	}
+
+	MRPT_END
+}
+
+
+
 ///*! This class contains the functionality to calibrate the extrinsic parameters of a pair Laser-Range camera (e.g. Kinect, ToF, etc).
 // *  This extrinsic calibration is obtained by matching planes and lines that are observed by both types of sensors at the same time.
 // */
@@ -538,156 +489,337 @@
 //      std::cout << "Errors av rot " << calcCorrespRotError(Rt_estimated) << " av trans " << calcCorrespTransError(Rt_estimated) << std::endl;
 //    }
 //};
-//
+
 //int main ()
 //{
 //	CTicTac  tictac;
 //
-//  CObservation3DRangeScanPtr obsKinect;
-////  CObservation3DRangeScanPtr obsToF;
-//  CObservation2DRangeScanPtr obsLaser;
-//  const size_t fieldOfView = 241; // Limit the field of view of the laser to 60 deg
-//  const size_t offset60deg = (1081-241)/2; // Limit the field of view of the laser to 60 deg
-//	bool bPrevLaserScan = false;
-//  mrpt::math::CMatrixDouble correspPlaneLine(0,10);
+//  CObservation2DRangeScanPtr obsLaser1, obsLaser2;
+//  const float useful_aperture = 3.14159; // Limit the field of view of the laser to 60 deg
+//	int idPreviousLaserScan = -1;
+//  mrpt::math::CMatrixDouble COs(48,0);
+//  mrpt::math::CMatrixDouble matObsLaser1(0,1081);
+//  mrpt::math::CMatrixDouble matObsLaser2(0,1081);
 //
-//  CFileGZInputStream   rawlogFile("/media/Data/Datasets360/Laser+Kinect/dataset_2014-02-12_17h06m40s.rawlog");   // "file.rawlog"
+//  string save_path = "/home/edu";
+////  CFileGZInputStream   rawlogFile("/media/Datos/Dropbox/2LRFs__2014-06-04_17h55m30s.rawlog");   // "file.rawlog"
+////  CFileGZInputStream   rawlogFile("/home/edu/bin/mrpt_edu/bin/2LRFs__2014-06-06_10h14m23s.rawlog");   // "file.rawlog"
+//  CFileGZInputStream   rawlogFile("/home/edu/bin/mrpt_edu/bin/2LRFs__2014-06-06_11h44m59s.rawlog");   // "file.rawlog"
 //  CActionCollectionPtr action;
 //  CSensoryFramePtr     observations;
-//  CObservationPtr         observation;
+//  CObservationPtr      observation;
 //  size_t               rawlogEntry=0;
-//  bool        end = false;
 //
+//  const int decimation = 10;
+//  int num_observations = 0, count_valid_obs = 0;
+//  int num_CObs = 0;
 //  while ( CRawlog::getActionObservationPairOrObservation(
-//         rawlogFile,      // Input file
-//         action,            // Possible out var: action of a pair action/obs
-//         observations,  // Possible out var: obs's of a pair action/obs
-//         observation,    // Possible out var: a single obs.
-//         rawlogEntry    // Just an I/O counter
-//         ) )
+//                                               rawlogFile,      // Input file
+//                                               action,            // Possible out var: action of a pair action/obs
+//                                               observations,  // Possible out var: obs's of a pair action/obs
+//                                               observation,    // Possible out var: a single obs.
+//                                               rawlogEntry    // Just an I/O counter
+//                                               ) )
 //  {
 //    // Process observations
 //    if (observation)
 //    {
+//      assert(IS_CLASS(observation, CObservation2DRangeScan));
+//
+////      cout << "Observation " << num_CObs++ << " timestamp " << observation->timestamp << endl;
+////      cout << (CObservation2DRangeScanPtr(observation))->aperture;
+//
 ////      cout << "Read observation\n";
-//      if(IS_CLASS(observation, CObservation2DRangeScan))
+//      if(observation->sensorLabel == "HOKUYO1")
 //      {
-//        assert(observation->sensorLabel == "HOKUYO_UTM");
+////        if(obsLaser1)
+////          obsLaser1.clear();
+//        obsLaser1 = CObservation2DRangeScanPtr(observation);
 //
-//        obsLaser = CObservation2DRangeScanPtr(observation);
-//        bPrevLaserScan = true;
-////        cout << "Laser timestamp " << obsLaser->timestamp << endl;
-////        cout << "Scan width " << obsLaser->scan.size() << endl;
-//      }
-//      else if(IS_CLASS(observation, CObservation3DRangeScan))
-//      {
-//        assert(observation->sensorLabel == "KINECT");
-//
-//        obsKinect = CObservation3DRangeScanPtr(observation);
-////        cout << "Kinect timestamp " << obsKinect->timestamp << endl;
-//
-//        if(bPrevLaserScan && (obsKinect->timestamp - obsLaser->timestamp) < 250000)
+//        if(idPreviousLaserScan == 1 || idPreviousLaserScan == -1)
 //        {
-//          mrpt::slam::CSimplePointsMap m_cache_points;
-//          m_cache_points.clear();
-//          m_cache_points.insertionOptions.minDistBetweenLaserPoints = 0;
-//          m_cache_points.insertionOptions.isPlanarMap=false;
-//          m_cache_points.insertObservation( &(*obsLaser) );
-//          size_t n;
-//          const float	*x,*y,*z;
-//          m_cache_points.getPointsBuffer(n,x,y,z);
-////          for(size_t i=0; i < obsLaser->scan.size(); i++)
-////            cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
-//
-////          Eigen::Matrix<float,Eigen::Dynamic,1> x_(241);
-//          vector_float x_(1081), y_(1081);
-//          for(size_t i=0; i < 1081; i++)
-////          vector_float x_(fieldOfView), y_(fieldOfView);
-////          for(size_t i=offset60deg; i < fieldOfView; i++)
-//          {
-//            x_[i] = x[i+offset60deg];
-//            y_[i] = y[i+offset60deg];
-//          }
-//
-//          // Run RANSAC
-//          // ------------------------------------
-//          vector<pair<size_t,TLine2D > > detectedLines;
-//          const double DIST_THRESHOLD = 0.1;
-//          ransac_detect_2D_lines(x_, y_, detectedLines, DIST_THRESHOLD, 20);
-//        cout << detectedLines.size() << " detected lines " << endl;
-//
-//          //Copy to the CColouredPointsMap
-//          CColouredPointsMap m_pntsMap;
-//    //      CPointsMap m_pntsMap;
-//
-//    //  		m_pntsMap.clear();
-//          m_pntsMap.colorScheme.scheme = CColouredPointsMap::cmFromIntensityImage;
-//          m_pntsMap.insertionOptions.minDistBetweenLaserPoints = 0; // don't drop any point
-//          m_pntsMap.insertionOptions.disableDeletion = true;
-//          m_pntsMap.insertionOptions.fuseWithExisting = false;
-//          m_pntsMap.insertionOptions.insertInvalidPoints = true;
-//          m_pntsMap.insertObservation(obsKinect.pointer());
-//          pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloudKinect(new pcl::PointCloud<pcl::PointXYZRGBA>);
-//          m_pntsMap.getPCLPointCloud(*cloudKinect);
-//
-//          cout << "Cloud-Kinect pts " << cloudKinect->points.size() << endl;
-//
-//          CloudRGBD_Ext cloud_;
-//          DownsampleRGBD downsampler(2);
-//          pcl::PointCloud<pcl::PointXYZRGBA>::Ptr downsampledCloud = downsampler.downsamplePointCloud(cloudKinect);
-//          cloud_.setPointCloud(downsampledCloud);
-//          mrpt::pbmap::PbMap planes_;
-////          getPlanesInFrame(cloud_, planes_);
-//
-////          //Extract a plane with RANSAC
-////          Eigen::VectorXf modelcoeff_Plane(4);
-////          vector<int> inliers;
-////          pcl::SampleConsensusModelPlane<pcl::PointXYZRGB>::Ptr model_p(new pcl::SampleConsensusModelPlane<pcl::PointXYZRGB> (cloudKinect));
-////          pcl::RandomSampleConsensus<pcl::PointXYZRGB> ransac (model_p);
-////          ransac.setDistanceThreshold (.03);
-////          tictac.Tic();
-////          ransac.computeModel();
-////          ransac.getModelCoefficients(modelcoeff_Plane);
-////          if(modelcoeff_Plane[3] < 0) modelcoeff_Plane *= -1;
-////    //      modelcoeff_Plane *= (modelcoeff_Plane[3]/fabs(modelcoeff_Plane[3]));
-////        cout << "RANSAC (pcl) computation time: " << tictac.Tac()*1000.0 << " ms " << modelcoeff_Plane.transpose() << endl;
-////          ransac.getInliers(inliers);
-//
-////          // Stablish the correspondences
-////          for(unsigned i=0; i < planes_.vPlanes.size(); i++)
-////          {
-////            for(unsigned j=0; j < detectedLines.size(); j++)
-////            {
-////              if( planes_i.vPlanes[i].inliers.size() > min_inliers && planes_j.vPlanes[j].inliers.size() > min_inliers &&
-////                  planes_i.vPlanes[i].elongation < 5 && planes_j.vPlanes[j].elongation < 5 &&
-////                  planes_i.vPlanes[i].v3normal .dot (planes_j.vPlanes[j].v3normal) > 0.99 &&
-////                  fabs(planes_i.vPlanes[i].d - planes_j.vPlanes[j].d) < 0.1 //&&
-//////                    planes_i.vPlanes[i].hasSimilarDominantColor(planes_j.vPlanes[j],0.06) &&
-//////                    planes_i.vPlanes[planes_counter_i+i].isPlaneNearby(planes_j.vPlanes[planes_counter_j+j], 0.5)
-////                )
-////              {
-////                unsigned prevSize = correspPlaneLine.getRowCount();
-////                correspPlaneLine.setSize(prevSize+1, correspPlaneLine.getColCount());
-////                correspPlaneLine(prevSize, 0) = modelcoeff_Plane[0];
-////                correspPlaneLine(prevSize, 1) = modelcoeff_Plane[1];
-////                correspPlaneLine(prevSize, 2) = modelcoeff_Plane[2];
-////                correspPlaneLine(prevSize, 3) = modelcoeff_Plane[3];
-////                correspPlaneLine(prevSize, 4) = modelcoeff_Line[0];
-////                correspPlaneLine(prevSize, 5) = modelcoeff_Line[1];
-////                correspPlaneLine(prevSize, 6) = modelcoeff_Line[2];
-////                correspPlaneLine(prevSize, 7) = modelcoeff_Line[3];
-////                correspPlaneLine(prevSize, 8) = modelcoeff_Line[4];
-////                correspPlaneLine(prevSize, 9) = modelcoeff_Line[5];
-////              }
-////            }
-////          }
+//          idPreviousLaserScan = 1;
+//          continue;
 //        }
+//        idPreviousLaserScan = 1;
+//
+////        cout << "Laser timestamp " << obsLaser->timestamp << endl;
+////        cout << "Scan width " << obsLaser1->scan.size() << endl;
 //      }
+//      else if(observation->sensorLabel == "HOKUYO2")
+//      {
+//        obsLaser2 = CObservation2DRangeScanPtr(observation);
+//
+//        if(idPreviousLaserScan == 2 || idPreviousLaserScan == -1)
+//        {
+//          idPreviousLaserScan = 2;
+//          continue;
+//        }
+//        idPreviousLaserScan = 2;
+//      }
+//
+//      idPreviousLaserScan = -1;
+//
+//      // Apply decimation
+//      count_valid_obs++;
+//      if(count_valid_obs%decimation != 0)
+//        continue;
+//
+//      num_observations++;
+//      matObsLaser1.setSize(2*num_observations,matObsLaser1.getColCount());
+//      matObsLaser2.setSize(2*num_observations,matObsLaser2.getColCount());
+//
+//      mrpt::slam::CSimplePointsMap m_cache_points;
+//      m_cache_points.clear();
+//      m_cache_points.insertionOptions.minDistBetweenLaserPoints = 0;
+//      m_cache_points.insertionOptions.isPlanarMap=false;
+//      m_cache_points.insertObservation( &(*obsLaser1) );
+//      size_t n;
+//      const float	*x,*y,*z;
+//      m_cache_points.getPointsBuffer(n,x,y,z);
+////    cout << "scan1 size " << obsLaser1->scan.size() << " n " << n << endl;
+//
+//      int x_row = 2*num_observations-2;
+//      int y_row = 2*num_observations-1;
+//      for(size_t i=0; i < n; i++)
+//      {
+//        matObsLaser1(x_row,i) = x[i];
+//        matObsLaser1(y_row,i) = y[i];
+////        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
+//      }
+//      if(n < obsLaser1->scan.size())
+//        matObsLaser1(x_row,n) = pow(10,9);
+//
+////      int discard_side = n * (1 - useful_aperture/obsLaser1->aperture)/2;
+////      int n_useful_aperture = n - 2*discard_side;
+////
+////      vector_float x_1(n_useful_aperture), y_1(n_useful_aperture);
+////      for(size_t i=0; i < n_useful_aperture; i++)
+////      {
+////        int meas_id = i+discard_side;
+////        x_1[i] = x[meas_id];
+////        y_1[i] = y[meas_id];
+////      }
+//
+//
+//      m_cache_points.clear();
+//      m_cache_points.insertObservation( &(*obsLaser2) );
+//      m_cache_points.getPointsBuffer(n,x,y,z);
+////    cout << "scan2 size " << obsLaser2->scan.size() << " n " << n << endl;
+//
+//      for(size_t i=0; i < n; i++)
+//      {
+//        matObsLaser2(x_row,i) = x[i];
+//        matObsLaser2(y_row,i) = y[i];
+////        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
+//      }
+//      if(n < obsLaser2->scan.size())
+//        matObsLaser2(x_row,n) = pow(10,9);
+//
+////    cout << "ObservationPair " << num_observations << endl;
+//
+////      obsLaser1.clear();
+////      obsLaser2.clear();
+//
+////      int discard_side = n * (1 - useful_aperture/obsLaser2->aperture)/2;
+////      int n_useful_aperture = n - 2*discard_side;
+////
+//////          Eigen::Matrix<float,Eigen::Dynamic,1> x_(241);
+////      vector_float x_2(n_useful_aperture), y_2(n_useful_aperture);
+////      for(size_t i=0; i < n_useful_aperture; i++)
+////      {
+////        int meas_id = i+discard_side;
+////        x_2[i] = x[meas_id];
+////        y_2[i] = y[meas_id];
+////      }
+//
+//
+////      // Run RANSAC
+////      // ------------------------------------
+////      const double DIST_THRESHOLD = 0.1;
+////      const int MIN_INLIERS_LINE = 40;
+////      vector<pair<size_t,TLine2D > > detectedLines1, detectedLines2;
+////      ransac_detect_2D_lines(x_1, y_1, detectedLines1, DIST_THRESHOLD, MIN_INLIERS_LINE);
+////      ransac_detect_2D_lines(x_2, y_2, detectedLines2, DIST_THRESHOLD, MIN_INLIERS_LINE);
+////
+////    cout << detectedLines1.size() << " and " << detectedLines2.size() << " detected lines " << endl;
+////
+////
+////      // Stablish the correspondences
+////      for(unsigned i=0; i < detectedLines1.size(); i++)
+////        for(unsigned ii=i+1; ii < detectedLines1.size(); ii++)
+////        {
+////          for(unsigned j=0; j < detectedLines2.size(); j++)
+////          for(unsigned jj=j+1; jj < detectedLines2.size(); jj++)
+////          {
+////            unsigned prevSize = COs.getColCount();
+////            COs.setSize(COs.getRowCount(), prevSize+1);
+////            COs.block(0,prevSize, 12, 1) = detectedLines1[i].first;
+////            COs.block(12,prevSize, 12, 1) = detectedLines1[ii].first;
+////            COs.block(24,prevSize, 12, 1) = detectedLines2[j].first;
+////            COs.block(36,prevSize, 12, 1) = detectedLines2[jj].first;
+////          }
+////        }
+//
 //    }
 //  }
 //
-//  cout << "\tSave correspPlaneLine\n";
-//  correspPlaneLine.saveToTextFile( mrpt::format("%s/correspPlaneLine.txt", PROJECT_SOURCE_PATH) );
+////  cout << "\tSave COs\n";
+////  COs.saveToTextFile( mrpt::format("%s/COs.txt", PROJECT_SOURCE_PATH) );
+//
+//  cout << "\tSave LRF Observations " << matObsLaser1.getRowCount() << "\n";
+//  matObsLaser1.saveToTextFile( mrpt::format("%s/matObsLaser1.txt", save_path.c_str() ) );
+//  matObsLaser2.saveToTextFile( mrpt::format("%s/matObsLaser2.txt", save_path.c_str() ) );
 //
 //	return (0);
 //}
+
+int main ()
+{
+	CTicTac  tictac;
+
+  CObservation2DRangeScanPtr obsLaser1, obsLaser2, obsLaser3;
+//  const float useful_aperture = 3.14159; // Limit the field of view of the laser to 60 deg
+	bool scan1 = false, scan2 = false, scan3 = false;
+  mrpt::math::CMatrixDouble matObsLaser1(0,1081);
+  mrpt::math::CMatrixDouble matObsLaser2(0,1081);
+  mrpt::math::CMatrixDouble matObsLaser3(0,1081);
+
+  string save_path = "/home/edu";
+  CFileGZInputStream   rawlogFile("/home/edu/bin/mrpt_edu/bin/2LRFs__2014-06-06_13h51m36s.rawlog");   // "file.rawlog"
+  CActionCollectionPtr action;
+  CSensoryFramePtr     observations;
+  CObservationPtr      observation;
+  size_t               rawlogEntry=0;
+
+  const int decimation = 10;
+  int num_observations = 0, count_valid_obs = 0;
+  int num_CObs = 0;
+  while ( CRawlog::getActionObservationPairOrObservation(
+                                               rawlogFile,      // Input file
+                                               action,            // Possible out var: action of a pair action/obs
+                                               observations,  // Possible out var: obs's of a pair action/obs
+                                               observation,    // Possible out var: a single obs.
+                                               rawlogEntry    // Just an I/O counter
+                                               ) )
+  {
+    // Process observations
+    if (observation)
+    {
+      assert(IS_CLASS(observation, CObservation2DRangeScan));
+
+      cout << "Observation " << num_CObs++ << " timestamp " << observation->timestamp << endl;
+//      cout << (CObservation2DRangeScanPtr(observation))->aperture;
+
+//      cout << "Read observation\n";
+      if(observation->sensorLabel == "HOKUYO1")
+      {
+//        if(obsLaser1)
+//          obsLaser1.clear();
+        obsLaser1 = CObservation2DRangeScanPtr(observation);
+        scan1 = true;
+
+//        cout << "Laser timestamp " << obsLaser->timestamp << endl;
+//        cout << "Scan width " << obsLaser1->scan.size() << endl;
+      }
+      else if(observation->sensorLabel == "HOKUYO2")
+      {
+        obsLaser2 = CObservation2DRangeScanPtr(observation);
+        scan2 = true;
+      }
+        else if(observation->sensorLabel == "HOKUYO3")
+        {
+          obsLaser3 = CObservation2DRangeScanPtr(observation);
+          scan3 = true;
+        }
+
+      if(!(scan1 && scan2 && scan3))
+        continue;
+
+      scan1 = scan2 = scan3 = false; // Reset the counter of simultaneous observations
+
+      // Apply decimation
+      count_valid_obs++;
+      if(count_valid_obs%decimation != 0)
+        continue;
+
+      num_observations++;
+      matObsLaser1.setSize(2*num_observations,matObsLaser1.getColCount());
+      matObsLaser2.setSize(2*num_observations,matObsLaser2.getColCount());
+      matObsLaser3.setSize(2*num_observations,matObsLaser3.getColCount());
+
+      mrpt::slam::CSimplePointsMap m_cache_points;
+      m_cache_points.clear();
+      m_cache_points.insertionOptions.minDistBetweenLaserPoints = 0;
+      m_cache_points.insertionOptions.isPlanarMap=false;
+      m_cache_points.insertObservation( &(*obsLaser1) );
+      size_t n;
+      const float	*x,*y,*z;
+      m_cache_points.getPointsBuffer(n,x,y,z);
+    cout << "scan1 size " << obsLaser1->scan.size() << " n " << n << endl;
+
+      int x_row = 2*num_observations-2;
+      int y_row = 2*num_observations-1;
+      for(size_t i=0; i < n; i++)
+      {
+        matObsLaser1(x_row,i) = x[i];
+        matObsLaser1(y_row,i) = y[i];
+//        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
+      }
+      if(n < obsLaser1->scan.size())
+        matObsLaser1(x_row,n) = pow(10,9);
+
+//      int discard_side = n * (1 - useful_aperture/obsLaser1->aperture)/2;
+//      int n_useful_aperture = n - 2*discard_side;
+//
+//      vector_float x_1(n_useful_aperture), y_1(n_useful_aperture);
+//      for(size_t i=0; i < n_useful_aperture; i++)
+//      {
+//        int meas_id = i+discard_side;
+//        x_1[i] = x[meas_id];
+//        y_1[i] = y[meas_id];
+//      }
+
+
+      m_cache_points.clear();
+      m_cache_points.insertObservation( &(*obsLaser2) );
+      m_cache_points.getPointsBuffer(n,x,y,z);
+    cout << "scan2 size " << obsLaser2->scan.size() << " n " << n << endl;
+
+      for(size_t i=0; i < n; i++)
+      {
+        matObsLaser2(x_row,i) = x[i];
+        matObsLaser2(y_row,i) = y[i];
+//        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
+      }
+      if(n < obsLaser2->scan.size())
+        matObsLaser2(x_row,n) = pow(10,9);
+
+
+      m_cache_points.clear();
+      m_cache_points.insertObservation( &(*obsLaser3) );
+      m_cache_points.getPointsBuffer(n,x,y,z);
+    cout << "scan3 size " << obsLaser3->scan.size() << " n " << n << endl;
+
+      for(size_t i=0; i < n; i++)
+      {
+        matObsLaser3(x_row,i) = x[i];
+        matObsLaser3(y_row,i) = y[i];
+//        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
+      }
+      if(n < obsLaser3->scan.size())
+        matObsLaser3(x_row,n) = pow(10,9);
+
+    }
+  }
+
+//  cout << "\tSave COs\n";
+//  COs.saveToTextFile( mrpt::format("%s/COs.txt", PROJECT_SOURCE_PATH) );
+
+  cout << "\tSave LRF Observations " << matObsLaser1.getRowCount() << "\n";
+  matObsLaser1.saveToTextFile( mrpt::format("%s/matObsLaser1.txt", save_path.c_str() ) );
+  matObsLaser2.saveToTextFile( mrpt::format("%s/matObsLaser2.txt", save_path.c_str() ) );
+  matObsLaser3.saveToTextFile( mrpt::format("%s/matObsLaser3.txt", save_path.c_str() ) );
+
+	return (0);
+}
