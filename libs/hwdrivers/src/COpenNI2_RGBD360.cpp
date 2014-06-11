@@ -67,7 +67,7 @@ void COpenNI2_RGBD360::initialize()
     // Check and list the available devices
 	getConnectedDevices();
 
-	if(numDevices < NUM_SENSORS)
+  if(getNumDevices() < NUM_SENSORS)
 	{
 		cout << "Num required sensors " << NUM_SENSORS << endl;
 		cout << "Not enough devices connected -> EXIT\n";
@@ -139,10 +139,10 @@ void  COpenNI2_RGBD360::loadConfig_sensorSpecific(
 
 	m_preview_window = configSource.read_bool(iniSection,"preview_window",m_preview_window);
 
-	width = configSource.read_int(iniSection,"width",0);
-	height = configSource.read_int(iniSection,"height",0);
-	fps = configSource.read_float(iniSection,"fps",0);
-	std::cout << "width " << width << " height " << height << " fps " << fps << endl;
+	m_width = configSource.read_int(iniSection,"width",0);
+	m_height = configSource.read_int(iniSection,"height",0);
+	m_fps = configSource.read_float(iniSection,"fps",0);
+	std::cout << "width " << m_width << " height " << m_height << " fps " << m_fps << endl;
 
 	m_grab_rgb = configSource.read_bool(iniSection,"grab_image",m_grab_rgb);
 	m_grab_depth = configSource.read_bool(iniSection,"grab_depth",m_grab_depth);
