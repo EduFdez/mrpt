@@ -61,10 +61,10 @@ int main ( int argc, char** argv )
     rgbd_sensor.initialize();
 //    rgbd_sensor.open(sensor_id);
 //    mrpt::system::sleep(2000); // Sleep 2s
-    if(rgbd_sensor.numDevices == 0)
+    if(rgbd_sensor.getNumDevices() == 0)
       return 0;
 
-    cout << "OK " << rgbd_sensor.numDevices << " available devices."  << endl;
+    cout << "OK " << rgbd_sensor.getNumDevices() << " available devices."  << endl;
     cout << "\nUse device " << sensor_id << endl << endl;
 
 

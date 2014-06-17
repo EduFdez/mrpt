@@ -27,6 +27,10 @@ using namespace mrpt::math;
 using namespace std;
 using mrpt::utils::DEG2RAD;
 
+bool isValidParameter(const mrpt::utils::TCamera& param){
+  return param.ncols > 0 && param.nrows > 0;
+}
+
 IMPLEMENTS_GENERIC_SENSOR(COpenNI2Sensor,mrpt::hwdrivers)
 
 /*-------------------------------------------------------------
@@ -39,33 +43,33 @@ COpenNI2Sensor::COpenNI2Sensor() :
 	m_preview_decim_counter_range(0),
 	m_preview_decim_counter_rgb(0),
 
-	m_relativePoseIntensityWRTDepth(0,0,0, DEG2RAD(0),DEG2RAD(0),DEG2RAD(0)),
+  m_relativePoseIntensityWRTDepth(0,0,0, DEG2RAD(-90),DEG2RAD(0),DEG2RAD(-90)),
 	m_user_device_number(0)
 {
 
 	// Default label:
 	m_sensorLabel = "OPENNI2";
 
-	// =========== Default params ===========
+	// =========== Set invalid params ===========
 	// ----- RGB -----
-	m_cameraParamsRGB.ncols = width;
-	m_cameraParamsRGB.nrows = height;
+	m_cameraParamsRGB.ncols = 0;
+	m_cameraParamsRGB.nrows = 0;
 
-	m_cameraParamsRGB.cx(328.94272028759258);
-	m_cameraParamsRGB.cy(267.48068171871557);
-	m_cameraParamsRGB.fx(529.2151);
-	m_cameraParamsRGB.fy(525.5639);
+	m_cameraParamsRGB.cx(-1);
+	m_cameraParamsRGB.cy(-1);
+	m_cameraParamsRGB.fx(-1);
+	m_cameraParamsRGB.fy(-1);
 
 	m_cameraParamsRGB.dist.zeros();
 
 	// ----- Depth -----
-	m_cameraParamsDepth.ncols = width;
-	m_cameraParamsDepth.nrows = height;
+	m_cameraParamsDepth.ncols = 0;
+	m_cameraParamsDepth.nrows = 0;
 
-	m_cameraParamsDepth.cx(339.30781);
-	m_cameraParamsDepth.cy(242.7391);
-	m_cameraParamsDepth.fx(594.21434);
-	m_cameraParamsDepth.fy(591.04054);
+	m_cameraParamsDepth.cx(-1);
+	m_cameraParamsDepth.cy(-1);
+	m_cameraParamsDepth.fx(-1);
+	m_cameraParamsDepth.fy(-1);
 
 	m_cameraParamsDepth.dist.zeros();
 }
@@ -83,8 +87,28 @@ COpenNI2Sensor::~COpenNI2Sensor()
 void COpenNI2Sensor::initialize()
 {
 #if MRPT_HAS_OPENNI2
-	if( getConnectedDevices() ) // Check and list the available devices. If there is at least one device connected, open the first in the list.
+  try{
+    if(getConnectedDevices() <= 0){ // Check and list the available devices. If there is at least one device connected, open the first in the list.
+      return;
+    }
     open(m_user_device_number);
+    if(isOpen(m_user_device_number) == false){
+      THROW_EXCEPTION(mrpt::format("Failed to open OpenNI2 device(%d).", m_user_device_number))
+    }
+    /* If camera parameter is not read from ini file, we get the parameters from OpenNI2. */
+    if(isValidParameter(m_cameraParamsDepth) == false){
+      if(getDepthSensorParam(m_cameraParamsDepth, m_user_device_number) == false){
+        THROW_EXCEPTION("Failed to get Depth camera parameters.")
+      }
+    }
+    if(isValidParameter(m_cameraParamsRGB) == false){
+      if(getColorSensorParam(m_cameraParamsRGB, m_user_device_number) == false){
+        THROW_EXCEPTION("Failed to get RGB camera parameters.")
+      }
+    }
+  }catch(std::logic_error& e){
+    throw(e);
+  }
 #else
 	THROW_EXCEPTION("MRPT was built without OpenNI2 support")
 #endif // MRPT_HAS_OPENNI2
@@ -102,7 +126,7 @@ void COpenNI2Sensor::doProcess()
 
 	CObservation3DRangeScanPtr newObs = CObservation3DRangeScan::Create();
 
-	assert(!COpenNI2Generic::vOpenDevices.empty());
+	assert(getNumDevices() > 0);
 	getNextObservation( *newObs, thereIs, hwError, m_user_device_number );
 
 	if (hwError)
@@ -145,27 +169,35 @@ void  COpenNI2Sensor::loadConfig_sensorSpecific(
 
 	m_preview_window = configSource.read_bool(iniSection,"preview_window",m_preview_window);
 
-	width = configSource.read_int(iniSection,"width",0);
-	height = configSource.read_int(iniSection,"height",0);
-	fps = configSource.read_float(iniSection,"fps",0);
-	std::cout << "width " << width << " height " << height << " fps " << fps << endl;
+	m_width = configSource.read_int(iniSection,"width",0);
+	m_height = configSource.read_int(iniSection,"height",0);
+	m_fps = configSource.read_float(iniSection,"fps",0);
+	std::cout << "width " << m_width << " height " << m_height << " fps " << m_fps << endl;
 
-	const mrpt::poses::CPose3D twist(0,0,0,DEG2RAD(-90),DEG2RAD(0),DEG2RAD(-90));
+	//const mrpt::poses::CPose3D twist(0,0,0,DEG2RAD(-90),DEG2RAD(0),DEG2RAD(-90));
 
 	mrpt::utils::TStereoCamera  sc;
-	sc.leftCamera  = m_cameraParamsDepth;  // Load default values so that if we fail to load from cfg at least we have some reasonable numbers.
-	sc.rightCamera = m_cameraParamsRGB;
-	sc.rightCameraPose = mrpt::poses::CPose3DQuat(m_relativePoseIntensityWRTDepth - twist);
+
+  bool hasRightCameraSection = configSource.sectionExists(iniSection + string("_RIGHT"));
+  bool hasLeftCameraSection  = configSource.sectionExists(iniSection + string("_LEFT"));
+  bool hasLeft2RightPose     = configSource.sectionExists(iniSection + string("_LEFT2RIGHT_POSE"));
 
 	try {
 		sc.loadFromConfigFile(iniSection,configSource);
 	} catch (std::exception &e) {
 		std::cout << "[COpenNI2Sensor::loadConfig_sensorSpecific] Warning: Ignoring error loading calibration parameters:\n" << e.what();
 	}
-	m_cameraParamsDepth = sc.leftCamera;
-	m_cameraParamsRGB   = sc.rightCamera;
-	m_relativePoseIntensityWRTDepth = twist + mrpt::poses::CPose3D(sc.rightCameraPose);
-
+  if(hasRightCameraSection){
+    m_cameraParamsRGB   = sc.rightCamera;
+  }
+  if(hasLeftCameraSection){
+    m_cameraParamsDepth = sc.leftCamera;
+  }
+  if(hasLeft2RightPose){
+    const mrpt::poses::CPose3D  twist(0,0,0,DEG2RAD(-90),DEG2RAD(0),DEG2RAD(-90));
+    m_relativePoseIntensityWRTDepth = twist + mrpt::poses::CPose3D(sc.rightCameraPose);
+  }
+  
 	// Id:
 	m_user_device_number = configSource.read_int(iniSection,"device_number",m_user_device_number );
 	cout << "LOAD m_user_device_number " << m_user_device_number << endl;
@@ -207,7 +239,7 @@ void COpenNI2Sensor::getNextObservation(
     // --------------------------------------
     out_obs.sensorLabel = m_sensorLabel;
     out_obs.sensorPose = m_sensorPoseOnRobot;
-    //	out_obs.relativePoseIntensityWRTDepth = m_relativePoseIntensityWRTDepth;
+  out_obs.relativePoseIntensityWRTDepth = m_relativePoseIntensityWRTDepth;
 
     out_obs.cameraParams          = m_cameraParamsDepth;
     out_obs.cameraParamsIntensity = m_cameraParamsRGB;
