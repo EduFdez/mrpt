@@ -38,7 +38,7 @@ using namespace std;
 // Initialize static member
 std::vector<stlplus::smart_ptr<COpenNI2Generic::CDevice> > COpenNI2Generic::vDevices = std::vector<stlplus::smart_ptr<COpenNI2Generic::CDevice> >();
 int COpenNI2Generic::numInstances = 0;
-
+#if 0
 /*
 void openni::VideoMode::setResolution()
 Setter function for the resolution of this VideoMode. Application use of this function is not recommended.
@@ -46,7 +46,6 @@ Instead, use SensorInfo::getSupportedVideoModes() to obtain a list of valid vide
 
 -- cited from OpenNI2 help. setResolution() is not recommended.
 */
-#if 0
 #if MRPT_HAS_OPENNI2
 bool setONI2StreamMode(openni::VideoStream& stream, int w, int h, int fps, openni::PixelFormat format)
 {
