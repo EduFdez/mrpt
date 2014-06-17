@@ -57,14 +57,14 @@ int main ( int argc, char** argv )
 //    rgbd_sensor.loadConfig_sensorSpecific(const mrpt::utils::CConfigFileBase &configSource,	const std::string	 &iniSection );
 
     // Open:
-    cout << "Calling COpenNI2Sensor::initialize()...";
+    cout << "Calling COpenNI2Sensor::initialize()..." << endl;
     rgbd_sensor.initialize();
 //    rgbd_sensor.open(sensor_id);
 //    mrpt::system::sleep(2000); // Sleep 2s
-    if(rgbd_sensor.numDevices == 0)
+    if(rgbd_sensor.getNumDevices() == 0)
       return 0;
 
-    cout << "OK " << rgbd_sensor.numDevices << " available devices."  << endl;
+    cout << "OK " << rgbd_sensor.getNumDevices() << " available devices."  << endl;
     cout << "\nUse device " << sensor_id << endl << endl;
 
 

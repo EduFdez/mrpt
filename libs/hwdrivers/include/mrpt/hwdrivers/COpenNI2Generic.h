@@ -92,10 +92,10 @@ namespace mrpt
 //      bool setONI2StreamMode(openni::VideoStream& stream, int w, int h, int fps, openni::PixelFormat format);
 //
 			/** Set the RGB stream mode (resolution, fps and pixel format) for the OpenNI2 device */
-      bool initONI2RGBStream(unsigned sensor_id, int w, int h, int fps, void* pFormat);
+      // bool initONI2RGBStream(unsigned sensor_id, int w, int h, int fps, void* pFormat);
 
 			/** Set the Depth stream mode (resolution, fps and pixel format) for the OpenNI2 device */
-      bool initONI2DepthStream(unsigned sensor_id, int w, int h, int fps, void* pFormat);
+      // bool initONI2DepthStream(unsigned sensor_id, int w, int h, int fps, void* pFormat);
 
 			/** Try to open the camera (set all the parameters before calling this) - users may also call initialize(), which in turn calls this method.
 			  *  Raises an exception upon error.
@@ -110,36 +110,44 @@ namespace mrpt
 			void close(unsigned sensor_id = 0);
 
 			/** The amount of available devices at initialization */
-			unsigned numDevices;
+			int getNumDevices()const;
 
 			/** @} */
-
+			void setVerbose(bool verbose);
+			bool isVerbose()const;
 		protected:
 
 			/** List the number of devices connected */
-			void* deviceListPtr;  // Opaque pointer to "openni::Array<openni::DeviceInfo>"
+			// void* deviceListPtr;  // Opaque pointer to "openni::Array<openni::DeviceInfo>"
 
 			/** The index of the chosen devices */
-			static std::vector<unsigned> vOpenDevices;
-//			static std::vector<COpenNI2Generic*> vOpenDevices;
+			// static std::vector<unsigned> vOpenDevices;
+			//			static std::vector<COpenNI2Generic*> vOpenDevices;
+			class CDevice;
+			static std::vector<stlplus::smart_ptr<CDevice> > vDevices;
+			static int                        numInstances;
 
 			/** A vector with pointers to the available devices */
-			std::vector<void*>	vp_devices; // Opaque pointer to "openni::Device"
+			// std::vector<void*>	vp_devices; // Opaque pointer to "openni::Device"
 
 			/** The same options (width, height and fps) are set for all the sensors. (This could be changed if necessary) */
-      int width, height;
-      float fps;
-      void *rgb_pFormat, *depth_pFormat; // These parameters will be necesary if several pixel formats are used by this class.
+			int   m_width, m_height;
+			float m_fps;
+			int   m_rgb_format, m_depth_format;
+			bool  m_verbose;
+			bool  getColorSensorParam(mrpt::utils::TCamera& param, unsigned sensor_id = 0)const;
+			bool  getDepthSensorParam(mrpt::utils::TCamera& param, unsigned sensor_id = 0)const;
+			void  showLog(const std::string& message)const;
 
 			/** A vector with pointers to the rgb streams of the available devices */
-			std::vector<void*> vp_depth_stream; // Opaque pointer to "openni::VideoStream"
-			std::vector<void*> vp_rgb_stream; // Opaque pointer to "openni::VideoStream"
+			// std::vector<void*> vp_depth_stream; // Opaque pointer to "openni::VideoStream"
+			// std::vector<void*> vp_rgb_stream; // Opaque pointer to "openni::VideoStream"
 
 			/** A vector with pointers to the frame output structures */
-			std::vector<void*> vp_frame_depth, vp_frame_rgb;	// Opaque pointers to "openni::VideoFrameRef"
+			// std::vector<void*> vp_frame_depth, vp_frame_rgb;	// Opaque pointers to "openni::VideoFrameRef"
 
 			/** Check whether the OpenNI2 device has RGB camera or not */
-			bool  m_has_color;
+			// bool  m_has_color;
 
 			bool  m_grab_image, m_grab_depth, m_grab_3D_points ; //!< Default: all true
 
