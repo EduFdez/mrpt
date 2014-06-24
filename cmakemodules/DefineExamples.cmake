@@ -317,14 +317,12 @@ IF(BUILD_EXAMPLES)
 	# === PbMap examples ===
 	IF(BUILD_mrpt-pbmap)
 		ADD_SAMPLES_DIRECTORY(pbmap-examples)
-#		SET(LIST_EXAMPLES_IN_THIS_DIR
-#			pbmap_example
-#			pbmap_visualizer
-#			)
-#		SET(CMAKE_EXAMPLE_DEPS mrpt-pbmap mrpt-gui)
-#		SET(CMAKE_EXAMPLE_LINK_LIBS ${MRPT_LINKER_LIBS})
-#		GENERATE_CMAKE_FILES_SAMPLES_DIRECTORY()
 	ENDIF(BUILD_mrpt-pbmap)
+
+	# === RGBD360 examples ===
+	#IF(BUILD_mrpt-rgbd360)
+		ADD_SAMPLES_DIRECTORY(rgbd360)
+	#ENDIF(BUILD_mrpt-rgbd360)
 
 	# Generate the CMakeLists.txt in the "/samples" directory
 	SET(CMAKE_COMMANDS_INCLUDE_EXAMPLE_DIRS ${CMAKE_COMMANDS_INCLUDE_EXAMPLE_DIRS_ROOT})
