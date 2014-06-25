@@ -13,9 +13,12 @@
 //#include <mrpt/maps.h>
 #include <mrpt/utils/CFileGZInputStream.h>
 #include <mrpt/slam/CObservationRGBD360.h>
-//#include <mrpt/slam/CObservation3DRangeScan.h>
 #include <mrpt/slam/CObservationIMU.h>
 #include <mrpt/obs.h>
+
+#ifndef PI
+  #define PI 3.14159265
+#endif
 
 using namespace std;
 using namespace mrpt;
@@ -39,25 +42,25 @@ int main ( int argc, char** argv )
     const string RAWLOG_FILENAME = string( argv[1] );
     const unsigned num_sensors = 4;
 
-    unsigned SensorArrangement[] = {1,2,3,4};
+    unsigned SensorArrangement[] = {1,3,2,0};
 
-//    // Set the sensor poses (Extrinsic calibration)
-//    mrpt::poses::CPose3D sensorPoses[num_sensors];
-//    Eigen::Matrix4d pose_sensor1 = Eigen::Matrix4d::Identity(); pose_sensor1.block(0,3,3,1) << 0, 0, 0.055;
-//    //math::CMatrixDouble44 pose_sensor[num_sensors];
-//    sensorPoses[0] = mrpt::poses::CPose3D(pose_sensor1);
-//
-//    Eigen::Matrix4d Rt_45 = Eigen::Matrix4d::Identity();
-//    Rt_45(1,1) = Rt_45(2,2) = cos(45*PI/180);
-//    Rt_45(1,2) = -sin(45*PI/180);
-//    Rt_45(2,1) = -Rt_45(1,2);
-//
-//    for(unsigned i=1; i < num_sensors; i++)
-//    {
-////      pose_mat
-//      Eigen::Matrix4d pose_sensor = Rt_45 * sensorPoses[SensorArrangement[i-1]]*getHomogeneousMatrixVal();
-//      sensorPoses[SensorArrangement[i]] = Rt_45*mrpt::poses::CPose3D(pose_sensor);
-//    }
+    // Set the sensor poses (Extrinsic calibration)
+    mrpt::poses::CPose3D sensorPoses[num_sensors];
+    math::CMatrixDouble44 pose_sensor_mat[num_sensors];
+    Eigen::Matrix4d pose_sensor_mat0 = Eigen::Matrix4d::Identity(); pose_sensor_mat0.block(0,3,3,1) << 0.055, 0, 0;
+    pose_sensor_mat[0] = math::CMatrixDouble44(pose_sensor_mat0);
+
+    //TODO: Load proper calibration of the ominidirectional RGBD device
+    Eigen::Matrix4d Rt_45 = Eigen::Matrix4d::Identity();
+    Rt_45(0,0) = Rt_45(2,2) = cos(45*PI/180);
+    Rt_45(0,2) = sin(45*PI/180);
+    Rt_45(2,0) = -Rt_45(0,2);
+
+    for(unsigned i=1; i < num_sensors; i++)
+      pose_sensor_mat[i] = math::CMatrixDouble44(Rt_45) * pose_sensor_mat[i-1];
+
+    for(unsigned i=0; i < num_sensors; i++)
+      sensorPoses[i] = mrpt::poses::CPose3D(pose_sensor_mat[SensorArrangement[i]]);
 
     CFileGZInputStream rawlogFile(RAWLOG_FILENAME);
     CActionCollectionPtr action;
@@ -83,15 +86,24 @@ int main ( int argc, char** argv )
     win3D.setFOV(90);
     win3D.setCameraPointingToPoint(2.5,0,0);
 
-    mrpt::opengl::CPointCloudColouredPtr gl_points = mrpt::opengl::CPointCloudColoured::Create();
-    gl_points->setPointSize(2.5);
+//    mrpt::opengl::CPointCloudColouredPtr gl_points = mrpt::opengl::CPointCloudColoured::Create();
+//    gl_points->setPointSize(2.5);
+    mrpt::opengl::CPointCloudColouredPtr gl_points[num_sensors];
+    for(unsigned i=0; i < num_sensors; i++)
+    {
+      gl_points[i] = mrpt::opengl::CPointCloudColoured::Create();
+      gl_points[i]->setPointSize(2.5);
+    }
 
     opengl::COpenGLViewportPtr viewInt; // Extra viewports for the RGB images.
     {
       mrpt::opengl::COpenGLScenePtr &scene = win3D.get3DSceneAndLock();
 
       // Create the Opengl object for the point cloud:
-      scene->insert( gl_points );
+//      scene->insert( gl_points );
+      for(unsigned i=0; i < num_sensors; i++)
+        scene->insert( gl_points[i] );
+
       scene->insert( mrpt::opengl::CGridPlaneXY::Create() );
       scene->insert( mrpt::opengl::stock_objects::CornerXYZ() );
 
@@ -100,8 +112,8 @@ int main ( int argc, char** argv )
       const int VW_HEIGHT = aspect_ratio*VW_WIDTH;
 
       // Create an extra opengl viewport for the RGB image:
-      viewInt = scene->createViewport("view2d_int");
-      viewInt->setViewportPosition(5, 30, VW_WIDTH,VW_HEIGHT );
+//      viewInt = scene->createViewport("view2d_int");
+//      viewInt->setViewportPosition(5, 30, VW_WIDTH,VW_HEIGHT );
       win3D.addTextMessage(10, 30+VW_HEIGHT+10,"Intensity data",TColorf(1,1,1), 2, MRPT_GLUT_BITMAP_HELVETICA_12 );
 
       win3D.addTextMessage(5,5,
@@ -126,6 +138,8 @@ int main ( int argc, char** argv )
       {
         // assert(IS_CLASS(observation, CObservation2DRangeScan) || IS_CLASS(observation, CObservation3DRangeScan));
         cout << "Observation " << num_observations++ << " timestamp " << observation->timestamp << endl;
+
+        // TODO: Get closest frames in time (more tight synchronization)
 
         if(observation->sensorLabel == "RGBD1")
         {
@@ -168,15 +182,16 @@ int main ( int argc, char** argv )
       if(num_rgbd360_obs%decimation != 0)
         continue;
 
-//      // Fill the frame180 structure
-//      CObservationRGBD360 obs360;
-//      for(unsigned i=0; i<obs360.NUM_SENSORS; i++)
-//      {
-//        obs360.rgbd[i] = *obsRGBD[SensorArrangement[i]];
-//      }
+      // Fill the frame180 structure
+      CObservationRGBD360 obs360;
+      for(unsigned i=0; i<obs360.NUM_SENSORS; i++)
+      {
+        obs360.rgbd[i] = *obsRGBD[SensorArrangement[i]];
+        obs360.rgbd[i].sensorPose = sensorPoses[SensorArrangement[i]];
+      }
 
-      // Segment surfaces (planes and curve regions)
-
+//      // Segment surfaces (planes and curve regions)
+//      obs360.getPlanes();
 
       // Visualize the data
       if(bVisualize)
@@ -191,11 +206,11 @@ int main ( int argc, char** argv )
         // Estimated grabbing rate:
         win3D.addTextMessage(-350,-13, format("Timestamp: %s", mrpt::system::dateTimeLocalToString(last_obs_tim).c_str()), TColorf(0.6,0.6,0.6),"mono",10,mrpt::opengl::FILL, 100);
 
-        // Show intensity image:
-        if (obsRGBD[0]->hasIntensityImage )
-        {
-          viewInt->setImageView(obsRGBD[0]->intensityImage); // This is not "_fast" since the intensity image may be needed later on.
-        }
+//        // Show intensity image:
+//        if (obsRGBD[0]->hasIntensityImage )
+//        {
+//          viewInt->setImageView(obsRGBD[0]->intensityImage); // This is not "_fast" since the intensity image may be needed later on.
+//        }
         win3D.unlockAccess3DScene();
 
         // -------------------------------------------------------
@@ -207,123 +222,20 @@ int main ( int argc, char** argv )
         // -------------------------------------------------------
         {
           win3D.get3DSceneAndLock();
-            obsRGBD[0]->project3DPointsFromDepthImageInto(*gl_points, false /* without obs.sensorPose */);
+//            obsRGBD[0]->project3DPointsFromDepthImageInto(*gl_points, false /* without obs.sensorPose */);
+            for(unsigned i=0; i < num_sensors; i++)
+              obs360.rgbd[i].project3DPointsFromDepthImageInto(*gl_points[i], true);
+//              obsRGBD[i]->project3DPointsFromDepthImageInto(*gl_points[i], true, &sensorPoses[i]);
+
           win3D.unlockAccess3DScene();
         }
 
         win3D.repaint();
+
+        mrpt::system::pause();
       }
 
     };
-
-
-
-//    cout << "OK " << rgbd_sensor.numDevices << " available devices."  << endl;
-//    cout << "\nUse device " << sensor_id_or_serial << endl << endl;
-//
-//    bool showImages = false;
-//   int cloud and images
-//    {
-//      // Create window and prepare OpenGL object in the scene:
-//      // --------------------------------------------------------
-//      mrpt::gui::CDisplayWindow3D  win3D("OpenNI2 3D view",800,600);
-//
-//      win3D.setCameraAzimuthDeg(140);
-//      win3D.setCameraElevationDeg(20);
-//      win3D.setCameraZoom(8.0);
-//      win3D.setFOV(90);
-//      win3D.setCameraPointingToPoint(2.5,0,0);
-//
-//      mrpt::opengl::CPointCloudColouredPtr gl_points = mrpt::opengl::CPointCloudColoured::Create();
-//      gl_points->setPointSize(2.5);
-//
-//      opengl::COpenGLViewportPtr viewInt; // Extra viewports for the RGB images.
-//      {
-//        mrpt::opengl::COpenGLScenePtr &scene = win3D.get3DSceneAndLock();
-//
-//        // Create the Opengl object for the point cloud:
-//        scene->insert( gl_points );
-//        scene->insert( mrpt::opengl::CGridPlaneXY::Create() );
-//        scene->insert( mrpt::opengl::stock_objects::CornerXYZ() );
-//
-//        const double aspect_ratio =  480.0 / 640.0;
-//        const int VW_WIDTH = 400;	// Size of the viewport into the window, in pixel units.
-//        const int VW_HEIGHT = aspect_ratio*VW_WIDTH;
-//
-//        // Create an extra opengl viewport for the RGB image:
-//        viewInt = scene->createViewport("view2d_int");
-//        viewInt->setViewportPosition(5, 30, VW_WIDTH,VW_HEIGHT );
-//        win3D.addTextMessage(10, 30+VW_HEIGHT+10,"Intensity data",TColorf(1,1,1), 2, MRPT_GLUT_BITMAP_HELVETICA_12 );
-//
-//        win3D.addTextMessage(5,5,
-//          format("'o'/'i'-zoom out/in, ESC: quit"),
-//            TColorf(0,0,1), 110, MRPT_GLUT_BITMAP_HELVETICA_18 );
-//
-//        win3D.unlockAccess3DScene();
-//        win3D.repaint();
-//      }
-//
-//      //							Grab frames continuously and show
-//      //========================================================================================
-//
-//      bool bObs = false, bError = true;
-//      mrpt::system::TTimeStamp  last_obs_tim = INVALID_TIMESTAMP;
-//
-//      while (!win3D.keyHit())	//Push any key to exit // win3D.isOpen()
-//      {
-//  //    cout << "Get new observation\n";
-//        CObservation3DRangeScanPtr obsRGBD[0] = CObservation3DRangeScan::Create();
-//        rgbd_sensor.getNextObservation(*obsRGBD[0], bObs, bError);
-//
-//        if (bObs && !bError && obsRGBD[0] && obsRGBD[0]->timestamp!=INVALID_TIMESTAMP && obsRGBD[0]->timestamp!=last_obs_tim )
-//        {
-//          // It IS a new observation:
-//          last_obs_tim = obsRGBD[0]->timestamp;
-//
-//          // Update visualization ---------------------------------------
-//
-//          win3D.get3DSceneAndLock();
-//
-//          // Estimated grabbing rate:
-//          win3D.addTextMessage(-350,-13, format("Timestamp: %s", mrpt::system::dateTimeLocalToString(last_obs_tim).c_str()), TColorf(0.6,0.6,0.6),"mono",10,mrpt::opengl::FILL, 100);
-//
-//          // Show intensity image:
-//          if (obsRGBD[0]->hasIntensityImage )
-//          {
-//            viewInt->setImageView(obsRGBD[0]->intensityImage); // This is not "_fast" since the intensity image may be needed later on.
-//          }
-//          win3D.unlockAccess3DScene();
-//
-//          // -------------------------------------------------------
-//          //           Create 3D points from RGB+D data
-//          //
-//          // There are several methods to do this.
-//          //  Switch the #if's to select among the options:
-//          // See also: http://www.mrpt.org/Generating_3D_point_clouds_from_RGB_D_observations
-//          // -------------------------------------------------------
-//          if (obsRGBD[0]->hasRangeImage)
-//          {
-//    #if 0
-//            static pcl::PointCloud<pcl::PointXYZRGB> cloud;
-//            obsRGBD[0]->project3DPointsFromDepthImageInto(cloud, false /* without obs.sensorPose */);
-//
-//            win3D.get3DSceneAndLock();
-//              gl_points->loadFromPointsMap(&cloud);
-//            win3D.unlockAccess3DScene();
-//    #endif
-//
-//    // Pathway: RGB+D --> XYZ+RGB opengl
-//    #if 1
-//            win3D.get3DSceneAndLock();
-//              obsRGBD[0]->project3DPointsFromDepthImageInto(*gl_points, false /* without obs.sensorPose */);
-//            win3D.unlockAccess3DScene();
-//    #endif
-//          }
-//
-//          win3D.repaint();
-//        } // end update visualization:
-//      }
-//    }
 
     cout << "\n ... END rgbd360-visualizer ...\n";
 

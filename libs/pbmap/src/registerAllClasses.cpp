@@ -25,5 +25,6 @@ void registerAllClasses_mrpt_pbmap()
 {
 	registerClass( CLASS_ID( Plane ) );
 	registerClass( CLASS_ID( PbMap ) );
+//	registerClass( CLASS_ID( Rgbd360_ext ) );
 }
 

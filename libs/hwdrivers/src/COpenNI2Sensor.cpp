@@ -52,23 +52,27 @@ COpenNI2Sensor::COpenNI2Sensor() :
 	m_cameraParamsRGB.ncols = width;
 	m_cameraParamsRGB.nrows = height;
 
-	m_cameraParamsRGB.cx(328.94272028759258);
-	m_cameraParamsRGB.cy(267.48068171871557);
-	m_cameraParamsRGB.fx(529.2151);
-	m_cameraParamsRGB.fy(525.5639);
+	double factor_cam_params = width / 640;
+
+	m_cameraParamsRGB.cx(319.5*factor_cam_params);
+	m_cameraParamsRGB.cy(239.5*factor_cam_params);
+	m_cameraParamsRGB.fx(525.0*factor_cam_params);
+	m_cameraParamsRGB.fy(525.0*factor_cam_params);
 
 	m_cameraParamsRGB.dist.zeros();
 
-	// ----- Depth -----
-	m_cameraParamsDepth.ncols = width;
-	m_cameraParamsDepth.nrows = height;
+	m_cameraParamsDepth = m_cameraParamsRGB;
 
-	m_cameraParamsDepth.cx(339.30781);
-	m_cameraParamsDepth.cy(242.7391);
-	m_cameraParamsDepth.fx(594.21434);
-	m_cameraParamsDepth.fy(591.04054);
-
-	m_cameraParamsDepth.dist.zeros();
+//	// ----- Depth -----
+//	m_cameraParamsDepth.ncols = width;
+//	m_cameraParamsDepth.nrows = height;
+//
+//	m_cameraParamsDepth.cx(339.30781);
+//	m_cameraParamsDepth.cy(242.7391);
+//	m_cameraParamsDepth.fx(594.21434);
+//	m_cameraParamsDepth.fy(591.04054);
+//
+//	m_cameraParamsDepth.dist.zeros();
 }
 
 /*-------------------------------------------------------------

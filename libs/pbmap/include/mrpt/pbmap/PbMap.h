@@ -26,8 +26,6 @@
 #include <mrpt/pbmap/Plane.h>
 #include <mrpt/pbmap/Miscellaneous.h>  // For typedef PointT;
 
-//#include <boost/thread/thread.hpp>
-
 namespace mrpt {
 namespace pbmap {
 	using namespace mrpt::utils;
