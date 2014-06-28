@@ -12,7 +12,8 @@ IF(CMAKE_MRPT_HAS_PCL)
 		mrpt-graphs
 		mrpt-base
 		mrpt-obs
-		mrpt-slam
+		#mrpt-slam
+		mrpt-opengl
 		)
 
 	target_link_libraries(mrpt-pbmap ${PCL_LIBRARIES})

@@ -6,10 +6,9 @@
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
-#ifndef RGBD360_EXT_H
-#define RGBD360_EXT_H
+#ifndef __RGBD360_EXT_H
+#define __RGBD360_EXT_H
 
-//#include "pbmap-precomp.h"   // Precompiled headers
 #include <mrpt/pbmap.h>
 #include <mrpt/slam/CObservationRGBD360.h>
 
@@ -64,17 +63,18 @@ namespace mrpt
 	 * \sa mrpt::hwdrivers::COpenNI2_RGBD360, CObservation
 	 * \ingroup mrpt_obs_grp
 	 */
-    class PBMAP_IMPEXP Rgbd360_ext : public mrpt::utils::CSerializable//, public mrpt::slam::CObservationRGBD360
+    class PBMAP_IMPEXP Rgbd360_ext : public mrpt::slam::CObservationRGBD360//, public mrpt::utils::CSerializable
     {
       // This must be added to any CSerializable derived class:
       DEFINE_SERIALIZABLE( Rgbd360_ext )
 
       protected:
 
-        static const unsigned NUM_SENSORS = 4;
-
         /*! The NUM_SENSORS separate point clouds from each single Asus XPL */
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud_[NUM_SENSORS];
+
+        /*! The NUM_SENSORS sets of planes segmented from each camera */
+        std::vector<mrpt::pbmap::PbMap> local_planes_;
 
       public:
         Rgbd360_ext( );				//!< Default constructor
@@ -82,6 +82,19 @@ namespace mrpt
 
         /*! PbMap of the spherical frame */
         mrpt::pbmap::PbMap planes;
+
+        /*! Create the PbMap of the spherical point cloud */
+        void getPlanes();
+
+        /*! This function segments planes from the point cloud corresponding to the sensor 'sensor_id',
+            in the frame of reference of the omnidirectional camera */
+        void getPlanesInFrame(int sensor_id);
+
+        /*! Merge the planar patches that correspond to the same surface in the sphere */
+        void mergePlanes();
+
+        /*! Group the planes segmented from each single sensor into the common PbMap 'planes' */
+        void groupPlanes();
 
     }; // End of class def.
 

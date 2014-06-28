@@ -7,6 +7,7 @@
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
 
+#include "pbmap-precomp.h"  // Precompiled headers
 #include <mrpt/pbmap.h>
 #include <mrpt/utils.h>
 
@@ -25,6 +26,6 @@ void registerAllClasses_mrpt_pbmap()
 {
 	registerClass( CLASS_ID( Plane ) );
 	registerClass( CLASS_ID( PbMap ) );
-//	registerClass( CLASS_ID( Rgbd360_ext ) );
+	registerClass( CLASS_ID( Rgbd360_ext ) );
 }
 

@@ -19,7 +19,7 @@
 using namespace mrpt::pbmap;
 
 #define SMALL_NUM  0.00000001 // anything that avoids division overflow
-float mrpt::pbmap::dist3D_Segment_to_Segment2( Segment S1, Segment S2)
+float mrpt::pbmap::dist3D_Segment_to_Segment2(const Segment& S1,const Segment& S2)
 {
   Eigen::Vector3f   u = diffPoints(S1.P1, S1.P0);
   Eigen::Vector3f   v = diffPoints(S2.P1, S2.P0);
