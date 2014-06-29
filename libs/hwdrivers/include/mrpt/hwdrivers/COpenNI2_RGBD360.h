@@ -227,7 +227,7 @@ namespace mrpt
 
 			mrpt::poses::CPose3D	m_sensorPoseOnRobot;
 
-			static const int NUM_SENSORS = 2;
+			static const unsigned NUM_SENSORS = 4;
 
 			bool		m_preview_window; //!< Show preview window while grabbing
 			size_t 		m_preview_window_decimation; //!< If preview is enabled, only show 1 out of N images.

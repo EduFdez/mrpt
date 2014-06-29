@@ -10,7 +10,11 @@
 #ifndef _mrpt_graphslam_H
 #define _mrpt_graphslam_H
 
+// Graph SLAM: Common headers
 #include <mrpt/graphslam/types.h>
+
+// Graph SLAM: Batch solvers
 #include <mrpt/graphslam/levmarq.h>
+
 
 #endif

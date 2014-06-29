@@ -320,6 +320,11 @@ IF(BUILD_EXAMPLES)
 		ADD_SAMPLES_DIRECTORY(pbmap-examples)
 	ENDIF(BUILD_mrpt-pbmap)
 
+	# === RGBD360 examples ===
+	#IF(BUILD_mrpt-rgbd360)
+		ADD_SAMPLES_DIRECTORY(rgbd360)
+	#ENDIF(BUILD_mrpt-rgbd360)
+
 	# Generate the CMakeLists.txt in the "/samples" directory
 	SET(CMAKE_COMMANDS_INCLUDE_EXAMPLE_DIRS ${CMAKE_COMMANDS_INCLUDE_EXAMPLE_DIRS_ROOT})
 	CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/samples/CMakeLists_list_template.txt.in "${CMAKE_SOURCE_DIR}/samples/CMakeLists.txt" )

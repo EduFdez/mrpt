@@ -7,13 +7,5 @@
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
 
-#include <mrpt/obs.h>
-
-
-
-
-int main(int argc, char **argv)
-{
-	return 0;
-}
+#include "graphslam-precomp.h"  // Precompiled headers
 

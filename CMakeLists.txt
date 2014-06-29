@@ -197,7 +197,7 @@ include(cmakemodules/script_national_instruments.cmake REQUIRED)  # NI C library
 include(cmakemodules/script_sift_hess.cmake REQUIRED)  # SIFT Hess implementation 
 include(cmakemodules/script_xsens.cmake REQUIRED)      # XSens Motion trackers / IMU drivers
 include(cmakemodules/script_flycapture2.cmake REQUIRED)# Check for PointGreyResearch (PGR) FlyCapture2 library
-
+include(cmakemodules/script_duo3d.cmake REQUIRED)		# Support for DUO3D Camera
 # ---------------------------------------------------------------------------
 #			OPTIONS
 #The options for the user when using "cmakesetup" or "ccmake":
@@ -410,7 +410,8 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
  	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
 
 	# Use modern C++11
-# 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+	# --> Seems to break Eigen (??)
+ 	#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 	IF(NOT APPLE) # any reason for not using it in all platforms?
 	# Use the libstdc++ lib vs. libc++, to avoid some build errors in MacOS
@@ -535,10 +536,6 @@ IF(CMAKE_COMPILER_IS_GNUCXX AND NOT APPLE)
 	#SET(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--as-needed")
 ENDIF(CMAKE_COMPILER_IS_GNUCXX AND NOT APPLE)
 
-
-IF ("${CMAKE_CONFIGURE_LDFLAGS}")
-	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${CMAKE_CONFIGURE_LDFLAGS}")
-ENDIF ("${CMAKE_CONFIGURE_LDFLAGS}")
 
 IF($ENV{VERBOSE})
 	MESSAGE(STATUS "Final CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")

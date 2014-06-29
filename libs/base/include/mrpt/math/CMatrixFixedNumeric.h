@@ -69,6 +69,18 @@ namespace mrpt
 				*this = b;
 			}
 
+            /** Return the matrix in eigen matrix (the base class) */
+            //inline Base getEigenBase() {return Base();}
+            inline Eigen::Matrix<T,NROWS,NCOLS> getEigenBase()
+            {
+                Eigen::Matrix<T,NROWS,NCOLS> eigen_matrix;
+                for(unsigned r=0; r < NROWS; r++)
+                    for(unsigned c=0; c < NCOLS; c++)
+                        eigen_matrix(r,c) = (*this)(r,c);
+
+                return eigen_matrix;
+            }
+
 			/** == comparison of two matrices; it differs from default Eigen operator in that returns false if matrices are of different sizes instead of raising an assert. */
 			template <typename Derived>
 			inline bool operator ==(const Eigen::MatrixBase<Derived>& m2) const

@@ -35,7 +35,7 @@ void testPbMapConstruction(const string &config_file)
   printHelp();
 
   // Reconstructed PointCloud
-  pcl::PointCloud<PointT> globalCloud;
+  pcl::PointCloud<::PointT> globalCloud;
 
   PbMapMaker pbmap_maker(config_file);
 
@@ -48,7 +48,7 @@ void testPbMapConstruction(const string &config_file)
   {
     // Read frame
     frameRGBDandPose cloudAndPose;
-    cloudAndPose.cloudPtr.reset(new pcl::PointCloud<PointT>);
+    cloudAndPose.cloudPtr.reset(new pcl::PointCloud<::PointT>);
     cloudFile = mrpt::format("pointcloud%i.pcd", i);
     ASSERT_FILE_EXISTS_(path + cloudFile)
     reader.read (path + cloudFile, *cloudAndPose.cloudPtr);
@@ -68,7 +68,7 @@ void testPbMapConstruction(const string &config_file)
     // Detect planes and build PbMap
     pbmap_maker.frameQueue.push_back(cloudAndPose);
 
-    pcl::PointCloud<PointT>::Ptr alignedCloudPtr(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<::PointT>::Ptr alignedCloudPtr(new pcl::PointCloud<::PointT>);
     pcl::transformPointCloud(*cloudAndPose.cloudPtr,*alignedCloudPtr,cloudAndPose.pose);
     globalCloud += *alignedCloudPtr;
 

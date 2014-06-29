@@ -11,4 +11,4 @@
 
 #include <mrpt/pbmap/Miscellaneous.h>
 #include <mrpt/pbmap/PbMap.h>
-
+#include <mrpt/pbmap/Rgbd360_ext.h>

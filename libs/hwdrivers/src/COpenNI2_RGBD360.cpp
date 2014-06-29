@@ -24,7 +24,7 @@ using namespace mrpt::synch;
 using namespace mrpt::math;
 using namespace std;
 using mrpt::utils::DEG2RAD;
-using mrpt::slam::CObservationRGBD360;
+//using mrpt::slam::CObservationRGBD360;
 
 IMPLEMENTS_GENERIC_SENSOR(COpenNI2_RGBD360,mrpt::hwdrivers)
 
@@ -173,21 +173,21 @@ void COpenNI2_RGBD360::getNextObservation(
 	hardware_error = false;
 
 	CObservationRGBD360  newObs;
-	// Set intensity image ----------------------
-	if (m_grab_rgb)
-		newObs.hasIntensityImage  = true;
-	// Set range image --------------------------
-	if (m_grab_depth || m_grab_3D_points)
-		newObs.hasRangeImage = true;
+//	// Set intensity image ----------------------
+//	if (m_grab_rgb)
+//		newObs.hasIntensityImage  = true;
+//	// Set range image --------------------------
+//	if (m_grab_depth || m_grab_3D_points)
+//		newObs.hasRangeImage = true;
 
 	newObs.timestamp = mrpt::system::getCurrentTime();
-
 	for(unsigned sensor_id=0; sensor_id < NUM_SENSORS; sensor_id++)
 	{
 //		cout << "Get sensor " << sensor_id << " \n";
     bool there_is_obs, hardware_error;
-    getNextFrameRGB(newObs.intensityImages[sensor_id],newObs.timestamps[sensor_id], there_is_obs, hardware_error, sensor_id);
-    getNextFrameD(newObs.rangeImages[sensor_id],newObs.timestamps[sensor_id], there_is_obs, hardware_error, sensor_id);
+    getNextFrameRGBD(newObs.rgbd[sensor_id], there_is_obs, hardware_error, sensor_id );
+//    getNextFrameRGB(newObs.intensityImages[sensor_id],newObs.timestamps[sensor_id], there_is_obs, hardware_error, sensor_id);
+//    getNextFrameD(newObs.rangeImages[sensor_id],newObs.timestamps[sensor_id], there_is_obs, hardware_error, sensor_id);
 	}
 
 
@@ -195,7 +195,7 @@ void COpenNI2_RGBD360::getNextObservation(
 	for(unsigned sensor_id=0; sensor_id < NUM_SENSORS; sensor_id++)
 		if (m_preview_window)
 		{
-			if ( out_obs.hasRangeImage )
+//			if ( out_obs.hasRangeImage )
 			{
 				if (++m_preview_decim_counter_range>m_preview_window_decimation)
 				{
@@ -204,18 +204,21 @@ void COpenNI2_RGBD360::getNextObservation(
 
 					// Normalize the image
 					mrpt::utils::CImage  img;
-					img.setFromMatrix(out_obs.rangeImages[sensor_id]);
-					CMatrixFloat r = out_obs.rangeImages[sensor_id] * float(1.0/this->m_maxRange);
+					img.setFromMatrix(out_obs.rgbd[sensor_id].rangeImage);
+					CMatrixFloat r = out_obs.rgbd[sensor_id].rangeImage * float(1.0/this->m_maxRange);
+//					img.setFromMatrix(out_obs.rangeImages[sensor_id]);
+//					CMatrixFloat r = out_obs.rangeImages[sensor_id] * float(1.0/this->m_maxRange);
 					m_win_range[sensor_id]->showImage(img);
 				}
 			}
-			if ( out_obs.hasIntensityImage )
+//			if ( out_obs.hasIntensityImage )
 			{
 				if (++m_preview_decim_counter_rgb>m_preview_window_decimation)
 				{
 					m_preview_decim_counter_rgb=0;
 					if (!m_win_int[sensor_id])		{ m_win_int[sensor_id] = mrpt::gui::CDisplayWindow::Create("Preview INTENSITY"); m_win_int[sensor_id]->setPos(330,5+250*sensor_id); }
-					m_win_int[sensor_id]->showImage(out_obs.intensityImages[sensor_id] );
+					m_win_int[sensor_id]->showImage(out_obs.rgbd[sensor_id].intensityImage );
+//					m_win_int[sensor_id]->showImage(out_obs.intensityImages[sensor_id] );
 				}
 			}
 		}

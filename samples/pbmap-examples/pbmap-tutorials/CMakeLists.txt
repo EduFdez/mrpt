@@ -27,7 +27,7 @@ ENDIF(CMAKE_COMPILER_IS_GNUCXX AND NOT CMAKE_BUILD_TYPE MATCHES "Debug")
 
 MACRO(DEFINE_TUTORIAL_EXECUTABLE name)
 	ADD_EXECUTABLE(${name} ${name}.cpp)
-	TARGET_LINK_LIBRARIES(${name} ${MRPT_LIBS}) # Add the required libraries for linking:
+        TARGET_LINK_LIBRARIES(${name} ${MRPT_LIBS} ${PCL_LIBRARIES}) # Add the required libraries for linking:
 	
 	# -------------------------------------------------------------------------
 	# This part can be removed if you are compiling this program outside of 

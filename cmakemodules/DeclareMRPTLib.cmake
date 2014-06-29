@@ -147,6 +147,7 @@ macro(internal_define_mrpt_lib name headers_only)
 	# Include dirs for mrpt-XXX libs:
 	set(AUX_DEPS_LIST "")
 	set(AUX_EXTRA_LINK_LIBS "")
+	set(AUX_ALL_DEPS_BUILD 1)  # Will be set to "0" if any dependency if not built
 	FOREACH(DEP ${ARGN})
 		# Only for "mrpt-XXX" libs:
 		IF (${DEP} MATCHES "mrpt-")
@@ -168,9 +169,23 @@ macro(internal_define_mrpt_lib name headers_only)
 				
 				# Append to list of mrpt-* lib dependences:
 				LIST(APPEND AUX_DEPS_LIST ${DEP})
+				
+				# Check if all dependencies are to be build: 
+				if ("BUILD_mrpt-${DEP_MRPT_NAME}" STREQUAL "OFF")
+					SET(AUX_ALL_DEPS_BUILD 0)
+					MESSAGE(STATUS "*Warning*: Lib mrpt-${name} cannot be built because dependency mrpt-${DEP_MRPT_NAME} has been disabled!")
+				endif ("BUILD_mrpt-${DEP_MRPT_NAME}" STREQUAL "OFF")
+				
 			ENDIF(NOT "${DEP_MRPT_NAME}" STREQUAL "")
 		ENDIF (${DEP} MATCHES "mrpt-")		
 	ENDFOREACH(DEP)
+	
+	# Impossible to build? 
+	if (NOT AUX_ALL_DEPS_BUILD)
+		MESSAGE(STATUS "*Warning* ==> Disabling compilation of lib mrpt-${name} for missing dependencies listed above.")		
+		SET(BUILD_mrpt-${name} OFF CACHE BOOL "Build the library mrpt-${name}" FORCE)
+	endif (NOT AUX_ALL_DEPS_BUILD)
+	
 	
 	# Emulates a global variable:
 	set_property(GLOBAL PROPERTY "mrpt-${name}_LIB_DEPS" "${AUX_DEPS_LIST}")
@@ -238,14 +253,14 @@ macro(internal_define_mrpt_lib name headers_only)
 		IF(CMAKE_MRPT_USE_DEB_POSTFIXS)
 			SET(MRPT_PREFIX_INSTALL "${CMAKE_INSTALL_PREFIX}/libmrpt-${name}${CMAKE_MRPT_VERSION_NUMBER_MAJOR}.${CMAKE_MRPT_VERSION_NUMBER_MINOR}/usr/")
 		ELSE(CMAKE_MRPT_USE_DEB_POSTFIXS)
-			SET(MRPT_PREFIX_INSTALL "")
+			SET(MRPT_PREFIX_INSTALL "${CMAKE_INSTALL_PREFIX}")
 		ENDIF(CMAKE_MRPT_USE_DEB_POSTFIXS)
 
 		# make sure the library gets installed
 		INSTALL(TARGETS mrpt-${name}
 			RUNTIME DESTINATION ${MRPT_PREFIX_INSTALL}bin  COMPONENT Libraries
-			LIBRARY DESTINATION ${MRPT_PREFIX_INSTALL}lib${LIB_SUFFIX} COMPONENT Libraries
-			ARCHIVE DESTINATION ${MRPT_PREFIX_INSTALL}lib${LIB_SUFFIX} COMPONENT Libraries
+			LIBRARY DESTINATION ${MRPT_PREFIX_INSTALL}${CMAKE_INSTALL_LIBDIR} COMPONENT Libraries
+			ARCHIVE DESTINATION ${MRPT_PREFIX_INSTALL}${CMAKE_INSTALL_LIBDIR} COMPONENT Libraries  # WAS: lib${LIB_SUFFIX}
 			)
 			
 		# Collect .pdb debug files for optional installation:

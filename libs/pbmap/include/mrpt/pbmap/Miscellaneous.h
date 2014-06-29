@@ -82,7 +82,7 @@ namespace pbmap {
 
   struct Segment
   {
-    Segment(PointT p0, PointT p1) :
+    Segment(const PointT p0, const PointT p1) :
       P0(p0), P1(p1)
     {};
 
@@ -90,7 +90,7 @@ namespace pbmap {
   };
 
   /*! Square of the distance between two segments */
-  float PBMAP_IMPEXP dist3D_Segment_to_Segment2( Segment S1, Segment S2);
+  float PBMAP_IMPEXP dist3D_Segment_to_Segment2(const Segment& S1,const Segment& S2);
 
   /*! Check if a point lays inside a convex hull */
   bool PBMAP_IMPEXP isInHull(PointT &point3D, pcl::PointCloud<PointT>::Ptr hull3D);
