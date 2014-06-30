@@ -674,8 +674,10 @@ void mrpt::math::ransac_detect_2D_lines(
 //	return (0);
 //}
 
-int main ()
+int main(int argc, char **argv)
 {
+    const string rawlog_file = string( argv[1] );
+
 	CTicTac  tictac;
 
   CObservation2DRangeScanPtr obsLaser1, obsLaser2, obsLaser3;
@@ -686,7 +688,7 @@ int main ()
   mrpt::math::CMatrixDouble matObsLaser3(0,1081);
 
   string save_path = "/home/edu";
-  CFileGZInputStream   rawlogFile("/home/edu/bin/mrpt_edu/bin/2LRFs__2014-06-06_13h51m36s.rawlog");   // "file.rawlog"
+  CFileGZInputStream   rawlogFile(rawlog_file);   // "file.rawlog"
   CActionCollectionPtr action;
   CSensoryFramePtr     observations;
   CObservationPtr      observation;
