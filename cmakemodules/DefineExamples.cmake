@@ -149,6 +149,7 @@ IF(BUILD_EXAMPLES)
 		multipleCheckerboards
 		voronoi_test
 		keypoint_matching
+		LRF_calibrator
 		)
 	SET(CMAKE_EXAMPLE_DEPS mrpt-slam mrpt-vision mrpt-gui mrpt-topography)
 	SET(CMAKE_EXAMPLE_LINK_LIBS ${MRPT_LINKER_LIBS})
