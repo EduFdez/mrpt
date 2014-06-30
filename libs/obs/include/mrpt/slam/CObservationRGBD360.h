@@ -58,6 +58,8 @@ namespace slam
 	 * \sa mrpt::hwdrivers::COpenNI2_RGBD360, CObservation
 	 * \ingroup mrpt_obs_grp
 	 */
+//    template<size_t NUM_SENSORS>
+//    class CObservationRGBD360 : public CObservation
     class OBS_IMPEXP CObservationRGBD360 : public CObservation
     {
       // This must be added to any CSerializable derived class:
