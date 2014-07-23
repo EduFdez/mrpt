@@ -18,9 +18,12 @@
 
 #include <mrpt/math/CArray.h>
 #include <mrpt/slam/CRawlog.h>
-//#include <mrpt/opengl/COpenGLScene.h>
-//#include <mrpt/opengl/CGridPlaneXY.h>
-//#include <mrpt/opengl/stock_objects.h>
+#include <mrpt/gui/CDisplayWindow3D.h>
+#include <mrpt/gui/CDisplayWindowPlots.h>
+#include <mrpt/opengl/CGridPlaneXY.h>
+#include <mrpt/opengl/CPointCloud.h>
+#include <mrpt/opengl/stock_objects.h>
+#include <mrpt/opengl/CTexturedPlane.h>
 #include <mrpt/utils/CConfigFile.h>
 #include <mrpt/utils/CFileGZInputStream.h>
 //#include <mrpt/utils/CFileGZOutputStream.h>
@@ -28,16 +31,8 @@
 //#include <mrpt/system/threads.h>
 #include <mrpt/system/filesystem.h>
 #include <mrpt/opengl/CPlanarLaserScan.h>  // This class lives in the lib [mrpt-maps] and must be included by hand
-//#include <mrpt/gui/CDisplayWindow3D.h>
-
 #include <mrpt/math/ransac_applications.h>
 
-//#include <mrpt/base.h>
-////#include <mrpt/gui.h>
-////#include <mrpt/opengl.h>
-//#include <mrpt/slam.h>
-//#include <mrpt/utils.h>
-//#include <mrpt/obs.h>
 
 #define DEBUG 1
 #define NUM_SENSORS 3
@@ -538,7 +533,7 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
 	// ------------------------------------------
 	const string RAWLOG_FILE            = !override_rawlog_file.empty() ? override_rawlog_file : iniFile.read_string("calib-LRFs","rawlog_file","",  /*Force existence:*/ true);
 //	const unsigned int rawlog_offset  = iniFile.read_int("calib-LRFs","rawlog_offset",0,  /*Force existence:*/ true);
-	const string OUT_DIR_STD			      = iniFile.read_string("calib-LRFs","logOutput_dir","log_out",  /*Force existence:*/ true);
+//	const string OUT_DIR_STD			    = iniFile.read_string("calib-LRFs","logOutput_dir","log_out",  /*Force existence:*/ true);
 	const int M_num_LRFs		            = iniFile.read_int("calib-LRFs","M_num_LRFs",3,  /*Force existence:*/ true);
 //	const int resolution		            = iniFile.read_int("calib-LRFs","resolution",1081,  /*Force existence:*/ true);
 	const int decimation		            = iniFile.read_int("calib-LRFs","decimation",10,  /*Force existence:*/ true);
@@ -556,7 +551,7 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
   {
     string LRF_id = mrpt::format("LRF%i",j+1);
 
-    LRF_labels[j] = iniFile.read_string("LRF_id","sensorLabel","",  /*Force existence:*/ true);
+    LRF_labels[j] = iniFile.read_string(LRF_id,"sensorLabel","",  /*Force existence:*/ true);
 
     idx_estim_LRFs.insert(j);
 
@@ -580,11 +575,16 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
         // Print params:
         printf("Running with the following parameters:\n");
         printf(" RAWLOG file:'%s'\n", RAWLOG_FILE.c_str());
+        printf(" Line segmentation threshold %f inliers %zu \n", threshold_line, min_inliers_line);
 //        printf(" Output directory:\t\t\t'%s'\n",OUT_DIR);
 //        printf(" Log record freq:\t\t\t%u\n",LOG_FREQUENCY);
 //        printf("  SAVE_3D_SCENE:\t\t\t%c\n", SAVE_3D_SCENE ? 'Y':'N');
 //        printf("  SAVE_POSE_LOG:\t\t\t%c\n", SAVE_POSE_LOG ? 'Y':'N');
 //        printf("  CAMERA_3DSCENE_FOLLOWS_ROBOT:\t%c\n",CAMERA_3DSCENE_FOLLOWS_ROBOT ? 'Y':'N');
+        for(int j=0; j < M_num_LRFs; j++)
+        {
+            cout << LRF_labels[j] << endl;
+        }
         printf("\n");
     #endif
 
@@ -600,7 +600,7 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
     CActionCollectionPtr action;
     CSensoryFramePtr     observations;
     CObservationPtr      observation;
-    size_t              rawlogEntry=0;
+    size_t               rawlogEntry=0;
 
 //    CObservation2DRangeScanPtr obsLRFs[M_num_LRFs];
     vector<CObservation2DRangeScanPtr> obsLRFs(M_num_LRFs);
@@ -610,6 +610,7 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
     int num_observations = 0, count_valid_obs = 0;
     int num_RangeObs = 0;
     vector<CO> vCOs; // The Corner Observations required for calibration
+    printf("Start acquiring observations from rawlog (size = %zu)\n", rawlogFile.getTotalBytesCount());
     while ( CRawlog::getActionObservationPairOrObservation(
                                                  rawlogFile,      // Input file
                                                  action,            // Possible out var: action of a pair action/obs
@@ -618,15 +619,18 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
                                                  rawlogEntry    // Just an I/O counter
                                                  ) )
     {
+    printf("Read Observation \n");
+    cout << "Read Observation \n";
       // Process observations
       if (observation)
       {
         assert(IS_CLASS(observation, CObservation2DRangeScan));
 
-        cout << "Observation " << num_RangeObs++ << " timestamp " << observation->timestamp << endl;
-  //      cout << (CObservation2DRangeScanPtr(observation))->aperture;
+        #if DEBUG
+            cout << "Observation " << num_RangeObs++ << " timestamp " << observation->timestamp << endl;
+            // cout << (CObservation2DRangeScanPtr(observation))->aperture;
+        #endif
 
-  //      cout << "Read observation\n";
         for(int j=0; j < M_num_LRFs; j++)
           if(observation->sensorLabel == LRF_labels[j])
           {
@@ -650,6 +654,8 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
         count_valid_obs++;
         if(count_valid_obs%decimation != 0)
           continue;
+
+        cout << "Get lines in obs " << count_valid_obs << endl;
 
         num_observations++;
 //        matObsLaser1.setSize(2*num_observations,matObsLaser1.getColCount());
@@ -681,7 +687,30 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
           std::vector<std::pair<size_t,TLine2D> > detected_lines_LRF;
           mrpt::math::ransac_detect_2D_lines(x_eigen,y_eigen,detected_lines_LRF,threshold_line,min_inliers_line);
           detected_lines[j] = detected_lines_LRF;
-  //      cout << "scan1 size " << obsLRFs[j]->scan.size() << " n " << n << endl;
+          cout << "scan " << j << " size " << obsLRFs[j]->scan.size() << " n " << n << " lines " << detected_lines_LRF.size() << endl;
+
+
+//          // Show GUI
+//          // --------------------------
+//          mrpt::gui::CDisplayWindowPlots  win2("Set of points", 500,500);
+
+//          win2.plot(xs,ys,".b4","points");
+
+//          unsigned int n=0;
+//          for (vector<pair<size_t,TLine2D> >::iterator p=detectedLines.begin();p!=detectedLines.end();++p)
+//          {
+//              CVectorDouble lx(2),ly(2);
+//              lx[0] = -15;
+//              lx[1] = 15;
+//              for (CVectorDouble::Index q=0;q<lx.size();q++)
+//                  ly[q] = -(p->second.coefs[2]+p->second.coefs[0]*lx[q])/p->second.coefs[1];
+//              win2.plot(lx,ly,"r-1",format("line_%u",n++));
+//          }
+
+//          win2.axis_fit();
+//          win2.axis_equal();
+
+//          win2.waitForKey();
         }
 
         // Generate vCOs.
@@ -764,20 +793,50 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
     vector<CPose3D> calib = calibrate_LRFs(vCOs, initial_Poses, idx_estim_LRFs);
 
 
-    // Visualization
-//	// Create 3D window if requested:
-//	CDisplayWindow3DPtr	win3D;
-//#if MRPT_HAS_WXWIDGETS
-//	if (SHOW_PROGRESS_3D_REAL_TIME)
-//	{
-//		win3D = CDisplayWindow3D::Create("ICP-SLAM @ MRPT C++ Library", 600, 500);
-//		win3D->setCameraZoom(20);
-//		win3D->setCameraAzimuthDeg(-45);
-//	}
-//#endif
+    // Show GUI
+    // --------------------------
+    win = mrpt::gui::CDisplayWindow3DPtr( new mrpt::gui::CDisplayWindow3D("RANSAC: 3D planes", 500,500));
 
-//	if (win3D)
-//		win3D->waitForKey();
+    opengl::COpenGLScenePtr scene = opengl::COpenGLScene::Create();
+
+    scene->insert( opengl::CGridPlaneXY::Create(-20,20,-20,20,0,1) );
+    scene->insert( opengl::stock_objects::CornerXYZ() );
+
+    for (vector<pair<size_t,TPlane> >::iterator p=detectedPlanes.begin();p!=detectedPlanes.end();++p)
+    {
+        opengl::CTexturedPlanePtr glPlane = opengl::CTexturedPlane::Create(-10,10,-10,10);
+
+        CPose3D   glPlanePose;
+        p->second.getAsPose3D( glPlanePose );
+        glPlane->setPose(glPlanePose);
+
+        glPlane->setColor( randomGenerator.drawUniform(0,1), randomGenerator.drawUniform(0,1),randomGenerator.drawUniform(0,1), 0.6);
+
+        scene->insert( glPlane );
+    }
+
+    {
+        opengl::CPointCloudPtr  points = opengl::CPointCloud::Create();
+        points->setColor(0,0,1);
+        points->setPointSize(3);
+        points->enableColorFromZ();
+
+        // Convert double -> float:
+        vector<float> xsf,ysf,zsf;
+        metaprogramming::copy_container_typecasting(xs,xsf);
+        metaprogramming::copy_container_typecasting(ys,ysf);
+        metaprogramming::copy_container_typecasting(zs,zsf);
+
+        points->setAllPoints(xsf,ysf,zsf);
+
+        scene->insert( points );
+    }
+
+    win->get3DSceneAndLock() = scene;
+    win->unlockAccess3DScene();
+    win->forceRepaint();
+
+    win->waitForKey();
 
 	MRPT_END
 }
@@ -821,7 +880,7 @@ int main(int argc, char **argv)
 			override_rawlog_file = string(argv[2]);
 
 		// Run:
-    calib_LRFs_rawlog_ini(INI_FILENAME,override_rawlog_file);
+        calib_LRFs_rawlog_ini(INI_FILENAME,override_rawlog_file);
 
 		//pause();
 		return 0;
