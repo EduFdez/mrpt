@@ -51,7 +51,7 @@ using namespace std;
 using namespace Eigen;
 
 //// Forward declaration.
-//vector<CPose3D> calibrate_LRFs(const vector<CO> &vCOs, vector<CPose3D> LRF_poses_estim, set<unsigned> idx_estim_LRFs, const size_t id_fixed_LRF=0);
+//map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3D> LRF_poses_estim, set<unsigned> idx_estim_LRFs, const size_t id_fixed_LRF=0);
 
 //template<typename typedata>
 //CMatrixTemplateNumeric<typedata,Dynamic,Dynamic> getDiagonalMatrix(const Matrix<typedata,Dynamic,Dynamic> &matrix_generic)
@@ -69,8 +69,8 @@ template<typename typedata,int m_rows,int m_cols>
 CMatrixFixedNumeric<typedata,m_rows,m_cols> getCMatrix(const Matrix<typedata,m_rows,m_cols> &matrix_eigen)
 {
     CMatrixFixedNumeric<typedata,m_rows,m_cols> m_CMatrix;
-    for(size_t r=0; r < matrix_eigen.rows(); r++)
-        for(size_t c=0; c < matrix_eigen.cols(); c++)
+    for(int r=0; r < matrix_eigen.rows(); r++)
+        for(int c=0; c < matrix_eigen.cols(); c++)
             m_CMatrix(r,c) = matrix_eigen(r,c);
 
     return m_CMatrix;
@@ -121,25 +121,28 @@ typedef CArray<CO_1,2> CO; // Corner Observation by 2 LRFs
 typedef CArray<CArray<line_3D,2>,2> CO_3D; // Corner Observation in 3D
 
 //typedef CMatrixTemplateNumeric<double> CO_vector; // Corner Observation by 2 LRFs
-//typedef CMatrixFixedNumeric<double,48,1> CO_vector; // Corner Observation by 2 LRFs
-typedef Matrix<double,48,1> CO_vector; // Corner Observation by 2 LRFs
+//typedef CMatrixFixedNumeric<double,50,1> CO_vector; // Corner Observation by 2 LRFs
+typedef Matrix<double,50,1> CO_vector; // Corner Observation by 2 LRFs
 
 // The vector form of a CO is needed by RANSAC
 CO_vector CO2vector(const CO &co)
 {
     CO_vector co_vector;
     for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
+    {
+        co_vector(25*LRF_id,0) = co[LRF_id].id_LRF;
         for(size_t plane_id=0; plane_id < 2; plane_id++) // 2 line observations per LRF
         {
-            size_t pos_block = 24*LRF_id + 12*plane_id;
-            co_vector.block(pos_block,0,2,1) = co[LRF_id].lines[plane_id].center;
-            co_vector.block(pos_block+2,0,2,1) = co[LRF_id].lines[plane_id].cov_center.block(0,0,2,1);
-            co_vector.block(pos_block+4,0,2,1) = co[LRF_id].lines[plane_id].cov_center.block(0,1,2,1);
+            size_t pos_block = 25*LRF_id + 12*plane_id + 1;
+            co_vector.block(pos_block,0,2,1) = co[LRF_id].lines[plane_id].dir;
+            co_vector.block(pos_block+2,0,2,1) = co[LRF_id].lines[plane_id].cov_dir.block(0,0,2,1);
+            co_vector.block(pos_block+4,0,2,1) = co[LRF_id].lines[plane_id].cov_dir.block(0,1,2,1);
             //      co_vector.block(pos_block+2,0,4,1) = Map<Matrix<double,4,1>(co[LRF_id].lines[plane_id].cov_center);
-            co_vector.block(pos_block+6,0,2,1) = co[LRF_id].lines[plane_id].dir;
-            co_vector.block(pos_block+8,0,2,1) = co[LRF_id].lines[plane_id].cov_dir.block(0,0,2,1);
-            co_vector.block(pos_block+10,0,2,1) = co[LRF_id].lines[plane_id].cov_dir.block(0,1,2,1);
+            co_vector.block(pos_block+6,0,2,1) = co[LRF_id].lines[plane_id].center;
+            co_vector.block(pos_block+8,0,2,1) = co[LRF_id].lines[plane_id].center.block(0,0,2,1);
+            co_vector.block(pos_block+10,0,2,1) = co[LRF_id].lines[plane_id].center.block(0,1,2,1);
         }
+    }
 
     return co_vector;
 }
@@ -149,17 +152,16 @@ CO vector2CO(const CO_vector &co_vector)
     CO co;
     for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
     {
-        co[LRF_id].id_LRF = LRF_id;
-
+        co[LRF_id].id_LRF = co_vector(25*LRF_id,0);
         for(size_t plane_id=0; plane_id < 2; plane_id++) // 2 line observations per LRF
         {
-            size_t pos_block = 24*LRF_id + 12*plane_id;
-            co[LRF_id].lines[plane_id].center = co_vector.block(pos_block,0,2,1);
-            co[LRF_id].lines[plane_id].cov_center.block(0,0,2,1) = co_vector.block(pos_block+2,0,2,1);
-            co[LRF_id].lines[plane_id].cov_center.block(0,1,2,1) = co_vector.block(pos_block+4,0,2,1);
-            co[LRF_id].lines[plane_id].dir = co_vector.block(pos_block+6,0,2,1);
-            co[LRF_id].lines[plane_id].cov_dir.block(0,0,2,1) = co_vector.block(pos_block+8,0,2,1);
-            co[LRF_id].lines[plane_id].cov_dir.block(0,1,2,1) = co_vector.block(pos_block+10,0,2,1);
+            size_t pos_block = 25*LRF_id + 12*plane_id + 1;
+            co[LRF_id].lines[plane_id].dir = co_vector.block(pos_block,0,2,1);
+            co[LRF_id].lines[plane_id].cov_dir.block(0,0,2,1) = co_vector.block(pos_block+2,0,2,1);
+            co[LRF_id].lines[plane_id].cov_dir.block(0,1,2,1) = co_vector.block(pos_block+4,0,2,1);
+            co[LRF_id].lines[plane_id].center = co_vector.block(pos_block+6,0,2,1);
+            co[LRF_id].lines[plane_id].cov_center.block(0,0,2,1) = co_vector.block(pos_block+8,0,2,1);
+            co[LRF_id].lines[plane_id].cov_center.block(0,1,2,1) = co_vector.block(pos_block+10,0,2,1);
         }
     }
 
@@ -169,9 +171,9 @@ CO vector2CO(const CO_vector &co_vector)
 
 /**  Compute the error of the vCOs for the given calibration (LRF_poses_estim) and LRF_indices.
   */
-double error_COs(const vector<CO> &vCOs, const vector<CPose3D> &LRF_poses_estim, const set<unsigned> &LRF_indices)
+double error_COs(const vector<CO> &vCOs, const map<unsigned,CPose3D> &LRF_poses_estim, const set<unsigned> &LRF_indices)
 {
-    double error = 0.0; // Squared error averaged by the number of vCOs
+    double error2 = 0.0; // Squared error averaged by the number of vCOs
 
     for(size_t i=0; i < vCOs.size(); i++)
     {
@@ -183,9 +185,6 @@ double error_COs(const vector<CO> &vCOs, const vector<CPose3D> &LRF_poses_estim,
                 co_i_3d[LRF_id][plane_id].get_3D_params(vCOs[i][LRF_id].lines[plane_id], LRF_poses_estim[vCOs[i][LRF_id].id_LRF]);
             }
         }
-
-        CMatrixFixedNumeric<double,48,1> co_mat = getCMatrix(CO2vector(vCOs[i]));
-        co_mat.saveToTextFile("/home/edu/test_co.txt");
 
         vector<Matrix<double,3,1> > vNormal(2);
         vector<Matrix<double,3,3> > cov_vNormal(2);
@@ -207,17 +206,17 @@ double error_COs(const vector<CO> &vCOs, const vector<CPose3D> &LRF_poses_estim,
         }
 
         Matrix<double,3,3> R_relative = LRF_poses_estim[vCOs[i][0].id_LRF].getRotationMatrix().transpose() * LRF_poses_estim[vCOs[i][1].id_LRF].getRotationMatrix();
-        double sigma_orthogonal_constraint = sqrt((vNormal[0].transpose()*R_relative*cov_vNormal[1]*R_relative.transpose()*vNormal[0])(0,0) +
-                (vNormal[1].transpose()*R_relative.transpose()*cov_vNormal[0]*R_relative*vNormal[1])(0,0) );
+        double sigma_orthogonal_constraint = sqrt( (vNormal[0].transpose()*R_relative*cov_vNormal[1]*R_relative.transpose()*vNormal[0])(0,0) +
+                                                    (vNormal[1].transpose()*R_relative.transpose()*cov_vNormal[0]*R_relative*vNormal[1])(0,0) );
 
         // Compute the residual of the orthogonality constraint
         double error_orthogonality = vNormal[0].dot(vNormal[1]) / sigma_orthogonal_constraint;
 
-        error += error_orthogonality + error_planarity[0] + error_planarity[1];
+        error2 += error_orthogonality*error_orthogonality + error_planarity[0]*error_planarity[0] + error_planarity[1]*error_planarity[1];
     }
-    error /= vCOs.size(); // Average CO error
+    error2 /= vCOs.size(); // Average CO error
 
-    return error;
+    return error2;
 }
 
 //// Return a diagonal matrix where the values of the diagonal are assigned from the input vector
@@ -252,17 +251,24 @@ Matrix<typedata,Dynamic,Dynamic> getDiagonalMatrix(const Matrix<typedata,Dynamic
 // At least two CO are needed, these may be obtained from a single observation of the rig (i.e. a corner with
 // 3 perpendicular planes). The problem is solved applying LS to the constraint residuals, using Levenberg-Marquardt
 // ------------------------------------------------------------------------------------------------------------
-vector<CPose3D> calibrate_LRFs(const vector<CO> &vCOs, vector<CPose3D> LRF_poses_estim, set<unsigned> idx_estim_LRFs = set<unsigned>(), const size_t id_fixed_LRF=0)
+map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3D> LRF_poses_estim, set<unsigned> idx_estim_LRFs = set<unsigned>(), const size_t id_fixed_LRF=0)
 {
 cout << "calibrate_LRFs " << endl;
+    assert(vCOs.size() > 1); // The LRF chosen as the fixed reference must be one of the LRFs being calibrated
 
     if(idx_estim_LRFs.empty())
         for(unsigned j=0; j < LRF_poses_estim.size(); j++)
             idx_estim_LRFs.insert(j);
 
+//    CMatrixFixedNumeric<double,50,10> co_mat;
+//    for(unsigned i=0; i<10; i++)
+//        co_mat.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
+//    co_mat.saveToTextFile("/home/edu/test_cos.txt");
+//    cout << "error co " << error_COs(vCOs, LRF_poses_estim, idx_estim_LRFs) << endl;
+
     assert(idx_estim_LRFs.counts(id_fixed_LRF)); // The LRF chosen as the fixed reference must be one of the LRFs being calibrated
 
-    vector<CPose3D> LRF_poses_estim_temp = LRF_poses_estim;
+    map<unsigned,CPose3D> LRF_poses_estim_temp = LRF_poses_estim;
 
     size_t system_DoF = 6*(idx_estim_LRFs.size()-1);
     MatrixXd Hessian = MatrixXd::Zero(system_DoF,system_DoF);
@@ -270,22 +276,25 @@ cout << "calibrate_LRFs " << endl;
 
     // Set Levenberg-Marquardt parameters
     double lambda = 0.001;
-    double step = 10; // Update step
-    double max_LM_it_lambda = 5;
+    const double step = 10; // Update step
+    const unsigned max_LM_it_lambda = 5;
 
     // Solve with Levenberg-Marquardt
     size_t iterations = 0;
     double diff_error = 1;
     VectorXd update(system_DoF); // Update poses vector
     update(0,0) = 1;
-    double tol = 10^(-24); // Tolerance
-    size_t maxIters = 100;
+    const double tol = pow(10,-24); // Tolerance
+    const size_t maxIters = 20;
     double error = error_COs(vCOs, LRF_poses_estim, idx_estim_LRFs);
-    while(iterations < maxIters && update.norm() > tol && diff_error > tol )
+    while( (iterations < maxIters) && (update.norm() > tol) && (diff_error > tol) )
     {
         cout << "iterations " << iterations << " update " << update.norm() << " diff_error " << diff_error << endl;
         for(size_t i=0; i < vCOs.size(); i++)
         {
+            if( idx_estim_LRFs.count(vCOs[i][0].id_LRF)==0 || idx_estim_LRFs.count(vCOs[i][1].id_LRF)==0 )
+                continue;
+
             CO_3D co_i_3d;
             for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
             {
@@ -310,7 +319,7 @@ cout << "calibrate_LRFs " << endl;
                         -skew_symmetric3(co_i_3d[1][plane_id].dir)*co_i_3d[0][plane_id].cov_dir*skew_symmetric3(co_i_3d[1][plane_id].dir);
                 sigma_planar_constraint[plane_id] = sqrt(
                             (vNormal[plane_id].transpose()*(co_i_3d[0][plane_id].cov_center+co_i_3d[1][plane_id].cov_center)*vNormal[plane_id])(0,0) +
-                        ((co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center).transpose()*cov_vNormal[plane_id]*(co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center))(0,0) );
+                            ((co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center).transpose()*cov_vNormal[plane_id]*(co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center))(0,0) );
 
                 // Compute the residuals of the co-planarity constraints
                 error_planarity[plane_id] = vNormal[plane_id].dot(co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center) / sigma_planar_constraint[plane_id];
@@ -319,16 +328,35 @@ cout << "calibrate_LRFs " << endl;
                     if(vCOs[i][LRF_id].id_LRF != id_fixed_LRF)
                     {
                         Matrix<double,1,6> jac_error_planarity;
-                        jac_error_planarity.block(0,3,1,3) = (-vNormal[plane_id].transpose()*skew_symmetric3(co_i_3d[1][plane_id].center_rot) +
-                                (co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center).transpose()*skew_symmetric3(co_i_3d[1][plane_id].dir)*skew_symmetric3(co_i_3d[0][plane_id].dir))
-                                / sigma_planar_constraint[plane_id];  // Jacobian wrt the rotation
-                        jac_error_planarity.block(0,0,1,3) = vNormal[plane_id].transpose() / sigma_planar_constraint[plane_id]; // Jacobian wrt the translation
+                        if(LRF_id == 0)
+                        {
+                            jac_error_planarity.block(0,3,1,3) = (-vNormal[plane_id].transpose()*skew_symmetric3(co_i_3d[0][plane_id].center_rot) +
+                                    (co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center).transpose()*skew_symmetric3(co_i_3d[1][plane_id].dir)*skew_symmetric3(co_i_3d[0][plane_id].dir))
+                                    / sigma_planar_constraint[plane_id];  // Jacobian wrt the rotation
+                            jac_error_planarity.block(0,0,1,3) = vNormal[plane_id].transpose() / sigma_planar_constraint[plane_id]; // Jacobian wrt the translation
+                        }
+                        else
+                        {
+//                            cout << "jac_rot1 " << vNormal[plane_id].transpose()*skew_symmetric3(co_i_3d[1][plane_id].center_rot) << endl;
+//                            cout << "jac_rot2 " << (co_i_3d[1][plane_id].center-co_i_3d[0][plane_id].center).transpose()*skew_symmetric3(co_i_3d[0][plane_id].dir)*skew_symmetric3(co_i_3d[1][plane_id].dir) << endl;
+
+                            jac_error_planarity.block(0,3,1,3) = (vNormal[plane_id].transpose()*skew_symmetric3(co_i_3d[1][plane_id].center_rot) +
+                                    (co_i_3d[1][plane_id].center-co_i_3d[0][plane_id].center).transpose()*skew_symmetric3(co_i_3d[0][plane_id].dir)*skew_symmetric3(co_i_3d[1][plane_id].dir))
+                                    / sigma_planar_constraint[plane_id];  // Jacobian wrt the rotation
+                            jac_error_planarity.block(0,0,1,3) = -vNormal[plane_id].transpose() / sigma_planar_constraint[plane_id]; // Jacobian wrt the translation
+                        }
+//                        cout << "sigma_planar_constraint " << sigma_planar_constraint[plane_id] << endl;
+//                        cout << "error_planarity " << error_planarity[plane_id] << endl;
+//                        cout << "jac_error_planarity " << plane_id << " sensor " << LRF_id << " = " << jac_error_planarity << endl;
 
                         size_t n_block = (vCOs[i][LRF_id].id_LRF < id_fixed_LRF ) ? 6*(std::distance(idx_estim_LRFs.begin(), idx_estim_LRFs.find(vCOs[i][LRF_id].id_LRF))) :
                                                                                     6*(std::distance(idx_estim_LRFs.begin(), idx_estim_LRFs.find(vCOs[i][LRF_id].id_LRF))-1);
                         Hessian.block(n_block,n_block,6,6) += jac_error_planarity.transpose() * jac_error_planarity;
                         Gradient.block(n_block,0,6,1) += jac_error_planarity.transpose() * error_planarity[plane_id];
                     }
+//                cout << "Hessian \n" << Hessian << endl;
+//                cout << "Gradient \n" << Gradient << endl;
+//                mrpt::system::pause();
             }
 
             // Compute the residual and the Jacobian of the orthogonality constraint
@@ -336,6 +364,9 @@ cout << "calibrate_LRFs " << endl;
             double sigma_orthogonal_constraint = sqrt( (vNormal[0].transpose()*R_relative*cov_vNormal[1]*R_relative.transpose()*vNormal[0])(0,0) +
                     (vNormal[1].transpose()*R_relative.transpose()*cov_vNormal[0]*R_relative*vNormal[1])(0,0) );
             double error_orthogonality = vNormal[0].dot(vNormal[1]) / sigma_orthogonal_constraint;
+
+//            cout << "sigma_orthogonal_constraint " << sigma_orthogonal_constraint << endl;
+//            cout << "error_orthogonality " << error_orthogonality << endl;
 
             for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
                 if(vCOs[i][LRF_id].id_LRF != id_fixed_LRF)
@@ -347,6 +378,7 @@ cout << "calibrate_LRFs " << endl;
                     else
                         jac_error_orthogonality =-(vNormal[0].transpose()*skew_symmetric3(co_i_3d[0][1].dir)*skew_symmetric3(co_i_3d[1][1].dir) +
                                 vNormal[1].transpose()*skew_symmetric3(co_i_3d[0][0].dir)*skew_symmetric3(co_i_3d[1][0].dir)) / sigma_orthogonal_constraint;
+//                    cout << "jac_error_orthogonality " << " sensor " << LRF_id << " = " << jac_error_orthogonality << endl;
 
                     size_t n_block = (vCOs[i][LRF_id].id_LRF < id_fixed_LRF ) ? 6*(std::distance(idx_estim_LRFs.begin(), idx_estim_LRFs.find(vCOs[i][LRF_id].id_LRF)))+3 :
                                                                                 6*(std::distance(idx_estim_LRFs.begin(), idx_estim_LRFs.find(vCOs[i][LRF_id].id_LRF))-1)+3;
@@ -354,6 +386,11 @@ cout << "calibrate_LRFs " << endl;
                     Gradient.block(n_block,0,3,1) += jac_error_orthogonality.transpose() * error_orthogonality;
                 }
             // error += error_orthogonality + error_planarity[0] + error_planarity[1];
+
+//            cout << "Hessian \n" << Hessian << endl;
+//            cout << "Gradient \n" << Gradient << endl;
+//            mrpt::system::pause();
+
         }
         //cout << "Hessian " << Hessian.rank() << endl << Hessian << endl;
         if(Hessian.rank() < 6*(idx_estim_LRFs.size()-1))
@@ -364,7 +401,7 @@ cout << "calibrate_LRFs " << endl;
 
         // Compute calib update
         update = -(Hessian + lambda*getDiagonalMatrix(Hessian)).inverse() * Gradient;
-//        cout << "update " << update.transpose() << endl;
+        cout << "update " << update.transpose() << endl;
         set<unsigned>::iterator it_LRF = idx_estim_LRFs.begin();
         for(size_t j=0; j < idx_estim_LRFs.size(); j++, it_LRF++)
             if(*it_LRF != id_fixed_LRF)
@@ -414,7 +451,7 @@ cout << "calibrate_LRFs " << endl;
     }
     cout << "Calib from " << vCOs.size() << "COs\n";
     for(unsigned j=0; j < LRF_poses_estim.size(); j++)
-        cout << "calibration_ " << LRF_poses_estim[j].getHomogeneousMatrixVal() << endl;
+        cout << "calibration_ \n" << LRF_poses_estim[j].getHomogeneousMatrixVal() << endl;
 
     return LRF_poses_estim;
 }
@@ -432,18 +469,18 @@ void  ransac_LRFcalib_fit(
     ASSERT_(useIndices.size()==2); // A minimum of 2 CO is required to compute the calibration
 cout << "ransac_LRFcalib_fit \n";
 
-    vector<CPose3D> LRF_poses_estim(2);
+    map<unsigned,CPose3D> LRF_poses_estim;
     LRF_poses_estim[0] = CPose3D(0,0,0);
     LRF_poses_estim[1] = guess_rel_pose12;
 
     vector<CO> COs_sample(2);
     for(unsigned i=0; i < useIndices.size(); i++)
-        COs_sample[i] = vector2CO(allData.block(0,useIndices[i],48,1));
+        COs_sample[i] = vector2CO(allData.block(0,useIndices[i],50,1));
 
     try
     {
       cout << "calibrate_LRFs__ " << endl;
-        vector<CPose3D> LRF_calib = calibrate_LRFs(COs_sample, LRF_poses_estim);
+        map<unsigned,CPose3D> LRF_calib = calibrate_LRFs(COs_sample, LRF_poses_estim);
         fitModels.resize(1);
         fitModels[0] = LRF_calib[1].getHomogeneousMatrixVal();
     cout << "calibration_fit \n " << LRF_calib[1].getHomogeneousMatrixVal() << endl;
@@ -475,7 +512,7 @@ void ransac_LRFcalib_distance(
     ASSERT_( size(M,1)==4 && size(M,2)==4 )
 
     //  CPose3D relative_pose12(M);
-    vector<CPose3D> LRF_poses_estim(2);
+    map<unsigned,CPose3D> LRF_poses_estim;
     LRF_poses_estim[0] = CPose3D(0,0,0);
     LRF_poses_estim[1] = CPose3D(M);
 
@@ -484,7 +521,7 @@ void ransac_LRFcalib_distance(
     for (size_t i=0;i<N;i++)
     {
         CO_3D co_i_3d;
-        CO co_i = vector2CO(allData.block(0,i,48,1));
+        CO co_i = vector2CO(allData.block(0,i,50,1));
         for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
             for(size_t plane_id=0; plane_id < 2; plane_id++) // 2 line observations per LRF
                 co_i_3d[LRF_id][plane_id].get_3D_params(co_i[LRF_id].lines[plane_id], LRF_poses_estim[LRF_id]);
@@ -545,7 +582,7 @@ void ransac_LRFcalib(
     guess_rel_pose12 = relative_pose_init; // Set it to the global variable
 
     // The running lists of remaining points after each plane, as a matrix:
-    CMatrixTemplateNumeric<double> matCOs( 48, vCOs.size() );
+    CMatrixTemplateNumeric<double> matCOs( 50, vCOs.size() );
     for(size_t i=0; i < vCOs.size(); i++)
         matCOs.insertCol(i,CO2vector(vCOs[i]));
 //    cout << "matCOs \n" << matCOs << endl;
@@ -603,7 +640,7 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
     //	const bool  CAMERA_3DSCENE_FOLLOWS_ROBOT = iniFile.read_bool("calib-LRFs","CAMERA_3DSCENE_FOLLOWS_ROBOT", true,  /*Force existence:*/ true);
 
     set<unsigned> idx_estim_LRFs;
-    vector<CPose3D> initial_Poses(M_num_LRFs);
+    map<unsigned,CPose3D> initial_Poses;
     vector<string> LRF_labels(M_num_LRFs);
     for(int j=0; j < M_num_LRFs; j++)
     {
@@ -840,7 +877,11 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
                 break;
         }
     }
-//    mrpt::system::pause();
+
+    CMatrixFixedNumeric<double,50,400> co_mat;
+    for(unsigned i=0; i<400; i++)
+        co_mat.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
+    co_mat.saveToTextFile("/home/edu/test_cos.txt");
 
     // RANSAC Outlier rejection (it works by pairs of LRFs)
     vector<CO> vCOs_ransac;
@@ -856,38 +897,40 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
 
         vector<CO> vCOs_12;
         for(size_t i=0; i < vCOs.size(); i++)
-            if( (vCOs[i][0].id_LRF == LRF1 && vCOs[i][1].id_LRF == LRF2) || (vCOs[i][1].id_LRF == LRF1 && vCOs[i][0].id_LRF == LRF2) )
+            if( vCOs[i][0].id_LRF == LRF1 && vCOs[i][1].id_LRF == LRF2 )// || (vCOs[i][1].id_LRF == LRF1 && vCOs[i][0].id_LRF == LRF2) )
                 vCOs_12.push_back(vCOs[i]);
 
 #if DEBUG
         cout << "Corner gueses between the LRFs " << LRF1 <<  " and " << LRF2 << " : " << vCOs_12.size() << endl;
 #endif
+mrpt::system::pause();
 
-//        CPose3D relative_poses_init;
-//        relative_poses_init.inverseComposeFrom(initial_Poses[LRF2],initial_Poses[LRF1]); // This means inv(T_LRF1)*T_LRF2
-//        // cout << "PoseCompInv \n" << initial_Poses[LRF1].getHomogeneousMatrixVal() << endl << initial_Poses[LRF2].getHomogeneousMatrixVal() << endl << relative_poses_init.getHomogeneousMatrixVal() << endl;
+        CPose3D relative_poses_init;
+        relative_poses_init.inverseComposeFrom(initial_Poses[LRF2],initial_Poses[LRF1]); // This means inv(T_LRF1)*T_LRF2
+        // cout << "PoseCompInv \n" << initial_Poses[LRF1].getHomogeneousMatrixVal() << endl << initial_Poses[LRF2].getHomogeneousMatrixVal() << endl << relative_poses_init.getHomogeneousMatrixVal() << endl;
 
-//        std::vector<size_t> inliers;
-//        double threshold_CO = 0.01;
-//        size_t min_inliers = 4;
-//        ransac_LRFcalib(vCOs_12, inliers, relative_poses_init, threshold_CO, min_inliers);
-//#if DEBUG
-//        cout << "inliers " << inliers.size() << endl;
-//#endif
-//        unsigned valic_co = 0;
-//        vector<CO> vCOs_12_ransac(inliers.size());
-//        for(unsigned i=0; i < inliers.size(); i++)
-//            vCOs_12_ransac[valic_co++] = vCOs_12[inliers[i]];
+        std::vector<size_t> inliers;
+        double threshold_CO = 0.01;
+        size_t min_inliers = 4;
+        ransac_LRFcalib(vCOs_12, inliers, relative_poses_init, threshold_CO, min_inliers);
+#if DEBUG
+        cout << "inliers " << inliers.size() << endl;
+#endif
+        unsigned valic_co = 0;
+        vector<CO> vCOs_12_ransac(inliers.size());
+        for(unsigned i=0; i < inliers.size(); i++)
+            vCOs_12_ransac[valic_co++] = vCOs_12[inliers[i]];
 
         // Calibrate pair of LRFs
         set<unsigned> idx_pair_LRFs;
         idx_pair_LRFs.insert(LRF1);
         idx_pair_LRFs.insert(LRF2);
-        vector<CPose3D> LRF_poses_init(2);
+        map<unsigned,CPose3D> LRF_poses_init;
         LRF_poses_init[0] = initial_Poses[LRF1];
         LRF_poses_init[1] = initial_Poses[LRF2];
       cout << "compute calibration " << endl;
-        vector<CPose3D> calib12_ransac = calibrate_LRFs(vCOs_12, LRF_poses_init, idx_pair_LRFs);
+//      vCOs_12.resize(10);
+        map<unsigned,CPose3D> calib12_ransac = calibrate_LRFs(vCOs_12_ransac, LRF_poses_init, idx_pair_LRFs);
     cout << "calibration " << endl << calib12_ransac[0].getHomogeneousMatrixVal() << endl << calib12_ransac[1].getHomogeneousMatrixVal() << endl;
 
         // Get all the vCOs that pass the RANSAC test
@@ -896,9 +939,9 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
     }
 
     // Calibration
-    vector<CPose3D> calib = calibrate_LRFs(vCOs, initial_Poses, idx_estim_LRFs);
+    map<unsigned,CPose3D> calib = calibrate_LRFs(vCOs, initial_Poses, idx_estim_LRFs);
 
-//    vector<CPose3D> calib(M_num_LRFs);// = initial_Poses;
+//    map<unsigned,CPose3D> calib(M_num_LRFs);// = initial_Poses;
 
     for(int j=0; j < M_num_LRFs; j++)
     {
