@@ -171,20 +171,19 @@ CO vector2CO(const CO_vector &co_vector)
 
 /**  Compute the error of the vCOs for the given calibration (LRF_poses_estim) and LRF_indices.
   */
-double error_COs(const vector<CO> &vCOs, const map<unsigned,CPose3D> &LRF_poses_estim, const set<unsigned> &LRF_indices)
+double error_COs(const vector<CO> &vCOs, map<unsigned,CPose3D> &LRF_poses_estim, const set<unsigned> &LRF_indices)
 {
     double error2 = 0.0; // Squared error averaged by the number of vCOs
 
     for(size_t i=0; i < vCOs.size(); i++)
     {
+        if( LRF_indices.count(vCOs[i][0].id_LRF)==0 || LRF_indices.count(vCOs[i][1].id_LRF)==0 )
+            continue;
+
         CO_3D co_i_3d;
         for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
-        {
             for(size_t plane_id=0; plane_id < 2; plane_id++) // 2 line observations per LRF
-            {
                 co_i_3d[LRF_id][plane_id].get_3D_params(vCOs[i][LRF_id].lines[plane_id], LRF_poses_estim[vCOs[i][LRF_id].id_LRF]);
-            }
-        }
 
         vector<Matrix<double,3,1> > vNormal(2);
         vector<Matrix<double,3,3> > cov_vNormal(2);
@@ -199,7 +198,7 @@ double error_COs(const vector<CO> &vCOs, const map<unsigned,CPose3D> &LRF_poses_
                     -skew_symmetric3(co_i_3d[1][plane_id].dir)*co_i_3d[0][plane_id].cov_dir*skew_symmetric3(co_i_3d[1][plane_id].dir);
             sigma_planar_constraint[plane_id] = sqrt(
                         (vNormal[plane_id].transpose()*(co_i_3d[0][plane_id].cov_center+co_i_3d[1][plane_id].cov_center)*vNormal[plane_id])(0,0) +
-                    ((co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center).transpose()*cov_vNormal[plane_id]*(co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center))(0,0) );
+                        ((co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center).transpose()*cov_vNormal[plane_id]*(co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center))(0,0) );
 
             // Compute the residuals of the planarity constraints
             error_planarity[plane_id] = (vNormal[plane_id].transpose()*(co_i_3d[1][plane_id].center-co_i_3d[0][plane_id].center))(0,0) / sigma_planar_constraint[plane_id];
@@ -251,14 +250,20 @@ Matrix<typedata,Dynamic,Dynamic> getDiagonalMatrix(const Matrix<typedata,Dynamic
 // At least two CO are needed, these may be obtained from a single observation of the rig (i.e. a corner with
 // 3 perpendicular planes). The problem is solved applying LS to the constraint residuals, using Levenberg-Marquardt
 // ------------------------------------------------------------------------------------------------------------
-map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3D> LRF_poses_estim, set<unsigned> idx_estim_LRFs = set<unsigned>(), const size_t id_fixed_LRF=0)
+map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3D> LRF_poses_estim, set<unsigned> idx_estim_LRFs = set<unsigned>(), const unsigned id_fixed_LRF=0)
 {
-cout << "calibrate_LRFs " << endl;
+//cout << "calibrate_LRFs " << endl;
     assert(vCOs.size() > 1); // The LRF chosen as the fixed reference must be one of the LRFs being calibrated
 
+    for(set<unsigned>::iterator it_LRF=idx_estim_LRFs.begin(); it_LRF != idx_estim_LRFs.begin(); it_LRF++)
+        assert(LRF_poses_estim.count(*it_LRF));
+
     if(idx_estim_LRFs.empty())
-        for(unsigned j=0; j < LRF_poses_estim.size(); j++)
-            idx_estim_LRFs.insert(j);
+        for(map<unsigned,CPose3D>::iterator it_pose=LRF_poses_estim.begin(); it_pose != LRF_poses_estim.begin(); it_pose++)
+            idx_estim_LRFs.insert(it_pose->first);
+
+    set<unsigned> idx_nonFixed_LRFs = idx_estim_LRFs;
+    idx_nonFixed_LRFs.erase(id_fixed_LRF);
 
 //    CMatrixFixedNumeric<double,50,10> co_mat;
 //    for(unsigned i=0; i<10; i++)
@@ -297,12 +302,8 @@ cout << "calibrate_LRFs " << endl;
 
             CO_3D co_i_3d;
             for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
-            {
                 for(size_t plane_id=0; plane_id < 2; plane_id++) // 2 line observations per LRF
-                {
                     co_i_3d[LRF_id][plane_id].get_3D_params(vCOs[i][LRF_id].lines[plane_id], LRF_poses_estim[vCOs[i][LRF_id].id_LRF]);
-                }
-            }
 
             vector<Matrix<double,3,1> > vNormal(2);
             vector<Matrix<double,3,3> > cov_vNormal(2);
@@ -335,7 +336,7 @@ cout << "calibrate_LRFs " << endl;
                                     / sigma_planar_constraint[plane_id];  // Jacobian wrt the rotation
                             jac_error_planarity.block(0,0,1,3) = vNormal[plane_id].transpose() / sigma_planar_constraint[plane_id]; // Jacobian wrt the translation
                         }
-                        else
+                        else // LRF_id == vCOs[i][1].id_LRF
                         {
 //                            cout << "jac_rot1 " << vNormal[plane_id].transpose()*skew_symmetric3(co_i_3d[1][plane_id].center_rot) << endl;
 //                            cout << "jac_rot2 " << (co_i_3d[1][plane_id].center-co_i_3d[0][plane_id].center).transpose()*skew_symmetric3(co_i_3d[0][plane_id].dir)*skew_symmetric3(co_i_3d[1][plane_id].dir) << endl;
@@ -349,8 +350,7 @@ cout << "calibrate_LRFs " << endl;
 //                        cout << "error_planarity " << error_planarity[plane_id] << endl;
 //                        cout << "jac_error_planarity " << plane_id << " sensor " << LRF_id << " = " << jac_error_planarity << endl;
 
-                        size_t n_block = (vCOs[i][LRF_id].id_LRF < id_fixed_LRF ) ? 6*(std::distance(idx_estim_LRFs.begin(), idx_estim_LRFs.find(vCOs[i][LRF_id].id_LRF))) :
-                                                                                    6*(std::distance(idx_estim_LRFs.begin(), idx_estim_LRFs.find(vCOs[i][LRF_id].id_LRF))-1);
+                        size_t n_block = 6*(std::distance(idx_nonFixed_LRFs.begin(), idx_nonFixed_LRFs.find(vCOs[i][LRF_id].id_LRF)));
                         Hessian.block(n_block,n_block,6,6) += jac_error_planarity.transpose() * jac_error_planarity;
                         Gradient.block(n_block,0,6,1) += jac_error_planarity.transpose() * error_planarity[plane_id];
                     }
@@ -372,7 +372,7 @@ cout << "calibrate_LRFs " << endl;
                 if(vCOs[i][LRF_id].id_LRF != id_fixed_LRF)
                 {
                     Matrix<double,1,3> jac_error_orthogonality;
-                    if(LRF_id==0)
+                    if(LRF_id == 0)
                         jac_error_orthogonality = (vNormal[0].transpose()*skew_symmetric3(co_i_3d[1][1].dir)*skew_symmetric3(co_i_3d[0][1].dir) +
                                 vNormal[1].transpose()*skew_symmetric3(co_i_3d[1][0].dir)*skew_symmetric3(co_i_3d[0][0].dir)) / sigma_orthogonal_constraint;
                     else
@@ -380,8 +380,7 @@ cout << "calibrate_LRFs " << endl;
                                 vNormal[1].transpose()*skew_symmetric3(co_i_3d[0][0].dir)*skew_symmetric3(co_i_3d[1][0].dir)) / sigma_orthogonal_constraint;
 //                    cout << "jac_error_orthogonality " << " sensor " << LRF_id << " = " << jac_error_orthogonality << endl;
 
-                    size_t n_block = (vCOs[i][LRF_id].id_LRF < id_fixed_LRF ) ? 6*(std::distance(idx_estim_LRFs.begin(), idx_estim_LRFs.find(vCOs[i][LRF_id].id_LRF)))+3 :
-                                                                                6*(std::distance(idx_estim_LRFs.begin(), idx_estim_LRFs.find(vCOs[i][LRF_id].id_LRF))-1)+3;
+                    size_t n_block = 6*(std::distance(idx_nonFixed_LRFs.begin(), idx_nonFixed_LRFs.find(vCOs[i][LRF_id].id_LRF)))+3;
                     Hessian.block(n_block,n_block,3,3) += jac_error_orthogonality.transpose() * jac_error_orthogonality;
                     Gradient.block(n_block,0,3,1) += jac_error_orthogonality.transpose() * error_orthogonality;
                 }
@@ -402,14 +401,12 @@ cout << "calibrate_LRFs " << endl;
         // Compute calib update
         update = -(Hessian + lambda*getDiagonalMatrix(Hessian)).inverse() * Gradient;
         cout << "update " << update.transpose() << endl;
-        set<unsigned>::iterator it_LRF = idx_estim_LRFs.begin();
-        for(size_t j=0; j < idx_estim_LRFs.size(); j++, it_LRF++)
-            if(*it_LRF != id_fixed_LRF)
-            {
-                size_t n_block = (*it_LRF < id_fixed_LRF) ? 6*(std::distance(idx_estim_LRFs.begin(),it_LRF)) : 6*(std::distance(idx_estim_LRFs.begin(),it_LRF))-1;
-                mrpt::math::CArrayNumeric<double,6> update_pose = mrpt::math::CArrayNumeric<double,6>(update.block(n_block,0,6,1));
-                LRF_poses_estim_temp[j] = mrpt::poses::CPose3D::exp(update_pose) + LRF_poses_estim[j]; // Pose composition
-            }
+        for(set<unsigned>::iterator it_LRF=idx_nonFixed_LRFs.begin(); it_LRF != idx_nonFixed_LRFs.end(); it_LRF++)
+        {
+            size_t n_block = 6*(std::distance(idx_nonFixed_LRFs.begin(),it_LRF));
+            mrpt::math::CArrayNumeric<double,6> update_pose = mrpt::math::CArrayNumeric<double,6>(update.block(n_block,0,6,1));
+            LRF_poses_estim_temp[*it_LRF] = mrpt::poses::CPose3D::exp(update_pose) + LRF_poses_estim[*it_LRF]; // Pose composition
+        }
 //cout << "compute new error\n";
         // Compute new error
         double new_error = error_COs(vCOs, LRF_poses_estim_temp, idx_estim_LRFs);
@@ -428,14 +425,12 @@ cout << "calibrate_LRFs " << endl;
             {
                 lambda *= step;
                 update = -(Hessian + lambda*getDiagonalMatrix(Hessian)).inverse() * Gradient;
-                set<unsigned>::iterator it_LRF = idx_estim_LRFs.begin();
-                for(size_t j=0; j < idx_estim_LRFs.size(); j++, it_LRF++)
-                    if(*it_LRF != id_fixed_LRF)
-                    {
-                        size_t n_block = (*it_LRF < id_fixed_LRF ) ? 6*(std::distance(idx_estim_LRFs.begin(),it_LRF)) : 6*(std::distance(idx_estim_LRFs.begin(),it_LRF))-1;
-                        mrpt::math::CArrayNumeric<double,6> update_pose = mrpt::math::CArrayNumeric<double,6>(update.block(n_block,0,6,1));
-                        LRF_poses_estim_temp[j] = mrpt::poses::CPose3D::exp(update_pose) + LRF_poses_estim[j]; // Pose composition
-                    }
+                for(set<unsigned>::iterator it_LRF=idx_nonFixed_LRFs.begin(); it_LRF != idx_nonFixed_LRFs.end(); it_LRF++)
+                {
+                    size_t n_block = 6*(std::distance(idx_nonFixed_LRFs.begin(),it_LRF));
+                    mrpt::math::CArrayNumeric<double,6> update_pose = mrpt::math::CArrayNumeric<double,6>(update.block(n_block,0,6,1));
+                    LRF_poses_estim_temp[*it_LRF] = mrpt::poses::CPose3D::exp(update_pose) + LRF_poses_estim[*it_LRF]; // Pose composition
+                }
 
                 new_error = error_COs(vCOs, LRF_poses_estim_temp, idx_estim_LRFs);
                 diff_error = error - new_error;
@@ -467,7 +462,7 @@ void  ransac_LRFcalib_fit(
         vector< CMatrixTemplateNumeric<double> > &fitModels )
 {
     ASSERT_(useIndices.size()==2); // A minimum of 2 CO is required to compute the calibration
-cout << "ransac_LRFcalib_fit \n";
+//cout << "ransac_LRFcalib_fit \n";
 
     map<unsigned,CPose3D> LRF_poses_estim;
     LRF_poses_estim[0] = CPose3D(0,0,0);
@@ -479,7 +474,7 @@ cout << "ransac_LRFcalib_fit \n";
 
     try
     {
-      cout << "calibrate_LRFs__ " << endl;
+//      cout << "calibrate_LRFs__ " << endl;
         map<unsigned,CPose3D> LRF_calib = calibrate_LRFs(COs_sample, LRF_poses_estim);
         fitModels.resize(1);
         fitModels[0] = LRF_calib[1].getHomogeneousMatrixVal();
@@ -530,7 +525,7 @@ void ransac_LRFcalib_distance(
         double error_planarity[2];
         for(size_t plane_id=0; plane_id < 2; plane_id++) // 2 line observations per LRF
         {
-            //      crossProduct3D(co_i_3d[0][plane_id].dir, co_i_3d[1][plane_id].dir, vNormal[plane_id]);
+            // crossProduct3D(co_i_3d[0][plane_id].dir, co_i_3d[1][plane_id].dir, vNormal[plane_id]);
             vNormal[plane_id] = co_i_3d[0][plane_id].dir.cross(co_i_3d[1][plane_id].dir);
 
             // Compute the residuals of the planarity constraints
@@ -873,15 +868,15 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
 //#if DEBUG
 //            cout << "Corner gueses " << vCOs.size() << endl;
 //#endif
-            if(vCOs.size() > 400)
-                break;
+//            if(vCOs.size() > 400)
+//                break;
         }
     }
 
-    CMatrixFixedNumeric<double,50,400> co_mat;
-    for(unsigned i=0; i<400; i++)
-        co_mat.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
-    co_mat.saveToTextFile("/home/edu/test_cos.txt");
+//    CMatrixFixedNumeric<double,50,400> co_mat;
+//    for(unsigned i=0; i<400; i++)
+//        co_mat.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
+//    co_mat.saveToTextFile("/home/edu/test_cos.txt");
 
     // RANSAC Outlier rejection (it works by pairs of LRFs)
     vector<CO> vCOs_ransac;
@@ -903,7 +898,6 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
 #if DEBUG
         cout << "Corner gueses between the LRFs " << LRF1 <<  " and " << LRF2 << " : " << vCOs_12.size() << endl;
 #endif
-mrpt::system::pause();
 
         CPose3D relative_poses_init;
         relative_poses_init.inverseComposeFrom(initial_Poses[LRF2],initial_Poses[LRF1]); // This means inv(T_LRF1)*T_LRF2
@@ -939,7 +933,8 @@ mrpt::system::pause();
     }
 
     // Calibration
-    map<unsigned,CPose3D> calib = calibrate_LRFs(vCOs, initial_Poses, idx_estim_LRFs);
+    map<unsigned,CPose3D> calib = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_estim_LRFs);
+    mrpt::system::pause();
 
 //    map<unsigned,CPose3D> calib(M_num_LRFs);// = initial_Poses;
 
