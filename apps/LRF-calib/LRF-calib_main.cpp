@@ -139,8 +139,8 @@ CO_vector CO2vector(const CO &co)
             co_vector.block(pos_block+4,0,2,1) = co[LRF_id].lines[plane_id].cov_dir.block(0,1,2,1);
             //      co_vector.block(pos_block+2,0,4,1) = Map<Matrix<double,4,1>(co[LRF_id].lines[plane_id].cov_center);
             co_vector.block(pos_block+6,0,2,1) = co[LRF_id].lines[plane_id].center;
-            co_vector.block(pos_block+8,0,2,1) = co[LRF_id].lines[plane_id].center.block(0,0,2,1);
-            co_vector.block(pos_block+10,0,2,1) = co[LRF_id].lines[plane_id].center.block(0,1,2,1);
+            co_vector.block(pos_block+8,0,2,1) = co[LRF_id].lines[plane_id].cov_center.block(0,0,2,1);
+            co_vector.block(pos_block+10,0,2,1) = co[LRF_id].lines[plane_id].cov_center.block(0,1,2,1);
         }
     }
 
@@ -206,7 +206,7 @@ double error_COs(const vector<CO> &vCOs, map<unsigned,CPose3D> &LRF_poses_estim,
 
         Matrix<double,3,3> R_relative = LRF_poses_estim[vCOs[i][0].id_LRF].getRotationMatrix().transpose() * LRF_poses_estim[vCOs[i][1].id_LRF].getRotationMatrix();
         double sigma_orthogonal_constraint = sqrt( (vNormal[0].transpose()*R_relative*cov_vNormal[1]*R_relative.transpose()*vNormal[0])(0,0) +
-                                                    (vNormal[1].transpose()*R_relative.transpose()*cov_vNormal[0]*R_relative*vNormal[1])(0,0) );
+                                                   (vNormal[1].transpose()*R_relative.transpose()*cov_vNormal[0]*R_relative*vNormal[1])(0,0) );
 
         // Compute the residual of the orthogonality constraint
         double error_orthogonality = vNormal[0].dot(vNormal[1]) / sigma_orthogonal_constraint;
@@ -250,32 +250,29 @@ Matrix<typedata,Dynamic,Dynamic> getDiagonalMatrix(const Matrix<typedata,Dynamic
 // At least two CO are needed, these may be obtained from a single observation of the rig (i.e. a corner with
 // 3 perpendicular planes). The problem is solved applying LS to the constraint residuals, using Levenberg-Marquardt
 // ------------------------------------------------------------------------------------------------------------
-map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3D> LRF_poses_estim, set<unsigned> idx_estim_LRFs = set<unsigned>(), const unsigned id_fixed_LRF=0)
+map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3D> LRF_poses_estim, set<unsigned> idx_estim_LRFs = set<unsigned>(), int id_fixed_LRF=-1)
 {
 //cout << "calibrate_LRFs " << endl;
     assert(vCOs.size() > 1); // The LRF chosen as the fixed reference must be one of the LRFs being calibrated
 
-    for(set<unsigned>::iterator it_LRF=idx_estim_LRFs.begin(); it_LRF != idx_estim_LRFs.begin(); it_LRF++)
+    for(set<unsigned>::iterator it_LRF=idx_estim_LRFs.begin(); it_LRF != idx_estim_LRFs.end(); it_LRF++)
         assert(LRF_poses_estim.count(*it_LRF));
 
     if(idx_estim_LRFs.empty())
-        for(map<unsigned,CPose3D>::iterator it_pose=LRF_poses_estim.begin(); it_pose != LRF_poses_estim.begin(); it_pose++)
+        for(map<unsigned,CPose3D>::iterator it_pose=LRF_poses_estim.begin(); it_pose != LRF_poses_estim.end(); it_pose++)
             idx_estim_LRFs.insert(it_pose->first);
+
+    if(id_fixed_LRF == -1)
+        id_fixed_LRF = LRF_poses_estim.begin()->first;
+    else
+        assert(idx_estim_LRFs.count(id_fixed_LRF)); // The LRF chosen as the fixed reference must be one of the LRFs being calibrated
 
     set<unsigned> idx_nonFixed_LRFs = idx_estim_LRFs;
     idx_nonFixed_LRFs.erase(id_fixed_LRF);
 
-//    CMatrixFixedNumeric<double,50,10> co_mat;
-//    for(unsigned i=0; i<10; i++)
-//        co_mat.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
-//    co_mat.saveToTextFile("/home/edu/test_cos.txt");
-//    cout << "error co " << error_COs(vCOs, LRF_poses_estim, idx_estim_LRFs) << endl;
-
-    assert(idx_estim_LRFs.count(id_fixed_LRF)); // The LRF chosen as the fixed reference must be one of the LRFs being calibrated
-
     map<unsigned,CPose3D> LRF_poses_estim_temp = LRF_poses_estim;
 
-    size_t system_DoF = 6*(idx_estim_LRFs.size()-1);
+    size_t system_DoF = 6*(idx_nonFixed_LRFs.size());
     MatrixXd Hessian = MatrixXd::Zero(system_DoF,system_DoF);
     VectorXd Gradient = VectorXd::Zero(system_DoF);
 
@@ -294,7 +291,7 @@ map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3
     double error = error_COs(vCOs, LRF_poses_estim, idx_estim_LRFs);
     while( (iterations < maxIters) && (update.norm() > tol) && (diff_error > tol) )
     {
-        cout << "iterations " << iterations << " update " << update.norm() << " diff_error " << diff_error << endl;
+//        cout << "iterations " << iterations << " update " << update.norm() << " diff_error " << diff_error << endl;
         for(size_t i=0; i < vCOs.size(); i++)
         {
             if( idx_estim_LRFs.count(vCOs[i][0].id_LRF)==0 || idx_estim_LRFs.count(vCOs[i][1].id_LRF)==0 )
@@ -325,8 +322,8 @@ map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3
                 // Compute the residuals of the co-planarity constraints
                 error_planarity[plane_id] = vNormal[plane_id].dot(co_i_3d[0][plane_id].center-co_i_3d[1][plane_id].center) / sigma_planar_constraint[plane_id];
 
-                for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
-                    if(vCOs[i][LRF_id].id_LRF != id_fixed_LRF)
+                for(int LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
+                    if(vCOs[i][LRF_id].id_LRF != unsigned(id_fixed_LRF))
                     {
                         Matrix<double,1,6> jac_error_planarity;
                         if(LRF_id == 0)
@@ -338,25 +335,16 @@ map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3
                         }
                         else // LRF_id == vCOs[i][1].id_LRF
                         {
-//                            cout << "jac_rot1 " << vNormal[plane_id].transpose()*skew_symmetric3(co_i_3d[1][plane_id].center_rot) << endl;
-//                            cout << "jac_rot2 " << (co_i_3d[1][plane_id].center-co_i_3d[0][plane_id].center).transpose()*skew_symmetric3(co_i_3d[0][plane_id].dir)*skew_symmetric3(co_i_3d[1][plane_id].dir) << endl;
-
                             jac_error_planarity.block(0,3,1,3) = (vNormal[plane_id].transpose()*skew_symmetric3(co_i_3d[1][plane_id].center_rot) +
                                     (co_i_3d[1][plane_id].center-co_i_3d[0][plane_id].center).transpose()*skew_symmetric3(co_i_3d[0][plane_id].dir)*skew_symmetric3(co_i_3d[1][plane_id].dir))
                                     / sigma_planar_constraint[plane_id];  // Jacobian wrt the rotation
                             jac_error_planarity.block(0,0,1,3) = -vNormal[plane_id].transpose() / sigma_planar_constraint[plane_id]; // Jacobian wrt the translation
                         }
-//                        cout << "sigma_planar_constraint " << sigma_planar_constraint[plane_id] << endl;
-//                        cout << "error_planarity " << error_planarity[plane_id] << endl;
-//                        cout << "jac_error_planarity " << plane_id << " sensor " << LRF_id << " = " << jac_error_planarity << endl;
 
                         size_t n_block = 6*(std::distance(idx_nonFixed_LRFs.begin(), idx_nonFixed_LRFs.find(vCOs[i][LRF_id].id_LRF)));
                         Hessian.block(n_block,n_block,6,6) += jac_error_planarity.transpose() * jac_error_planarity;
                         Gradient.block(n_block,0,6,1) += jac_error_planarity.transpose() * error_planarity[plane_id];
                     }
-//                cout << "Hessian \n" << Hessian << endl;
-//                cout << "Gradient \n" << Gradient << endl;
-//                mrpt::system::pause();
             }
 
             // Compute the residual and the Jacobian of the orthogonality constraint
@@ -365,11 +353,8 @@ map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3
                     (vNormal[1].transpose()*R_relative.transpose()*cov_vNormal[0]*R_relative*vNormal[1])(0,0) );
             double error_orthogonality = vNormal[0].dot(vNormal[1]) / sigma_orthogonal_constraint;
 
-//            cout << "sigma_orthogonal_constraint " << sigma_orthogonal_constraint << endl;
-//            cout << "error_orthogonality " << error_orthogonality << endl;
-
-            for(size_t LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
-                if(vCOs[i][LRF_id].id_LRF != id_fixed_LRF)
+            for(int LRF_id=0; LRF_id < 2; LRF_id++) // 2 LRFs per CO
+                if(vCOs[i][LRF_id].id_LRF != unsigned(id_fixed_LRF))
                 {
                     Matrix<double,1,3> jac_error_orthogonality;
                     if(LRF_id == 0)
@@ -384,14 +369,7 @@ map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3
                     Hessian.block(n_block,n_block,3,3) += jac_error_orthogonality.transpose() * jac_error_orthogonality;
                     Gradient.block(n_block,0,3,1) += jac_error_orthogonality.transpose() * error_orthogonality;
                 }
-            // error += error_orthogonality + error_planarity[0] + error_planarity[1];
-
-//            cout << "Hessian \n" << Hessian << endl;
-//            cout << "Gradient \n" << Gradient << endl;
-//            mrpt::system::pause();
-
         }
-        //cout << "Hessian " << Hessian.rank() << endl << Hessian << endl;
         if(Hessian.rank() < 6*(idx_estim_LRFs.size()-1))
         {
             cout << "   The problem is unobservable\n";
@@ -400,14 +378,13 @@ map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3
 
         // Compute calib update
         update = -(Hessian + lambda*getDiagonalMatrix(Hessian)).inverse() * Gradient;
-        cout << "update " << update.transpose() << endl;
         for(set<unsigned>::iterator it_LRF=idx_nonFixed_LRFs.begin(); it_LRF != idx_nonFixed_LRFs.end(); it_LRF++)
         {
             size_t n_block = 6*(std::distance(idx_nonFixed_LRFs.begin(),it_LRF));
             mrpt::math::CArrayNumeric<double,6> update_pose = mrpt::math::CArrayNumeric<double,6>(update.block(n_block,0,6,1));
             LRF_poses_estim_temp[*it_LRF] = mrpt::poses::CPose3D::exp(update_pose) + LRF_poses_estim[*it_LRF]; // Pose composition
         }
-//cout << "compute new error\n";
+
         // Compute new error
         double new_error = error_COs(vCOs, LRF_poses_estim_temp, idx_estim_LRFs);
         diff_error = error - new_error;
@@ -444,9 +421,6 @@ map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3
             }
         }
     }
-    cout << "Calib from " << vCOs.size() << "COs\n";
-    for(unsigned j=0; j < LRF_poses_estim.size(); j++)
-        cout << "calibration_ \n" << LRF_poses_estim[j].getHomogeneousMatrixVal() << endl;
 
     return LRF_poses_estim;
 }
@@ -462,23 +436,20 @@ void  ransac_LRFcalib_fit(
         vector< CMatrixTemplateNumeric<double> > &fitModels )
 {
     ASSERT_(useIndices.size()==2); // A minimum of 2 CO is required to compute the calibration
-//cout << "ransac_LRFcalib_fit \n";
-
-    map<unsigned,CPose3D> LRF_poses_estim;
-    LRF_poses_estim[0] = CPose3D(0,0,0);
-    LRF_poses_estim[1] = guess_rel_pose12;
 
     vector<CO> COs_sample(2);
     for(unsigned i=0; i < useIndices.size(); i++)
         COs_sample[i] = vector2CO(allData.block(0,useIndices[i],50,1));
 
+    map<unsigned,CPose3D> LRF_poses_estim;
+    LRF_poses_estim[COs_sample[0][0].id_LRF] = CPose3D(0,0,0);
+    LRF_poses_estim[COs_sample[0][1].id_LRF] = guess_rel_pose12;
+
     try
     {
-//      cout << "calibrate_LRFs__ " << endl;
         map<unsigned,CPose3D> LRF_calib = calibrate_LRFs(COs_sample, LRF_poses_estim);
         fitModels.resize(1);
         fitModels[0] = LRF_calib[1].getHomogeneousMatrixVal();
-    cout << "calibration_fit \n " << LRF_calib[1].getHomogeneousMatrixVal() << endl;
     }
     catch(exception &)
     {
@@ -497,7 +468,6 @@ void ransac_LRFcalib_distance(
 {
     out_inlierIndices.clear();
     out_bestModelIndex = 0;
-//cout << "ransac_LRFcalib_distance \n";
 
     if (testModels.empty()) return; // No model, no inliers.
 
@@ -576,10 +546,10 @@ void ransac_LRFcalib(
 
     guess_rel_pose12 = relative_pose_init; // Set it to the global variable
 
-    // The running lists of remaining points after each plane, as a matrix:
+    // The list of COs as a matrix:
     CMatrixTemplateNumeric<double> matCOs( 50, vCOs.size() );
     for(size_t i=0; i < vCOs.size(); i++)
-        matCOs.insertCol(i,CO2vector(vCOs[i]));
+        matCOs.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
 //    cout << "matCOs \n" << matCOs << endl;
 
     CMatrixTemplateNumeric<double> this_best_model(4,4);
@@ -597,12 +567,9 @@ void ransac_LRFcalib(
                 0.99999  // Prob. of good result
                 );
 
-    //  // Is this calibration good enough?
-    //  if(inliers.size()>=min_inliers_for_valid_calib)
-    //  {
-    //    // Set the return values
-    //
-    //  }
+      // Is this calibration good enough?
+      if(inliers.size() < min_inliers_for_valid_calib)
+        inliers.clear();
 
     MRPT_END
 }
@@ -623,16 +590,11 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
     // ------------------------------------------
     const string RAWLOG_FILE            = !override_rawlog_file.empty() ? override_rawlog_file : iniFile.read_string("calib-LRFs","rawlog_file","",  /*Force existence:*/ true);
     //	const unsigned int rawlog_offset  = iniFile.read_int("calib-LRFs","rawlog_offset",0,  /*Force existence:*/ true);
-    //	const string OUT_DIR_STD			    = iniFile.read_string("calib-LRFs","logOutput_dir","log_out",  /*Force existence:*/ true);
-    const int M_num_LRFs		            = iniFile.read_int("calib-LRFs","M_num_LRFs",3,  /*Force existence:*/ true);
+    int M_num_LRFs		            = iniFile.read_int("calib-LRFs","M_num_LRFs",3,  /*Force existence:*/ true);
     //	const int resolution		            = iniFile.read_int("calib-LRFs","resolution",1081,  /*Force existence:*/ true);
     const int decimation		            = iniFile.read_int("calib-LRFs","decimation",10,  /*Force existence:*/ true);
     const double threshold_line		    = iniFile.read_double("calib-LRFs","threshold_line",0.03,  /*Force existence:*/ true);
     const size_t min_inliers_line		  = static_cast<size_t>(iniFile.read_int("calib-LRFs","min_inliers_line",100,  /*Force existence:*/ true));
-    //	const int LOG_FREQUENCY		    = iniFile.read_int("calib-LRFs","LOG_FREQUENCY",5,  /*Force existence:*/ true);
-    //	const bool  SAVE_POSE_LOG		    = iniFile.read_bool("calib-LRFs","SAVE_POSE_LOG", false,  /*Force existence:*/ true);
-    //	const bool  SAVE_3D_SCENE          = iniFile.read_bool("calib-LRFs","SAVE_3D_SCENE", false,  /*Force existence:*/ true);
-    //	const bool  CAMERA_3DSCENE_FOLLOWS_ROBOT = iniFile.read_bool("calib-LRFs","CAMERA_3DSCENE_FOLLOWS_ROBOT", true,  /*Force existence:*/ true);
 
     set<unsigned> idx_estim_LRFs;
     map<unsigned,CPose3D> initial_Poses;
@@ -655,22 +617,11 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
                     );
     }
 
-    //	bool 	SHOW_PROGRESS_3D_REAL_TIME = false;
-    //	int		SHOW_PROGRESS_3D_REAL_TIME_DELAY_MS = 0;
-    //	bool 	SHOW_LASER_SCANS_3D = true;
-
-    //	const char* OUT_DIR = OUT_DIR_STD.c_str();
-
 #if DEBUG
     // Print params:
     printf("Running with the following parameters:\n");
     printf(" RAWLOG file:'%s'\n", RAWLOG_FILE.c_str());
     printf(" Line segmentation threshold %f inliers %lu \n", threshold_line, min_inliers_line);
-    //        printf(" Output directory:\t\t\t'%s'\n",OUT_DIR);
-    //        printf(" Log record freq:\t\t\t%u\n",LOG_FREQUENCY);
-    //        printf("  SAVE_3D_SCENE:\t\t\t%c\n", SAVE_3D_SCENE ? 'Y':'N');
-    //        printf("  SAVE_POSE_LOG:\t\t\t%c\n", SAVE_POSE_LOG ? 'Y':'N');
-    //        printf("  CAMERA_3DSCENE_FOLLOWS_ROBOT:\t%c\n",CAMERA_3DSCENE_FOLLOWS_ROBOT ? 'Y':'N');
     for(int j=0; j < M_num_LRFs; j++)
     {
         cout << LRF_labels[j] << endl;
@@ -697,7 +648,12 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
     mrpt::gui::CDisplayWindowPlots  win2("LRF-scan and line segmentation", 700,700);
 #endif
 
-//    int num_observations = 0;
+//vector<mrpt::math::CMatrixDouble> matObsLaser(3);
+//for(int j=0; j < M_num_LRFs; j++)
+//    matObsLaser[j] = mrpt::math::CMatrixDouble(0,1081);
+
+
+    int num_observations = 0;
     int count_valid_obs = 0;
     int num_RangeObs = 0;
     vector<CO> vCOs; // The Corner Observations required for calibration
@@ -752,6 +708,11 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
 ////            num_observations++;
 //#endif
 
+//    num_observations++;
+//    int x_row = 2*num_observations-2;
+//    int y_row = 2*num_observations-1;
+
+
             // Segment lines from the LRFs scans
             std::vector<std::vector<std::pair<size_t,TLine2D> > > detected_lines(M_num_LRFs);
             for(int j=0; j < M_num_LRFs; j++)
@@ -764,6 +725,17 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
                 size_t n;
                 const float	*x,*y,*z;
                 m_cache_points.getPointsBuffer(n,x,y,z);
+
+//                matObsLaser[j].setSize(2*num_observations,matObsLaser[j].getColCount());
+//                for(size_t ii=0; ii < n; ii++)
+//                {
+//                  matObsLaser[j](x_row,ii) = x[ii];
+//                  matObsLaser[j](y_row,ii) = y[ii];
+//          //        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
+//                }
+//                if(n < obsLRFs[j]->scan.size())
+//                  matObsLaser[j](x_row,n) = pow(10,9);
+
 
                 Matrix<float,Dynamic,1> x_eigen(n), y_eigen(n);
                 // Map<Matrix<float,Dynamic,1> > x_eigen(x,n);
@@ -868,15 +840,19 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
 //#if DEBUG
 //            cout << "Corner gueses " << vCOs.size() << endl;
 //#endif
-//            if(vCOs.size() > 400)
-//                break;
+            if(vCOs.size() > 400)
+                break;
         }
     }
 
+//    vCOs.resize(400);
 //    CMatrixFixedNumeric<double,50,400> co_mat;
 //    for(unsigned i=0; i<400; i++)
 //        co_mat.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
 //    co_mat.saveToTextFile("/home/edu/test_cos.txt");
+
+//    for(int j=0; j < M_num_LRFs; j++)
+//        matObsLaser[j].saveToTextFile(mrpt::format("/home/edu/matObs%i.txt",j));
 
     // RANSAC Outlier rejection (it works by pairs of LRFs)
     vector<CO> vCOs_ransac;
@@ -899,8 +875,17 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
         cout << "Corner gueses between the LRFs " << LRF1 <<  " and " << LRF2 << " : " << vCOs_12.size() << endl;
 #endif
 
+        map<unsigned,CPose3D> LRF_poses_init_;
+        LRF_poses_init_[LRF1] = initial_Poses[LRF1];
+        LRF_poses_init_[LRF2] = initial_Poses[LRF2];
+        map<unsigned,CPose3D> calib12_ransac_ = calibrate_LRFs(vCOs_12, LRF_poses_init_);
+
+        // The relative pose from the smaller LRF_ID to the larger LRF_ID
         CPose3D relative_poses_init;
-        relative_poses_init.inverseComposeFrom(initial_Poses[LRF2],initial_Poses[LRF1]); // This means inv(T_LRF1)*T_LRF2
+        if(LRF2 > LRF1)
+            relative_poses_init.inverseComposeFrom(initial_Poses[LRF2],initial_Poses[LRF1]); // This means inv(T_LRF1)*T_LRF2
+        else
+            relative_poses_init.inverseComposeFrom(initial_Poses[LRF1],initial_Poses[LRF2]);
         // cout << "PoseCompInv \n" << initial_Poses[LRF1].getHomogeneousMatrixVal() << endl << initial_Poses[LRF2].getHomogeneousMatrixVal() << endl << relative_poses_init.getHomogeneousMatrixVal() << endl;
 
         std::vector<size_t> inliers;
@@ -920,31 +905,30 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
         idx_pair_LRFs.insert(LRF1);
         idx_pair_LRFs.insert(LRF2);
         map<unsigned,CPose3D> LRF_poses_init;
-        LRF_poses_init[0] = initial_Poses[LRF1];
-        LRF_poses_init[1] = initial_Poses[LRF2];
-      cout << "compute calibration " << endl;
-//      vCOs_12.resize(10);
+        LRF_poses_init[LRF1] = initial_Poses[LRF1];
+        LRF_poses_init[LRF2] = initial_Poses[LRF2];
         map<unsigned,CPose3D> calib12_ransac = calibrate_LRFs(vCOs_12_ransac, LRF_poses_init, idx_pair_LRFs);
-    cout << "calibration " << endl << calib12_ransac[0].getHomogeneousMatrixVal() << endl << calib12_ransac[1].getHomogeneousMatrixVal() << endl;
+        for(map<unsigned,CPose3D>::iterator it_pose=calib12_ransac.begin(); it_pose != calib12_ransac.end(); it_pose++)
+            cout << "calibration_pair " << it_pose->first << "\n" << it_pose->second.getHomogeneousMatrixVal() << endl;
 
         // Get all the vCOs that pass the RANSAC test
         vCOs_ransac.insert(vCOs_ransac.begin(), vCOs_12.begin(), vCOs_12.end());
 
     }
 
-    // Calibration
-    map<unsigned,CPose3D> calib = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_estim_LRFs);
-//    mrpt::system::pause();
+//    // Calibrate all the sensors simultaneously (loop closure is guaranteed)
+//    map<unsigned,CPose3D> calib_all = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_estim_LRFs);
+//    for(map<unsigned,CPose3D>::iterator it_pose=calib_all.begin(); it_pose != calib_all.end(); it_pose++)
+//        cout << "calibration_pair " << it_pose->first << "\n" << it_pose->second.getHomogeneousMatrixVal() << endl;
+////    mrpt::system::pause();
+////    cout << "Visualize\n";
 
-//    map<unsigned,CPose3D> calib(M_num_LRFs);// = initial_Poses;
-
-    for(int j=0; j < M_num_LRFs; j++)
-    {
-//        calib[j] = initial_Poses[j];
-        cout << "Pose of LRF" << j << "\n" << calib[j].getHomogeneousMatrixVal() << endl;
-    }
-    cout << "Visualize\n";
-
+    map<unsigned,CPose3D> calib_all = initial_Poses;
+//    set<unsigned> idx_pair_LRFs;
+//    idx_pair_LRFs.insert(0);
+//    idx_pair_LRFs.insert(1);
+//    map<unsigned,CPose3D> calib_all = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_pair_LRFs);
+//    M_num_LRFs = 2; // Show only the calibration of 2 sensors until the bugs are fixed
 
 #if SHOW_CALIBRATED_SCANS
     // Show GUI
@@ -971,14 +955,10 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
                 ) )
     {
         // Process observations
-        // printf("Read Observation \n");
         if (observation)
         {
             assert(IS_CLASS(observation, CObservation2DRangeScan));
 
-//#if DEBUG
-//            cout << "Observation2 " << num_RangeObs << " timestamp " << observation->timestamp << endl;
-//#endif
             num_RangeObs++;
 
             for(int j=0; j < M_num_LRFs; j++)
@@ -1006,7 +986,7 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
                 continue;
 
 #if DEBUG
-            cout << "Observation_2 " << num_RangeObs << " timestamp " << observation->timestamp << endl;
+            cout << "Observation " << num_RangeObs << endl;// << " timestamp " << observation->timestamp << endl;
 #endif
 
             // Clear scene
@@ -1016,7 +996,7 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
             // Place the LRF's scans in 3D according to their calibration
             for(int j=0; j < M_num_LRFs; j++)
             {
-                obsLRFs[j]->sensorPose = calib[j];
+                obsLRFs[j]->sensorPose = calib_all[j];
 
                 mrpt::slam::CSimplePointsMap m_cache_points;
                 m_cache_points.clear();
@@ -1031,9 +1011,6 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
                 vector<float> xsf(n), ysf(n), zsf(n);
                 for(size_t i=0; i < n; i++)
                 {
-//                    xsf[i] = calib[j].getRotationMatrix()(0,0)*x[i] + calib[j].getRotationMatrix()(0,1)*y[i] + calib[j].m_coords[0];
-//                    ysf[i] = calib[j].getRotationMatrix()(1,0)*x[i] + calib[j].getRotationMatrix()(1,1)*y[i] + calib[j].m_coords[1];
-//                    zsf[i] = calib[j].getRotationMatrix()(2,0)*x[i] + calib[j].getRotationMatrix()(2,1)*y[i] + calib[j].m_coords[2];
                     xsf[i] = x[i];
                     ysf[i] = y[i];
                     zsf[i] = z[i];
@@ -1107,18 +1084,17 @@ int main(int argc, char **argv)
             else	return 0;
         }
 
-//        const string INI_FILENAME = string( argv[1] );
-        string INI_FILENAME = "/home/edu/Libraries/mrpt_edu/share/mrpt/config_files/LRF-calib/calib-3LRFs-Hokuyo_30LX.ini";
+        const string INI_FILENAME = string( argv[1] );
+//        string INI_FILENAME = "/home/edu/Libraries/mrpt_edu/share/mrpt/config_files/LRF-calib/calib-3LRFs-Hokuyo_30LX.ini";
         ASSERT_FILE_EXISTS_(INI_FILENAME)
 
-                string override_rawlog_file;
+        string override_rawlog_file;
         if (argc>=3)
             override_rawlog_file = string(argv[2]);
 
         // Run:
         calib_LRFs_rawlog_ini(INI_FILENAME,override_rawlog_file);
 
-        //pause();
         return 0;
     }
     catch (exception &e)
