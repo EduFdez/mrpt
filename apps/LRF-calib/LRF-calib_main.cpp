@@ -271,7 +271,7 @@ map<unsigned,CPose3D> calibrate_LRFs(const vector<CO> &vCOs, map<unsigned,CPose3
 //    co_mat.saveToTextFile("/home/edu/test_cos.txt");
 //    cout << "error co " << error_COs(vCOs, LRF_poses_estim, idx_estim_LRFs) << endl;
 
-    assert(idx_estim_LRFs.counts(id_fixed_LRF)); // The LRF chosen as the fixed reference must be one of the LRFs being calibrated
+    assert(idx_estim_LRFs.count(id_fixed_LRF)); // The LRF chosen as the fixed reference must be one of the LRFs being calibrated
 
     map<unsigned,CPose3D> LRF_poses_estim_temp = LRF_poses_estim;
 
@@ -934,7 +934,7 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
 
     // Calibration
     map<unsigned,CPose3D> calib = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_estim_LRFs);
-    mrpt::system::pause();
+//    mrpt::system::pause();
 
 //    map<unsigned,CPose3D> calib(M_num_LRFs);// = initial_Poses;
 
@@ -956,6 +956,9 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
 
 //    scene->insert( opengl::CGridPlaneXY::Create(-20,20,-20,20,0,1) );
     scene->insert( opengl::stock_objects::CornerXYZ() );
+
+    rawlogFile.close();
+    rawlogFile.open(RAWLOG_FILE);
 
     num_RangeObs = 0;
     count_valid_obs = 0;
@@ -1104,7 +1107,8 @@ int main(int argc, char **argv)
             else	return 0;
         }
 
-        const string INI_FILENAME = string( argv[1] );
+//        const string INI_FILENAME = string( argv[1] );
+        string INI_FILENAME = "/home/edu/Libraries/mrpt_edu/share/mrpt/config_files/LRF-calib/calib-3LRFs-Hokuyo_30LX.ini";
         ASSERT_FILE_EXISTS_(INI_FILENAME)
 
                 string override_rawlog_file;
