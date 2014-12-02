@@ -35,7 +35,7 @@
 
 
 #define DEBUG 1
-#define NUM_SENSORS 3
+#define NUM_SENSORS 4
 #define SHOW_SEGMENTATION 0
 #define SHOW_CALIBRATED_SCANS 1
 
@@ -574,11 +574,486 @@ void ransac_LRFcalib(
     MRPT_END
 }
 
-// ------------------------------------------------------------------------------------------------------------
-//				                        calib_LRFs_rawlog_ini
-// Calibrate the LRFs from their observations in INI_FILENAME. An initialization for the LRFs guessed poses is
-// also required. This file also contains information about the indices of the LRFs to be calibrated.
-// ------------------------------------------------------------------------------------------------------------
+//// ------------------------------------------------------------------------------------------------------------
+////				                        calib_LRFs_rawlog_ini
+//// Calibrate the LRFs from their observations in INI_FILENAME. An initialization for the LRFs guessed poses is
+//// also required. This file also contains information about the indices of the LRFs to be calibrated.
+//// ------------------------------------------------------------------------------------------------------------
+//void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_rawlog_file)
+//{
+//    MRPT_START
+
+//    CConfigFile				iniFile(INI_FILENAME);
+
+//    // ------------------------------------------
+//    //			Load config from file:
+//    // ------------------------------------------
+//    const string RAWLOG_FILE            = !override_rawlog_file.empty() ? override_rawlog_file : iniFile.read_string("calib-LRFs","rawlog_file","",  /*Force existence:*/ true);
+//    //	const unsigned int rawlog_offset  = iniFile.read_int("calib-LRFs","rawlog_offset",0,  /*Force existence:*/ true);
+//    int M_num_LRFs		            = iniFile.read_int("calib-LRFs","M_num_LRFs",3,  /*Force existence:*/ true);
+//    //	const int resolution		            = iniFile.read_int("calib-LRFs","resolution",1081,  /*Force existence:*/ true);
+//    const int decimation		            = iniFile.read_int("calib-LRFs","decimation",10,  /*Force existence:*/ true);
+//    const double threshold_line		    = iniFile.read_double("calib-LRFs","threshold_line",0.03,  /*Force existence:*/ true);
+//    const size_t min_inliers_line		  = static_cast<size_t>(iniFile.read_int("calib-LRFs","min_inliers_line",100,  /*Force existence:*/ true));
+
+//    set<unsigned> idx_estim_LRFs;
+//    map<unsigned,CPose3D> initial_Poses;
+//    vector<string> LRF_labels(M_num_LRFs);
+//    for(int j=0; j < M_num_LRFs; j++)
+//    {
+//        string LRF_id = mrpt::format("LRF%i",j+1);
+
+//        LRF_labels[j] = iniFile.read_string(LRF_id,"sensorLabel","",  /*Force existence:*/ true);
+
+//        idx_estim_LRFs.insert(j);
+
+//        initial_Poses[j].setFromValues(
+//                    iniFile.read_float(LRF_id,"pose_x",0),
+//                    iniFile.read_float(LRF_id,"pose_y",0),
+//                    iniFile.read_float(LRF_id,"pose_z",0),
+//                    DEG2RAD( iniFile.read_float(LRF_id,"pose_yaw",0) ),
+//                    DEG2RAD( iniFile.read_float(LRF_id,"pose_pitch",0) ),
+//                    DEG2RAD( iniFile.read_float(LRF_id,"pose_roll",0) )
+//                    );
+//    }
+
+//#if DEBUG
+//    // Print params:
+//    printf("Running with the following parameters:\n");
+//    printf(" RAWLOG file:'%s'\n", RAWLOG_FILE.c_str());
+//    printf(" Line segmentation threshold %f inliers %lu \n", threshold_line, min_inliers_line);
+//    for(int j=0; j < M_num_LRFs; j++)
+//    {
+//        cout << LRF_labels[j] << endl;
+//        cout << "Pose\n" << initial_Poses[j].getHomogeneousMatrixVal() << endl;
+//    }
+//    printf("\n");
+//#endif
+
+//    // Checks:
+//    ASSERT_(RAWLOG_FILE.size()>0)
+//    ASSERT_FILE_EXISTS_(RAWLOG_FILE)
+
+//    CFileGZInputStream   rawlogFile(RAWLOG_FILE);   // "file.rawlog"
+//    CActionCollectionPtr action;
+//    CSensoryFramePtr     observations;
+//    CObservationPtr      observation;
+//    size_t               rawlogEntry=0;
+
+//    vector<CObservation2DRangeScanPtr> obsLRFs(M_num_LRFs);
+//    vector<bool> scan_available(M_num_LRFs,false);
+
+//#if SHOW_SEGMENTATION
+//    // Show the segmented lines
+//    mrpt::gui::CDisplayWindowPlots  win2("LRF-scan and line segmentation", 700,700);
+//#endif
+
+////vector<mrpt::math::CMatrixDouble> matObsLaser(3);
+////for(int j=0; j < M_num_LRFs; j++)
+////    matObsLaser[j] = mrpt::math::CMatrixDouble(0,1081);
+
+
+//    int num_observations = 0;
+//    int count_valid_obs = 0;
+//    int num_RangeObs = 0;
+//    vector<CO> vCOs; // The Corner Observations required for calibration
+//    //    printf("Start acquiring observations from rawlog (size = %zu)\n", rawlogFile.getTotalBytesCount());
+//    while ( CRawlog::getActionObservationPairOrObservation(
+//                rawlogFile,      // Input file
+//                action,            // Possible out var: action of a pair action/obs
+//                observations,  // Possible out var: obs's of a pair action/obs
+//                observation,    // Possible out var: a single obs.
+//                rawlogEntry    // Just an I/O counter
+//                ) )
+//    {
+//        // Process observations
+//        // printf("Read Observation \n");
+//        if (observation)
+//        {
+//            assert(IS_CLASS(observation, CObservation2DRangeScan));
+
+//#if DEBUG
+////            cout << "Observation " << num_RangeObs << " timestamp " << observation->timestamp << endl;
+//            // cout << (CObservation2DRangeScanPtr(observation))->aperture;
+//#endif
+//            num_RangeObs++;
+
+//            for(int j=0; j < M_num_LRFs; j++)
+//                if(observation->sensorLabel == LRF_labels[j])
+//                {
+//                    obsLRFs[j] = CObservation2DRangeScanPtr(observation);
+//                    scan_available[j] = true;
+//                    break;
+//                }
+
+//            bool all_scans = true;
+//            for(int j=0; j < M_num_LRFs; j++)
+//                all_scans = all_scans && scan_available[j];
+
+//            if(!all_scans)
+//                continue;
+
+//            // Reset the counter of simultaneous observations
+//            for(int j=0; j < M_num_LRFs; j++)
+//                scan_available[j] = false;
+
+//            // Apply decimation
+//            count_valid_obs++;
+//            if(count_valid_obs%decimation != 0)
+//                continue;
+
+////#if DEBUG
+////            cout << "Observation " << num_RangeObs << " timestamp " << observation->timestamp << endl;
+//////            cout << "Get lines in obs " << count_valid_obs << endl;
+//////            num_observations++;
+////#endif
+
+////    num_observations++;
+////    int x_row = 2*num_observations-2;
+////    int y_row = 2*num_observations-1;
+
+
+//            // Segment lines from the LRFs scans
+//            std::vector<std::vector<std::pair<size_t,TLine2D> > > detected_lines(M_num_LRFs);
+//            for(int j=0; j < M_num_LRFs; j++)
+//            {
+//                mrpt::slam::CSimplePointsMap m_cache_points;
+//                m_cache_points.clear();
+//                m_cache_points.insertionOptions.minDistBetweenLaserPoints = 0;
+//                m_cache_points.insertionOptions.isPlanarMap=false;
+//                m_cache_points.insertObservation( &(*obsLRFs[j]) );
+//                size_t n;
+//                const float	*x,*y,*z;
+//                m_cache_points.getPointsBuffer(n,x,y,z);
+
+////                matObsLaser[j].setSize(2*num_observations,matObsLaser[j].getColCount());
+////                for(size_t ii=0; ii < n; ii++)
+////                {
+////                  matObsLaser[j](x_row,ii) = x[ii];
+////                  matObsLaser[j](y_row,ii) = y[ii];
+////          //        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
+////                }
+////                if(n < obsLRFs[j]->scan.size())
+////                  matObsLaser[j](x_row,n) = pow(10,9);
+
+
+//                Matrix<float,Dynamic,1> x_eigen(n), y_eigen(n);
+//                // Map<Matrix<float,Dynamic,1> > x_eigen(x,n);
+////                for(size_t i=0; i < n; i++)
+////                {
+////                    x_eigen(i) = x[i];
+////                    y_eigen(i) = y[i];
+////                }
+//                unsigned n_valid_pts = 0;
+//                for(size_t i=0; i < n; i++)
+//                {
+//                    if( (x[i]*x[i]+y[i]*y[i]) > 0.5 && (x[i]*x[i]+y[i]*y[i]) < 36) // Use only the points in a range of [0.7m, 6m]
+//                    {
+//                        x_eigen(n_valid_pts) = x[i];
+//                        y_eigen(n_valid_pts) = y[i];
+//                        ++n_valid_pts;
+//                    }
+//                }
+//                x_eigen = x_eigen.block(0,0,n_valid_pts,1);
+//                y_eigen = y_eigen.block(0,0,n_valid_pts,1);
+
+//                std::vector<std::pair<size_t,TLine2D> > detected_lines_LRF;
+//                mrpt::math::ransac_detect_2D_lines(x_eigen,y_eigen,detected_lines_LRF,threshold_line,min_inliers_line);
+//                detected_lines[j] = detected_lines_LRF;
+////                cout << "scan " << j << " size " << obsLRFs[j]->scan.size() << " n " << n << " lines " << detected_lines_LRF.size() << endl;
+
+//#if SHOW_SEGMENTATION
+//                // Show GUI
+//                // --------------------------
+//                win2.plot(x_eigen,y_eigen,".b4","points");
+
+//                unsigned int n_line=0;
+//                for (vector<pair<size_t,TLine2D> >::iterator p=detected_lines[j].begin();p!=detected_lines[j].end();++p)
+//                {
+//                  CVectorDouble lx(2),ly(2);
+//                  lx[0] = -15;
+//                  lx[1] = 15;
+//                  for (CVectorDouble::Index q=0;q<lx.size();q++)
+//                      ly[q] = -(p->second.coefs[2]+p->second.coefs[0]*lx[q])/p->second.coefs[1];
+//                  win2.plot(lx,ly,"r-1",format("line_%u",n_line++));
+//                }
+
+//                win2.axis_fit();
+//                win2.axis_equal();
+
+//                //mrpt::system::sleep(200);
+//                win2.waitForKey();
+//#endif
+//            }
+
+//            // TODO: Generate the COs with their covariances
+
+//            // Generate vCOs.
+//            // All the line combinations are used, despite many of them are not real vCOs. A RANSAC procedure is
+//            // applied later to discard such outliers
+//            for(int j=0; j < M_num_LRFs; j++)
+//                if(detected_lines[j].size() > 1 && detected_lines[(j+1)%3].size() > 1)
+//                    for(size_t a=0; a < detected_lines[j].size(); a++)
+//                        for(size_t aa=a+1; aa < detected_lines[j].size(); aa++)
+//                            for(size_t b=0; b < detected_lines[(j+1)%3].size(); b++)
+//                                for(size_t bb=b+1; bb < detected_lines[(j+1)%3].size(); bb++)
+//                                {
+//                                    CO CO_guess;
+
+//                                    CO_guess[0].id_LRF = j;
+//                                    CO_guess[0].lines[0].center = Vector2d(1/detected_lines[j][a].second.coefs[0], (-detected_lines[j][a].second.coefs[2]-1)/detected_lines[j][a].second.coefs[1]);
+//                                    CO_guess[0].lines[0].cov_center = Matrix2d::Identity();
+//                                    CO_guess[0].lines[0].dir = Vector2d(-detected_lines[j][a].second.coefs[1], detected_lines[j][a].second.coefs[0]);
+//                                    CO_guess[0].lines[0].cov_dir = Matrix2d::Identity();
+
+//                                    CO_guess[0].lines[1].center = Vector2d(1/detected_lines[j][aa].second.coefs[0], (-detected_lines[j][aa].second.coefs[2]-1)/detected_lines[j][aa].second.coefs[1]);
+//                                    CO_guess[0].lines[1].cov_center = Matrix2d::Identity();
+//                                    CO_guess[0].lines[1].dir = Vector2d(-detected_lines[j][aa].second.coefs[1], detected_lines[j][aa].second.coefs[0]);
+//                                    CO_guess[0].lines[1].cov_dir = Matrix2d::Identity();
+
+//                                    CO_guess[1].id_LRF = (j+1)%3;
+//                                    CO_guess[1].lines[0].center = Vector2d(1/detected_lines[(j+1)%3][b].second.coefs[0], (-detected_lines[(j+1)%3][b].second.coefs[2]-1)/detected_lines[(j+1)%3][b].second.coefs[1]);
+//                                    CO_guess[1].lines[0].cov_center = Matrix2d::Identity();
+//                                    CO_guess[1].lines[0].dir = Vector2d(-detected_lines[(j+1)%3][b].second.coefs[1], detected_lines[(j+1)%3][b].second.coefs[0]);
+//                                    CO_guess[1].lines[0].cov_dir = Matrix2d::Identity();
+
+//                                    CO_guess[1].lines[1].center = Vector2d(1/detected_lines[(j+1)%3][bb].second.coefs[0], (-detected_lines[(j+1)%3][bb].second.coefs[2]-1)/detected_lines[(j+1)%3][bb].second.coefs[1]);
+//                                    CO_guess[1].lines[1].cov_center = Matrix2d::Identity();
+//                                    CO_guess[1].lines[1].dir = Vector2d(-detected_lines[(j+1)%3][bb].second.coefs[1], detected_lines[(j+1)%3][bb].second.coefs[0]);
+//                                    CO_guess[1].lines[1].cov_dir = Matrix2d::Identity();
+
+//                                    vCOs.push_back(CO_guess);
+
+//                                    // Generate reversed CO (a,aa,bb,b) because we don't really know the line-plane correspondences
+//                                    CO_guess[1].lines[0].center = Vector2d(1/detected_lines[(j+1)%3][bb].second.coefs[0], (-detected_lines[(j+1)%3][bb].second.coefs[2]-1)/detected_lines[(j+1)%3][bb].second.coefs[1]);
+//                                    CO_guess[1].lines[0].cov_center = Matrix2d::Identity();
+//                                    CO_guess[1].lines[0].dir = Vector2d(-detected_lines[(j+1)%3][bb].second.coefs[1], detected_lines[(j+1)%3][bb].second.coefs[0]);
+//                                    CO_guess[1].lines[0].cov_dir = Matrix2d::Identity();
+
+//                                    CO_guess[1].lines[1].center = Vector2d(1/detected_lines[(j+1)%3][b].second.coefs[0], (-detected_lines[(j+1)%3][b].second.coefs[2]-1)/detected_lines[(j+1)%3][b].second.coefs[1]);
+//                                    CO_guess[1].lines[1].cov_center = Matrix2d::Identity();
+//                                    CO_guess[1].lines[1].dir = Vector2d(-detected_lines[(j+1)%3][b].second.coefs[1], detected_lines[(j+1)%3][b].second.coefs[0]);
+//                                    CO_guess[1].lines[1].cov_dir = Matrix2d::Identity();
+
+//                                    vCOs.push_back(CO_guess);
+//                                }
+////#if DEBUG
+////            cout << "Corner gueses " << vCOs.size() << endl;
+////#endif
+//            if(vCOs.size() > 400)
+//                break;
+//        }
+//    }
+
+////    vCOs.resize(400);
+////    CMatrixFixedNumeric<double,50,400> co_mat;
+////    for(unsigned i=0; i<400; i++)
+////        co_mat.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
+////    co_mat.saveToTextFile("/home/edu/test_cos.txt");
+
+////    for(int j=0; j < M_num_LRFs; j++)
+////        matObsLaser[j].saveToTextFile(mrpt::format("/home/edu/matObs%i.txt",j));
+
+//    // RANSAC Outlier rejection (it works by pairs of LRFs)
+//    vector<CO> vCOs_ransac;
+//    set<unsigned>::iterator it_LRF1 = idx_estim_LRFs.begin(), it_LRF2;
+//    for(int j=0; j < M_num_LRFs; j++, it_LRF1++)
+//    {
+//        it_LRF2 = it_LRF1; it_LRF2++;
+//        if(it_LRF2==idx_estim_LRFs.end())
+//            it_LRF2 = idx_estim_LRFs.begin();
+
+//        unsigned LRF1 = *it_LRF1;
+//        unsigned LRF2 = *it_LRF2;
+
+//        vector<CO> vCOs_12;
+//        for(size_t i=0; i < vCOs.size(); i++)
+//            if( vCOs[i][0].id_LRF == LRF1 && vCOs[i][1].id_LRF == LRF2 )// || (vCOs[i][1].id_LRF == LRF1 && vCOs[i][0].id_LRF == LRF2) )
+//                vCOs_12.push_back(vCOs[i]);
+
+//#if DEBUG
+//        cout << "Corner gueses between the LRFs " << LRF1 <<  " and " << LRF2 << " : " << vCOs_12.size() << endl;
+//#endif
+
+//        map<unsigned,CPose3D> LRF_poses_init_;
+//        LRF_poses_init_[LRF1] = initial_Poses[LRF1];
+//        LRF_poses_init_[LRF2] = initial_Poses[LRF2];
+//        map<unsigned,CPose3D> calib12_ransac_ = calibrate_LRFs(vCOs_12, LRF_poses_init_);
+
+//        // The relative pose from the smaller LRF_ID to the larger LRF_ID
+//        CPose3D relative_poses_init;
+//        if(LRF2 > LRF1)
+//            relative_poses_init.inverseComposeFrom(initial_Poses[LRF2],initial_Poses[LRF1]); // This means inv(T_LRF1)*T_LRF2
+//        else
+//            relative_poses_init.inverseComposeFrom(initial_Poses[LRF1],initial_Poses[LRF2]);
+//        // cout << "PoseCompInv \n" << initial_Poses[LRF1].getHomogeneousMatrixVal() << endl << initial_Poses[LRF2].getHomogeneousMatrixVal() << endl << relative_poses_init.getHomogeneousMatrixVal() << endl;
+
+//        std::vector<size_t> inliers;
+//        double threshold_CO = 0.01;
+//        size_t min_inliers = 4;
+//        ransac_LRFcalib(vCOs_12, inliers, relative_poses_init, threshold_CO, min_inliers);
+//#if DEBUG
+//        cout << "inliers " << inliers.size() << endl;
+//#endif
+//        unsigned valic_co = 0;
+//        vector<CO> vCOs_12_ransac(inliers.size());
+//        for(unsigned i=0; i < inliers.size(); i++)
+//            vCOs_12_ransac[valic_co++] = vCOs_12[inliers[i]];
+
+//        // Calibrate pair of LRFs
+//        set<unsigned> idx_pair_LRFs;
+//        idx_pair_LRFs.insert(LRF1);
+//        idx_pair_LRFs.insert(LRF2);
+//        map<unsigned,CPose3D> LRF_poses_init;
+//        LRF_poses_init[LRF1] = initial_Poses[LRF1];
+//        LRF_poses_init[LRF2] = initial_Poses[LRF2];
+//        map<unsigned,CPose3D> calib12_ransac = calibrate_LRFs(vCOs_12_ransac, LRF_poses_init, idx_pair_LRFs);
+//        for(map<unsigned,CPose3D>::iterator it_pose=calib12_ransac.begin(); it_pose != calib12_ransac.end(); it_pose++)
+//            cout << "calibration_pair " << it_pose->first << "\n" << it_pose->second.getHomogeneousMatrixVal() << endl;
+
+//        // Get all the vCOs that pass the RANSAC test
+//        vCOs_ransac.insert(vCOs_ransac.begin(), vCOs_12.begin(), vCOs_12.end());
+
+//    }
+
+////    // Calibrate all the sensors simultaneously (loop closure is guaranteed)
+////    map<unsigned,CPose3D> calib_all = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_estim_LRFs);
+////    for(map<unsigned,CPose3D>::iterator it_pose=calib_all.begin(); it_pose != calib_all.end(); it_pose++)
+////        cout << "calibration_pair " << it_pose->first << "\n" << it_pose->second.getHomogeneousMatrixVal() << endl;
+//////    mrpt::system::pause();
+//////    cout << "Visualize\n";
+
+//    map<unsigned,CPose3D> calib_all = initial_Poses;
+////    set<unsigned> idx_pair_LRFs;
+////    idx_pair_LRFs.insert(0);
+////    idx_pair_LRFs.insert(1);
+////    map<unsigned,CPose3D> calib_all = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_pair_LRFs);
+////    M_num_LRFs = 2; // Show only the calibration of 2 sensors until the bugs are fixed
+
+//#if SHOW_CALIBRATED_SCANS
+//    // Show GUI
+//    // --------------------------
+//    mrpt::gui::CDisplayWindow3DPtr win;
+//    win = mrpt::gui::CDisplayWindow3DPtr( new mrpt::gui::CDisplayWindow3D("Calibrated LRF scans and 3D-planes", 700,700));
+
+//    opengl::COpenGLScenePtr scene = opengl::COpenGLScene::Create();
+
+////    scene->insert( opengl::CGridPlaneXY::Create(-20,20,-20,20,0,1) );
+//    scene->insert( opengl::stock_objects::CornerXYZ() );
+
+//    rawlogFile.close();
+//    rawlogFile.open(RAWLOG_FILE);
+
+//    num_RangeObs = 0;
+//    count_valid_obs = 0;
+//    while ( CRawlog::getActionObservationPairOrObservation(
+//                rawlogFile,      // Input file
+//                action,            // Possible out var: action of a pair action/obs
+//                observations,  // Possible out var: obs's of a pair action/obs
+//                observation,    // Possible out var: a single obs.
+//                rawlogEntry    // Just an I/O counter
+//                ) )
+//    {
+//        // Process observations
+//        if (observation)
+//        {
+//            assert(IS_CLASS(observation, CObservation2DRangeScan));
+
+//            num_RangeObs++;
+
+//            for(int j=0; j < M_num_LRFs; j++)
+//                if(observation->sensorLabel == LRF_labels[j])
+//                {
+//                    obsLRFs[j] = CObservation2DRangeScanPtr(observation);
+//                    scan_available[j] = true;
+//                    break;
+//                }
+
+//            bool all_scans = true;
+//            for(int j=0; j < M_num_LRFs; j++)
+//                all_scans = all_scans && scan_available[j];
+
+//            if(!all_scans)
+//                continue;
+
+//            // Reset the counter of simultaneous observations
+//            for(int j=0; j < M_num_LRFs; j++)
+//                scan_available[j] = false;
+
+//            // Apply decimation
+//            count_valid_obs++;
+//            if(count_valid_obs%decimation != 0)
+//                continue;
+
+//#if DEBUG
+//            cout << "Observation " << num_RangeObs << endl;// << " timestamp " << observation->timestamp << endl;
+//#endif
+
+//            // Clear scene
+//            scene = win->get3DSceneAndLock();
+//            scene->clear();
+
+//            // Place the LRF's scans in 3D according to their calibration
+//            for(int j=0; j < M_num_LRFs; j++)
+//            {
+//                obsLRFs[j]->sensorPose = calib_all[j];
+
+//                mrpt::slam::CSimplePointsMap m_cache_points;
+//                m_cache_points.clear();
+//                m_cache_points.insertionOptions.minDistBetweenLaserPoints = 0;
+//                m_cache_points.insertionOptions.isPlanarMap=false;
+//                m_cache_points.insertObservation( &(*obsLRFs[j]) );
+//                size_t n;
+//                const float	*x,*y,*z;
+//                m_cache_points.getPointsBuffer(n,x,y,z);
+
+////                vector<float> xsf(*x,n), ysf(*y,n), zsf(*z,n);
+//                vector<float> xsf(n), ysf(n), zsf(n);
+//                for(size_t i=0; i < n; i++)
+//                {
+//                    xsf[i] = x[i];
+//                    ysf[i] = y[i];
+//                    zsf[i] = z[i];
+//                }
+
+//            //    // Show 3D-planes corresponding to the segmented lines
+//            //    for (vector<pair<size_t,TPlane> >::iterator p=detectedPlanes.begin();p!=detectedPlanes.end();++p)
+//            //    {
+//            //        opengl::CTexturedPlanePtr glPlane = opengl::CTexturedPlane::Create(-10,10,-10,10);
+
+//            //        CPose3D   glPlanePose;
+//            //        p->second.getAsPose3D( glPlanePose );
+//            //        glPlane->setPose(glPlanePose);
+
+//            //        glPlane->setColor( randomGenerator.drawUniform(0,1), randomGenerator.drawUniform(0,1),randomGenerator.drawUniform(0,1), 0.6);
+
+//            //        scene->insert( glPlane );
+//            //    }
+
+//                {
+//                    opengl::CPointCloudPtr  points = opengl::CPointCloud::Create();
+//                    points->setColor(j==0 ? 1:0, j==1 ? 1:0, j==2 ? 1:0);
+//                    points->setPointSize(3);
+////                    points->enableColorFromZ();
+
+//                    points->setAllPoints(xsf,ysf,zsf);
+
+//                    scene->insert( points );
+//                }
+//            }
+
+//            win->unlockAccess3DScene();
+//            win->forceRepaint();
+
+//            win->waitForKey();
+//        }
+//    }
+//#endif
+
+//    MRPT_END
+//}
+
+// This functions saves some simultaneous scans into a .txt file
 void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_rawlog_file)
 {
     MRPT_START
@@ -643,20 +1118,19 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
     vector<CObservation2DRangeScanPtr> obsLRFs(M_num_LRFs);
     vector<bool> scan_available(M_num_LRFs,false);
 
-#if SHOW_SEGMENTATION
-    // Show the segmented lines
-    mrpt::gui::CDisplayWindowPlots  win2("LRF-scan and line segmentation", 700,700);
-#endif
+//#if SHOW_SEGMENTATION
+//    // Show the segmented lines
+//    mrpt::gui::CDisplayWindowPlots  win2("LRF-scan and line segmentation", 700,700);
+//#endif
 
-//vector<mrpt::math::CMatrixDouble> matObsLaser(3);
-//for(int j=0; j < M_num_LRFs; j++)
-//    matObsLaser[j] = mrpt::math::CMatrixDouble(0,1081);
+    vector<mrpt::math::CMatrixDouble> matObsLaser(M_num_LRFs);
+    for(int j=0; j < M_num_LRFs; j++)
+        matObsLaser[j] = mrpt::math::CMatrixDouble(0,1081);
 
 
     int num_observations = 0;
     int count_valid_obs = 0;
     int num_RangeObs = 0;
-    vector<CO> vCOs; // The Corner Observations required for calibration
     //    printf("Start acquiring observations from rawlog (size = %zu)\n", rawlogFile.getTotalBytesCount());
     while ( CRawlog::getActionObservationPairOrObservation(
                 rawlogFile,      // Input file
@@ -677,6 +1151,8 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
             // cout << (CObservation2DRangeScanPtr(observation))->aperture;
 #endif
             num_RangeObs++;
+            if(num_RangeObs < 3000)
+                continue;
 
             for(int j=0; j < M_num_LRFs; j++)
                 if(observation->sensorLabel == LRF_labels[j])
@@ -702,19 +1178,15 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
             if(count_valid_obs%decimation != 0)
                 continue;
 
-//#if DEBUG
-//            cout << "Observation " << num_RangeObs << " timestamp " << observation->timestamp << endl;
-////            cout << "Get lines in obs " << count_valid_obs << endl;
-////            num_observations++;
-//#endif
+            num_observations++;
 
-//    num_observations++;
-//    int x_row = 2*num_observations-2;
-//    int y_row = 2*num_observations-1;
+            //#if DEBUG
+            //            cout << "Observation " << num_RangeObs << " timestamp " << observation->timestamp << endl;
+            ////            cout << "Get lines in obs " << count_valid_obs << endl;
+            //#endif
 
-
-            // Segment lines from the LRFs scans
-            std::vector<std::vector<std::pair<size_t,TLine2D> > > detected_lines(M_num_LRFs);
+            int x_row = 2*num_observations-2;
+            int y_row = 2*num_observations-1;
             for(int j=0; j < M_num_LRFs; j++)
             {
                 mrpt::slam::CSimplePointsMap m_cache_points;
@@ -726,333 +1198,28 @@ void calib_LRFs_rawlog_ini(const string &INI_FILENAME, const string &override_ra
                 const float	*x,*y,*z;
                 m_cache_points.getPointsBuffer(n,x,y,z);
 
-//                matObsLaser[j].setSize(2*num_observations,matObsLaser[j].getColCount());
-//                for(size_t ii=0; ii < n; ii++)
-//                {
-//                  matObsLaser[j](x_row,ii) = x[ii];
-//                  matObsLaser[j](y_row,ii) = y[ii];
-//          //        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
-//                }
-//                if(n < obsLRFs[j]->scan.size())
-//                  matObsLaser[j](x_row,n) = pow(10,9);
-
-
-                Matrix<float,Dynamic,1> x_eigen(n), y_eigen(n);
-                // Map<Matrix<float,Dynamic,1> > x_eigen(x,n);
-//                for(size_t i=0; i < n; i++)
-//                {
-//                    x_eigen(i) = x[i];
-//                    y_eigen(i) = y[i];
-//                }
-                unsigned n_valid_pts = 0;
-                for(size_t i=0; i < n; i++)
+                matObsLaser[j].setSize(2*num_observations,matObsLaser[j].getColCount());
+                for(size_t ii=0; ii < n; ii++)
                 {
-                    if( (x[i]*x[i]+y[i]*y[i]) > 0.5 && (x[i]*x[i]+y[i]*y[i]) < 36) // Use only the points in a range of [0.7m, 6m]
-                    {
-                        x_eigen(n_valid_pts) = x[i];
-                        y_eigen(n_valid_pts) = y[i];
-                        ++n_valid_pts;
-                    }
+                  matObsLaser[j](x_row,ii) = x[ii];
+                  matObsLaser[j](y_row,ii) = y[ii];
+          //        cout << i << " scan " << obsLaser->scan[i] << " x " << x[i] << " y " << y[i] << " z " << z[i] << endl;
                 }
-                x_eigen = x_eigen.block(0,0,n_valid_pts,1);
-                y_eigen = y_eigen.block(0,0,n_valid_pts,1);
-
-                std::vector<std::pair<size_t,TLine2D> > detected_lines_LRF;
-                mrpt::math::ransac_detect_2D_lines(x_eigen,y_eigen,detected_lines_LRF,threshold_line,min_inliers_line);
-                detected_lines[j] = detected_lines_LRF;
-//                cout << "scan " << j << " size " << obsLRFs[j]->scan.size() << " n " << n << " lines " << detected_lines_LRF.size() << endl;
-
-#if SHOW_SEGMENTATION
-                // Show GUI
-                // --------------------------
-                win2.plot(x_eigen,y_eigen,".b4","points");
-
-                unsigned int n_line=0;
-                for (vector<pair<size_t,TLine2D> >::iterator p=detected_lines[j].begin();p!=detected_lines[j].end();++p)
-                {
-                  CVectorDouble lx(2),ly(2);
-                  lx[0] = -15;
-                  lx[1] = 15;
-                  for (CVectorDouble::Index q=0;q<lx.size();q++)
-                      ly[q] = -(p->second.coefs[2]+p->second.coefs[0]*lx[q])/p->second.coefs[1];
-                  win2.plot(lx,ly,"r-1",format("line_%u",n_line++));
-                }
-
-                win2.axis_fit();
-                win2.axis_equal();
-
-                //mrpt::system::sleep(200);
-                win2.waitForKey();
-#endif
+                if(n < 1081)
+                  matObsLaser[j](x_row,n) = pow(10,9);
             }
 
-            // TODO: Generate the COs with their covariances
-
-            // Generate vCOs.
-            // All the line combinations are used, despite many of them are not real vCOs. A RANSAC procedure is
-            // applied later to discard such outliers
-            for(int j=0; j < M_num_LRFs; j++)
-                if(detected_lines[j].size() > 1 && detected_lines[(j+1)%3].size() > 1)
-                    for(size_t a=0; a < detected_lines[j].size(); a++)
-                        for(size_t aa=a+1; aa < detected_lines[j].size(); aa++)
-                            for(size_t b=0; b < detected_lines[(j+1)%3].size(); b++)
-                                for(size_t bb=b+1; bb < detected_lines[(j+1)%3].size(); bb++)
-                                {
-                                    CO CO_guess;
-
-                                    CO_guess[0].id_LRF = j;
-                                    CO_guess[0].lines[0].center = Vector2d(1/detected_lines[j][a].second.coefs[0], (-detected_lines[j][a].second.coefs[2]-1)/detected_lines[j][a].second.coefs[1]);
-                                    CO_guess[0].lines[0].cov_center = Matrix2d::Identity();
-                                    CO_guess[0].lines[0].dir = Vector2d(-detected_lines[j][a].second.coefs[1], detected_lines[j][a].second.coefs[0]);
-                                    CO_guess[0].lines[0].cov_dir = Matrix2d::Identity();
-
-                                    CO_guess[0].lines[1].center = Vector2d(1/detected_lines[j][aa].second.coefs[0], (-detected_lines[j][aa].second.coefs[2]-1)/detected_lines[j][aa].second.coefs[1]);
-                                    CO_guess[0].lines[1].cov_center = Matrix2d::Identity();
-                                    CO_guess[0].lines[1].dir = Vector2d(-detected_lines[j][aa].second.coefs[1], detected_lines[j][aa].second.coefs[0]);
-                                    CO_guess[0].lines[1].cov_dir = Matrix2d::Identity();
-
-                                    CO_guess[1].id_LRF = (j+1)%3;
-                                    CO_guess[1].lines[0].center = Vector2d(1/detected_lines[(j+1)%3][b].second.coefs[0], (-detected_lines[(j+1)%3][b].second.coefs[2]-1)/detected_lines[(j+1)%3][b].second.coefs[1]);
-                                    CO_guess[1].lines[0].cov_center = Matrix2d::Identity();
-                                    CO_guess[1].lines[0].dir = Vector2d(-detected_lines[(j+1)%3][b].second.coefs[1], detected_lines[(j+1)%3][b].second.coefs[0]);
-                                    CO_guess[1].lines[0].cov_dir = Matrix2d::Identity();
-
-                                    CO_guess[1].lines[1].center = Vector2d(1/detected_lines[(j+1)%3][bb].second.coefs[0], (-detected_lines[(j+1)%3][bb].second.coefs[2]-1)/detected_lines[(j+1)%3][bb].second.coefs[1]);
-                                    CO_guess[1].lines[1].cov_center = Matrix2d::Identity();
-                                    CO_guess[1].lines[1].dir = Vector2d(-detected_lines[(j+1)%3][bb].second.coefs[1], detected_lines[(j+1)%3][bb].second.coefs[0]);
-                                    CO_guess[1].lines[1].cov_dir = Matrix2d::Identity();
-
-                                    vCOs.push_back(CO_guess);
-
-                                    // Generate reversed CO (a,aa,bb,b) because we don't really know the line-plane correspondences
-                                    CO_guess[1].lines[0].center = Vector2d(1/detected_lines[(j+1)%3][bb].second.coefs[0], (-detected_lines[(j+1)%3][bb].second.coefs[2]-1)/detected_lines[(j+1)%3][bb].second.coefs[1]);
-                                    CO_guess[1].lines[0].cov_center = Matrix2d::Identity();
-                                    CO_guess[1].lines[0].dir = Vector2d(-detected_lines[(j+1)%3][bb].second.coefs[1], detected_lines[(j+1)%3][bb].second.coefs[0]);
-                                    CO_guess[1].lines[0].cov_dir = Matrix2d::Identity();
-
-                                    CO_guess[1].lines[1].center = Vector2d(1/detected_lines[(j+1)%3][b].second.coefs[0], (-detected_lines[(j+1)%3][b].second.coefs[2]-1)/detected_lines[(j+1)%3][b].second.coefs[1]);
-                                    CO_guess[1].lines[1].cov_center = Matrix2d::Identity();
-                                    CO_guess[1].lines[1].dir = Vector2d(-detected_lines[(j+1)%3][b].second.coefs[1], detected_lines[(j+1)%3][b].second.coefs[0]);
-                                    CO_guess[1].lines[1].cov_dir = Matrix2d::Identity();
-
-                                    vCOs.push_back(CO_guess);
-                                }
-//#if DEBUG
-//            cout << "Corner gueses " << vCOs.size() << endl;
-//#endif
-            if(vCOs.size() > 400)
+            if(num_observations >= 400)
                 break;
         }
     }
 
-//    vCOs.resize(400);
-//    CMatrixFixedNumeric<double,50,400> co_mat;
-//    for(unsigned i=0; i<400; i++)
-//        co_mat.insertMatrix(0,i,getCMatrix(CO2vector(vCOs[i])));
-//    co_mat.saveToTextFile("/home/edu/test_cos.txt");
+    for(int j=0; j < M_num_LRFs; j++)
+        matObsLaser[j].saveToTextFile(mrpt::format("/home/edu/matObs%i.txt",j));
 
-//    for(int j=0; j < M_num_LRFs; j++)
-//        matObsLaser[j].saveToTextFile(mrpt::format("/home/edu/matObs%i.txt",j));
-
-    // RANSAC Outlier rejection (it works by pairs of LRFs)
-    vector<CO> vCOs_ransac;
-    set<unsigned>::iterator it_LRF1 = idx_estim_LRFs.begin(), it_LRF2;
-    for(int j=0; j < M_num_LRFs; j++, it_LRF1++)
-    {
-        it_LRF2 = it_LRF1; it_LRF2++;
-        if(it_LRF2==idx_estim_LRFs.end())
-            it_LRF2 = idx_estim_LRFs.begin();
-
-        unsigned LRF1 = *it_LRF1;
-        unsigned LRF2 = *it_LRF2;
-
-        vector<CO> vCOs_12;
-        for(size_t i=0; i < vCOs.size(); i++)
-            if( vCOs[i][0].id_LRF == LRF1 && vCOs[i][1].id_LRF == LRF2 )// || (vCOs[i][1].id_LRF == LRF1 && vCOs[i][0].id_LRF == LRF2) )
-                vCOs_12.push_back(vCOs[i]);
-
-#if DEBUG
-        cout << "Corner gueses between the LRFs " << LRF1 <<  " and " << LRF2 << " : " << vCOs_12.size() << endl;
-#endif
-
-        map<unsigned,CPose3D> LRF_poses_init_;
-        LRF_poses_init_[LRF1] = initial_Poses[LRF1];
-        LRF_poses_init_[LRF2] = initial_Poses[LRF2];
-        map<unsigned,CPose3D> calib12_ransac_ = calibrate_LRFs(vCOs_12, LRF_poses_init_);
-
-        // The relative pose from the smaller LRF_ID to the larger LRF_ID
-        CPose3D relative_poses_init;
-        if(LRF2 > LRF1)
-            relative_poses_init.inverseComposeFrom(initial_Poses[LRF2],initial_Poses[LRF1]); // This means inv(T_LRF1)*T_LRF2
-        else
-            relative_poses_init.inverseComposeFrom(initial_Poses[LRF1],initial_Poses[LRF2]);
-        // cout << "PoseCompInv \n" << initial_Poses[LRF1].getHomogeneousMatrixVal() << endl << initial_Poses[LRF2].getHomogeneousMatrixVal() << endl << relative_poses_init.getHomogeneousMatrixVal() << endl;
-
-        std::vector<size_t> inliers;
-        double threshold_CO = 0.01;
-        size_t min_inliers = 4;
-        ransac_LRFcalib(vCOs_12, inliers, relative_poses_init, threshold_CO, min_inliers);
-#if DEBUG
-        cout << "inliers " << inliers.size() << endl;
-#endif
-        unsigned valic_co = 0;
-        vector<CO> vCOs_12_ransac(inliers.size());
-        for(unsigned i=0; i < inliers.size(); i++)
-            vCOs_12_ransac[valic_co++] = vCOs_12[inliers[i]];
-
-        // Calibrate pair of LRFs
-        set<unsigned> idx_pair_LRFs;
-        idx_pair_LRFs.insert(LRF1);
-        idx_pair_LRFs.insert(LRF2);
-        map<unsigned,CPose3D> LRF_poses_init;
-        LRF_poses_init[LRF1] = initial_Poses[LRF1];
-        LRF_poses_init[LRF2] = initial_Poses[LRF2];
-        map<unsigned,CPose3D> calib12_ransac = calibrate_LRFs(vCOs_12_ransac, LRF_poses_init, idx_pair_LRFs);
-        for(map<unsigned,CPose3D>::iterator it_pose=calib12_ransac.begin(); it_pose != calib12_ransac.end(); it_pose++)
-            cout << "calibration_pair " << it_pose->first << "\n" << it_pose->second.getHomogeneousMatrixVal() << endl;
-
-        // Get all the vCOs that pass the RANSAC test
-        vCOs_ransac.insert(vCOs_ransac.begin(), vCOs_12.begin(), vCOs_12.end());
-
-    }
-
-//    // Calibrate all the sensors simultaneously (loop closure is guaranteed)
-//    map<unsigned,CPose3D> calib_all = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_estim_LRFs);
-//    for(map<unsigned,CPose3D>::iterator it_pose=calib_all.begin(); it_pose != calib_all.end(); it_pose++)
-//        cout << "calibration_pair " << it_pose->first << "\n" << it_pose->second.getHomogeneousMatrixVal() << endl;
-////    mrpt::system::pause();
-////    cout << "Visualize\n";
-
-    map<unsigned,CPose3D> calib_all = initial_Poses;
-//    set<unsigned> idx_pair_LRFs;
-//    idx_pair_LRFs.insert(0);
-//    idx_pair_LRFs.insert(1);
-//    map<unsigned,CPose3D> calib_all = calibrate_LRFs(vCOs_ransac, initial_Poses, idx_pair_LRFs);
-//    M_num_LRFs = 2; // Show only the calibration of 2 sensors until the bugs are fixed
-
-#if SHOW_CALIBRATED_SCANS
-    // Show GUI
-    // --------------------------
-    mrpt::gui::CDisplayWindow3DPtr win;
-    win = mrpt::gui::CDisplayWindow3DPtr( new mrpt::gui::CDisplayWindow3D("Calibrated LRF scans and 3D-planes", 700,700));
-
-    opengl::COpenGLScenePtr scene = opengl::COpenGLScene::Create();
-
-//    scene->insert( opengl::CGridPlaneXY::Create(-20,20,-20,20,0,1) );
-    scene->insert( opengl::stock_objects::CornerXYZ() );
-
-    rawlogFile.close();
-    rawlogFile.open(RAWLOG_FILE);
-
-    num_RangeObs = 0;
-    count_valid_obs = 0;
-    while ( CRawlog::getActionObservationPairOrObservation(
-                rawlogFile,      // Input file
-                action,            // Possible out var: action of a pair action/obs
-                observations,  // Possible out var: obs's of a pair action/obs
-                observation,    // Possible out var: a single obs.
-                rawlogEntry    // Just an I/O counter
-                ) )
-    {
-        // Process observations
-        if (observation)
-        {
-            assert(IS_CLASS(observation, CObservation2DRangeScan));
-
-            num_RangeObs++;
-
-            for(int j=0; j < M_num_LRFs; j++)
-                if(observation->sensorLabel == LRF_labels[j])
-                {
-                    obsLRFs[j] = CObservation2DRangeScanPtr(observation);
-                    scan_available[j] = true;
-                    break;
-                }
-
-            bool all_scans = true;
-            for(int j=0; j < M_num_LRFs; j++)
-                all_scans = all_scans && scan_available[j];
-
-            if(!all_scans)
-                continue;
-
-            // Reset the counter of simultaneous observations
-            for(int j=0; j < M_num_LRFs; j++)
-                scan_available[j] = false;
-
-            // Apply decimation
-            count_valid_obs++;
-            if(count_valid_obs%decimation != 0)
-                continue;
-
-#if DEBUG
-            cout << "Observation " << num_RangeObs << endl;// << " timestamp " << observation->timestamp << endl;
-#endif
-
-            // Clear scene
-            scene = win->get3DSceneAndLock();
-            scene->clear();
-
-            // Place the LRF's scans in 3D according to their calibration
-            for(int j=0; j < M_num_LRFs; j++)
-            {
-                obsLRFs[j]->sensorPose = calib_all[j];
-
-                mrpt::slam::CSimplePointsMap m_cache_points;
-                m_cache_points.clear();
-                m_cache_points.insertionOptions.minDistBetweenLaserPoints = 0;
-                m_cache_points.insertionOptions.isPlanarMap=false;
-                m_cache_points.insertObservation( &(*obsLRFs[j]) );
-                size_t n;
-                const float	*x,*y,*z;
-                m_cache_points.getPointsBuffer(n,x,y,z);
-
-//                vector<float> xsf(*x,n), ysf(*y,n), zsf(*z,n);
-                vector<float> xsf(n), ysf(n), zsf(n);
-                for(size_t i=0; i < n; i++)
-                {
-                    xsf[i] = x[i];
-                    ysf[i] = y[i];
-                    zsf[i] = z[i];
-                }
-
-            //    // Show 3D-planes corresponding to the segmented lines
-            //    for (vector<pair<size_t,TPlane> >::iterator p=detectedPlanes.begin();p!=detectedPlanes.end();++p)
-            //    {
-            //        opengl::CTexturedPlanePtr glPlane = opengl::CTexturedPlane::Create(-10,10,-10,10);
-
-            //        CPose3D   glPlanePose;
-            //        p->second.getAsPose3D( glPlanePose );
-            //        glPlane->setPose(glPlanePose);
-
-            //        glPlane->setColor( randomGenerator.drawUniform(0,1), randomGenerator.drawUniform(0,1),randomGenerator.drawUniform(0,1), 0.6);
-
-            //        scene->insert( glPlane );
-            //    }
-
-                {
-                    opengl::CPointCloudPtr  points = opengl::CPointCloud::Create();
-                    points->setColor(j==0 ? 1:0, j==1 ? 1:0, j==2 ? 1:0);
-                    points->setPointSize(3);
-//                    points->enableColorFromZ();
-
-                    points->setAllPoints(xsf,ysf,zsf);
-
-                    scene->insert( points );
-                }
-            }
-
-            win->unlockAccess3DScene();
-            win->forceRepaint();
-
-            win->waitForKey();
-        }
-    }
-#endif
 
     MRPT_END
 }
-
 
 // ------------------------------------------------------
 //						MAIN

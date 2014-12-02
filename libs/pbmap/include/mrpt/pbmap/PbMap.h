@@ -69,17 +69,27 @@ namespace pbmap {
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr outEdgeCloudPtr;
     unsigned background, foreground, groundplane;
 
-    /*!Save PbMap in the given filePath*/
+    /*! Save PbMap in the given filePath*/
     void savePbMap(std::string filePath);
 
-    /*!Load a PbMap from the given filePath*/
+    /*! Load a PbMap from the given filePath*/
     void loadPbMap(std::string PbMapFile);
 
-    /*!Merge two pbmaps*/
+    /*! Merge two pbmaps */
     void MergeWith(PbMap &pbm, Eigen::Matrix4f &T);
 
     /*! Print PbMap content to a text file*/
     void printPbMap(std::string txtFilePbm);
+
+    /*! Return the total area of the PbMap planes */
+    inline float getArea() const
+    {
+      float totalArea = 0;
+      for(unsigned i=0; i < vPlanes.size(); i++)
+        totalArea += vPlanes[i].areaHull;
+
+      return totalArea;
+    }
 
 //    boost::mutex mtx_pbmap_busy;
 

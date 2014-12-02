@@ -160,7 +160,7 @@ Eigen::Matrix4f ConsistencyTest::estimatePose( std::map<unsigned, unsigned> &mat
 
   //Calculate rotation
   Matrix3f normalCovariances = Matrix3f::Zero();
-//  normalCovariances(0,0) = 1;  // Limit rotation on y/z (horizontal) axis
+//  normalCovariances(0,0) = PBMSource.getArea();  // Limit rotation on y/z (horizontal) axis // Introduce the virtual matching of two vertical planes n=(1,0,0)
   for(map<unsigned, unsigned>::iterator it = matched_planes.begin(); it != matched_planes.end(); it++)
     normalCovariances += (PBMTarget.vPlanes[it->second].areaHull/PBMTarget.vPlanes[it->second].d) * PBMTarget.vPlanes[it->second].v3normal * PBMSource.vPlanes[it->first].v3normal.transpose();
 //    normalCovariances += PBMTarget.vPlanes[it->second].v3normal * PBMSource.vPlanes[it->first].v3normal.transpose();
@@ -173,23 +173,23 @@ Eigen::Matrix4f ConsistencyTest::estimatePose( std::map<unsigned, unsigned> &mat
   JacobiSVD<MatrixXf> svd(normalCovariances, ComputeThinU | ComputeThinV);
   Matrix3f Rotation = svd.matrixV() * svd.matrixU().transpose();
 
-  // Check consitioning. 3 non-parallel planes are required in 6DoF, and only two for planar movement (3DoF)
-  bool bPlanar_cond = false;
-  for(map<unsigned, unsigned>::iterator it1 = matched_planes.begin(); it1 != matched_planes.end() && !bPlanar_cond; it1++)
+//  // Check consitioning. 3 non-parallel planes are required in 6DoF, and only two for planar movement (3DoF)
+//  bool bPlanar_cond = false;
+//  for(map<unsigned, unsigned>::iterator it1 = matched_planes.begin(); it1 != matched_planes.end() && !bPlanar_cond; it1++)
+//  {
+//    map<unsigned, unsigned>::iterator it2 = it1; it2++;
+//    for(; it2 != matched_planes.end() && !bPlanar_cond; it2++)
+//    {
+//      Eigen::Vector3f planar_conditioning = PBMSource.vPlanes[it1->first].v3normal .cross (PBMSource.vPlanes[it2->first].v3normal);
+//      if(fabs(planar_conditioning(0)) > 0.33)
+//        bPlanar_cond = true;
+//    }
+//  }
+  float conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
+  if(conditioning > 100) // ^Dof
+//  if(!bPlanar_cond) // ^Dof
   {
-    map<unsigned, unsigned>::iterator it2 = it1; it2++;
-    for(; it2 != matched_planes.end() && !bPlanar_cond; it2++)
-    {
-      Eigen::Vector3f planar_conditioning = PBMSource.vPlanes[it1->first].v3normal .cross (PBMSource.vPlanes[it2->first].v3normal);
-      if(fabs(planar_conditioning(0)) > 0.33)
-        bPlanar_cond = true;
-    }
-  }
-//  float conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
-//  if(conditioning > 100) // ^Dof
-  if(!bPlanar_cond) // ^Dof
-  {
-//    cout << " ConsistencyTest::initPose -> Bad conditioning: " << conditioning << " -> Returning the identity\n";
+    cout << " ConsistencyTest::initPose -> Bad conditioning: " << conditioning << " -> Returning the identity\n";
     return Eigen::Matrix4f::Identity();
   }
 
@@ -258,7 +258,7 @@ Eigen::Matrix4f ConsistencyTest::estimatePose( std::map<unsigned, unsigned> &mat
 
 bool ConsistencyTest::estimatePoseWithCovariance( std::map<unsigned, unsigned> &matched_planes,
                                                  Eigen::Matrix4f &rigidTransf,
-                                                 Eigen::Matrix<float,6,6> &covarianceM)
+                                                 Eigen::Matrix<float,6,6> &infoMat)
 {
   if(matched_planes.size() < 3)
   {
@@ -272,8 +272,8 @@ bool ConsistencyTest::estimatePoseWithCovariance( std::map<unsigned, unsigned> &
     normalVectors.col(col) = PBMTarget.vPlanes[it->first].v3normal;
   JacobiSVD<MatrixXf> svd_cond(normalVectors, ComputeThinU | ComputeThinV);
 //  cout << "SV " << svd_cond.singularValues().transpose() << endl;
-  if(svd_cond.singularValues()[0] / svd_cond.singularValues()[1] > 10)
-    return false;
+//  if(svd_cond.singularValues()[0] / svd_cond.singularValues()[1] > 100)
+//    return false;
 
   //Calculate rotation
   Matrix3f normalCovariances = Matrix3f::Zero();
@@ -322,9 +322,9 @@ bool ConsistencyTest::estimatePoseWithCovariance( std::map<unsigned, unsigned> &
   rigidTransf.block(0,3,3,1) = translation;
   rigidTransf.row(3) << 0,0,0,1;
 
-//  Eigen::Matrix<float,6,6> covarianceM = Eigen::Matrix<float,6,6>::Zero();
-  covarianceM.block(0,0,3,3) = hessian; // The first diagonal 3x3 block corresponds to the translation part
-  covarianceM.block(3,3,3,3) = normalCovariances; // Rotation block
+  infoMat = Eigen::Matrix<float,6,6>::Zero();
+  infoMat.block(0,0,3,3) = hessian; // The first diagonal 3x3 block corresponds to the translation part
+  infoMat.block(3,3,3,3) = normalCovariances; // Rotation block
 
   return true;
 }

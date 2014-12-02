@@ -334,13 +334,20 @@ bool SubgraphMatcher::evalUnaryConstraints2D(Plane &plane1, Plane &plane2, PbMap
   cout << "unary2D between " << plane1.id << " " << plane2.id << "\n";
   #endif
 
+    // Planar movement
   if( fabs(plane1.v3normal(0) - plane2.v3normal(0) ) > 0.08 ){
+#if _VERBOSE
+    cout << "unary2D false 1 " << plane1.id << " " << plane2.id << "\n";
+#endif
     return false;
   }
 
   if( plane1.v3normal(0) > 0.98 ){
     if( fabs(plane1.d - plane2.d) < 0.15 ){
 //      ++rejectSemantic;
+#if _VERBOSE
+    cout << "unary2D false 2 " << plane1.id << " " << plane2.id << "\n";
+#endif
       return false;
     }
   }
@@ -1127,14 +1134,14 @@ std::map<unsigned,unsigned> SubgraphMatcher::compareSubgraphs(Subgraph &subgraph
     for(set<unsigned>::iterator it1 = sourcePlanes.begin(); it1 != sourcePlanes.end(); it1++)
       for(set<unsigned>::iterator it2 = targetPlanes.begin(); it2 != targetPlanes.end(); it2++)
         hashUnaryConstraints[*it1][*it2] = (evalUnaryConstraints(subgraphSrc->pPBM->vPlanes[*it1], subgraphTrg->pPBM->vPlanes[*it2], *subgraphTrg->pPBM, false ) ? 1 : 0);
-  else if(option == 1) // Odometry graph matcher
-    for(set<unsigned>::iterator it1 = sourcePlanes.begin(); it1 != sourcePlanes.end(); it1++)
-      for(set<unsigned>::iterator it2 = targetPlanes.begin(); it2 != targetPlanes.end(); it2++)
-        hashUnaryConstraints[*it1][*it2] = (evalUnaryConstraintsOdometry(subgraphSrc->pPBM->vPlanes[*it1], subgraphTrg->pPBM->vPlanes[*it2], *subgraphTrg->pPBM, false ) ? 1 : 0);
-  else if(option == 2) // Default graph matcher restricted to planar movement (fix plane x=const)
+  else if(option == 1) // Default graph matcher restricted to planar movement (fix plane x=const)
     for(set<unsigned>::iterator it1 = sourcePlanes.begin(); it1 != sourcePlanes.end(); it1++)
       for(set<unsigned>::iterator it2 = targetPlanes.begin(); it2 != targetPlanes.end(); it2++)
         hashUnaryConstraints[*it1][*it2] = (evalUnaryConstraints2D(subgraphSrc->pPBM->vPlanes[*it1], subgraphTrg->pPBM->vPlanes[*it2], *subgraphTrg->pPBM, false ) ? 1 : 0);
+  else if(option == 2) // Odometry graph matcher
+    for(set<unsigned>::iterator it1 = sourcePlanes.begin(); it1 != sourcePlanes.end(); it1++)
+      for(set<unsigned>::iterator it2 = targetPlanes.begin(); it2 != targetPlanes.end(); it2++)
+        hashUnaryConstraints[*it1][*it2] = (evalUnaryConstraintsOdometry(subgraphSrc->pPBM->vPlanes[*it1], subgraphTrg->pPBM->vPlanes[*it2], *subgraphTrg->pPBM, false ) ? 1 : 0);
   else if(option == 3) // Odometry graph matcher restricted to planar movement (fix plane x=const)
     for(set<unsigned>::iterator it1 = sourcePlanes.begin(); it1 != sourcePlanes.end(); it1++)
       for(set<unsigned>::iterator it2 = targetPlanes.begin(); it2 != targetPlanes.end(); it2++)
