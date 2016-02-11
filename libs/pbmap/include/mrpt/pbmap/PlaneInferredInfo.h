@@ -26,52 +26,51 @@
 namespace mrpt {
 namespace pbmap {
 
-
-	/** A class used to infer some semantic meaning to the planes of a PbMap. This knowledge
-	 *  is inferred through some heristics to determine if a plane correspond to the floor, or
-	 *  to a wall ("structural plane") or if instead it is a contextual plane (e.g. TV, worktop).
-	 *
-	 * \ingroup mrpt_pbmap_grp
-	 */
-  class PBMAP_IMPEXP PlaneInferredInfo
-  {
-   public:
-
-    // Context-Planes recognition functions:
-  ///*!Floor plane id*/
-  //  int FloorPlaneMap;
-
-    // Constructor
-    PlaneInferredInfo(PbMap &mPbM) :
-      mPbMap(mPbM)
+    /** A class used to infer some semantic meaning to the planes of a PbMap. This knowledge
+         *  is inferred through some heristics to determine if a plane correspond to the floor, or
+         *  to a wall ("structural plane") or if instead it is a contextual plane (e.g. TV, worktop).
+         *
+         * \ingroup mrpt_pbmap_grp
+         */
+    class PBMAP_IMPEXP PlaneInferredInfo
     {
+    public:
+
+        // Context-Planes recognition functions:
+        ///*!Floor plane id*/
+        //  int FloorPlaneMap;
+
+        // Constructor
+        PlaneInferredInfo(PbMap &mPbM) :
+            mPbMap(mPbM)
+        {
+        };
+
+        /*!Check if the input plane fulfill some heuristics and so we can infer some knowledge, e.g. the plane correspond to the floor,
+         a wall, the ceiling, in the world. It also makes use of the current sensor pose to verify some assumptions. // Modificar con un define esto ultimo
+        */
+        bool searchTheFloor(Eigen::Matrix4f &poseSensor, Plane &plane);
+
+        // Functions to check if a plane has been fully seen. We use heuristics that are likely but not sure to give the correct result
+        /*!Check if the input planar patch (after segmentation) is cut by the image. It checks that the inliers "planeIndices" fulfill a minimum distance "threshold" with the border
+          of the image, whose size is defined by "widthSampledImage" x "heightSampledImage"
+        */
+        bool isPlaneCutbyImage(std::vector<int> &planeIndices, unsigned &widthSampledImage, unsigned &heightSampledImage, unsigned threshold);
+
+        /*!Check if the input planar patch (after segmentation) is cut by the image. It checks that the nearer 3D points to the plane's convex hull are behind the plane
+        */
+        bool isSurroundingBackground(Plane &plane, pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &frame, std::vector<int> &planeIndices, unsigned threshold);
+
+        /*!Check if the input plane represents completely a 3D planar surface. It uses some heuristics to mark a plane as "Complete" when its area does not grow after
+          subsequent observations.
+        */
+        void isFullExtent(Plane &plane, double newArea);
+
+    private:
+
+        PbMap &mPbMap;
+
     };
-
-  /*!Check if the input plane fulfill some heuristics and so we can infer some knowledge, e.g. the plane correspond to the floor,
-     a wall, the ceiling, in the world. It also makes use of the current sensor pose to verify some assumptions. // Modificar con un define esto ultimo
-    */
-    bool searchTheFloor(Eigen::Matrix4f &poseSensor, Plane &plane);
-
-    // Functions to check if a plane has been fully seen. We use heuristics that are likely but not sure to give the correct result
-    /*!Check if the input planar patch (after segmentation) is cut by the image. It checks that the inliers "planeIndices" fulfill a minimum distance "threshold" with the border
-      of the image, whose size is defined by "widthSampledImage" x "heightSampledImage"
-    */
-    bool isPlaneCutbyImage(std::vector<int> &planeIndices, unsigned &widthSampledImage, unsigned &heightSampledImage, unsigned threshold);
-
-    /*!Check if the input planar patch (after segmentation) is cut by the image. It checks that the nearer 3D points to the plane's convex hull are behind the plane
-    */
-    bool isSurroundingBackground(Plane &plane, pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &frame, std::vector<int> &planeIndices, unsigned threshold);
-
-    /*!Check if the input plane represents completely a 3D planar surface. It uses some heuristics to mark a plane as "Complete" when its area does not grow after
-      subsequent observations.
-    */
-    void isFullExtent(Plane &plane, double newArea);
-
-   private:
-
-    PbMap &mPbMap;
-
-  };
 
 } } // End of namespaces
 

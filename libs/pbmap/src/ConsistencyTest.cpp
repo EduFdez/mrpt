@@ -72,7 +72,7 @@ double ConsistencyTest::calcAlignmentError( std::map<unsigned, unsigned> &matche
 // Transformation from Source to Target
 Eigen::Matrix4f ConsistencyTest::initPose( std::map<unsigned, unsigned> &matched_planes )
 {
-//  assert(matched_planes.size() >= 3);
+//  ASSERT_(matched_planes.size() >= 3);
   if(matched_planes.size() < 3)
   {
     cout << "Insuficient matched planes " << matched_planes.size() << endl;
@@ -418,7 +418,7 @@ Eigen::Matrix4f ConsistencyTest::initPose2D( std::map<unsigned, unsigned> &match
 
 Eigen::Matrix4f ConsistencyTest::getRTwithModel( std::map<unsigned, unsigned> &matched_planes )
 {
-  assert(matched_planes.size() >= 3);
+  ASSERT_(matched_planes.size() >= 3);
   Eigen::Matrix4f rigidTransf = initPose( matched_planes ); // Inverse-Pose which maps from model to data
 
 //  std::map<unsigned, unsigned> surrounding_planes = matched_planes;
@@ -501,7 +501,7 @@ Eigen::Matrix4f ConsistencyTest::getRTwithModel( std::map<unsigned, unsigned> &m
 // Obtain the rigid transformation from 3 matched planes
 CMatrixDouble getAlignment( const CMatrixDouble &matched_planes )
 {
-  assert(size(matched_planes,1) == 8 && size(matched_planes,2) == 3);
+  ASSERT_(size(matched_planes,1) == 8 && size(matched_planes,2) == 3);
 
   //Calculate rotation
   Matrix3f normalCovariances = Matrix3f::Zero();
@@ -664,7 +664,7 @@ bool ransac3Dplane_degenerate(
 // ------------------------------------------------------
 Eigen::Matrix4f ConsistencyTest::estimatePoseRANSAC( std::map<unsigned, unsigned> &matched_planes )
 {
-//  assert(matched_planes.size() >= 3);
+//  ASSERT_(matched_planes.size() >= 3);
 //  CTicTac tictac;
 
   if(matched_planes.size() <= 3)
