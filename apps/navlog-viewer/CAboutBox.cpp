@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -131,7 +131,7 @@ void CAboutBox::OnInit(wxInitDialogEvent& event)
 
     // Set the label with MRPT version:
     wxString    s(_("Build: "));
-    s << wxString(__DATE__,wxConvLibc);
+    s << _U( mrpt::system::MRPT_getCompilationDate().c_str() );
     s << _(" - ") << MRPTver;
 
     lbBuild->SetLabel( s );
@@ -144,12 +144,12 @@ void CAboutBox::OnInit(wxInitDialogEvent& event)
 
 		cout << "  navlog-viewer \n";
 		cout << "--------------------------------\n";
-		cout << "Jose Luis Blanco (C) 2005-2012\n";
+		cout << "Jose Luis Blanco\n";
 		cout << "For bug reports or to collaborate: <joseluisblancoc@gmail.com>\n";
 
 		cout << "Program version:        " << NAVLOGVIEWER_VERSION << endl;
 		cout << "MRPT version:           " << MRPT_getVersion() << endl;
-		cout << "MRPT compilation date:  " << MRPT_getCompilationDate() << endl;
+		cout << "MRPT source timestamp:  " << MRPT_getCompilationDate() << endl;
  		cout << "Eigen version:          " << EIGEN_WORLD_VERSION << "." << EIGEN_MAJOR_VERSION << "." << EIGEN_MINOR_VERSION << endl;
 		cout << "wxWidgets version:      " <<std::string(wxVer.mb_str()) << endl;
  		cout << "OpenCV version:         ";

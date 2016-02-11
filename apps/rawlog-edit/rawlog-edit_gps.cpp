@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -69,11 +69,11 @@ DECLARE_OP_FUNCTION(op_export_gps_kml)
 			// Insert the new entries:
 			TDataPerGPS   &D = m_gps_paths[obs->sensorLabel];
 			TGPSDataPoint &d = D.path[o->timestamp];
-
-			d.lon = obs->GGA_datum.longitude_degrees;
-			d.lat = obs->GGA_datum.latitude_degrees;
-			d.alt = obs->GGA_datum.altitude_meters;
-			d.fix = obs->GGA_datum.fix_quality;
+			const mrpt::obs::gnss::Message_NMEA_GGA & gga = obs->getMsgByClass<mrpt::obs::gnss::Message_NMEA_GGA>();
+			d.lon = gga.fields.longitude_degrees;
+			d.lat = gga.fields.latitude_degrees;
+			d.alt = gga.fields.altitude_meters;
+			d.fix = gga.fields.fix_quality;
 
 			return true; // All ok
 		}
@@ -272,8 +272,6 @@ DECLARE_OP_FUNCTION(op_export_gps_kml)
 
 }
 
-
-
 // ======================================================================
 //		op_export_gps_txt
 // ======================================================================
@@ -372,15 +370,6 @@ DECLARE_OP_FUNCTION(op_export_gps_txt)
 			m_GPS_entriesSaved(0)
 		{
 			getArgValue<string>(cmdline,"input",m_inFile);
-
-//		// Load configuration block:
-//		CConfigFileMemory	memFil;
-//		rawlog.getCommentTextAsConfigFile(memFil);
-//
-//		refCoords.lat = memFil.read_double("GPS_ORIGIN","lat_deg",0);
-//		refCoords.lon = memFil.read_double("GPS_ORIGIN","lon_deg",0);
-//		refCoords.height = memFil.read_double("GPS_ORIGIN","height",0);
-
 			m_filPrefix =
 				extractFileDirectory(m_inFile) +
 				extractFileName(m_inFile);
@@ -444,12 +433,13 @@ DECLARE_OP_FUNCTION(op_export_gps_txt)
 
 			if (obs->has_GGA_datum)
 			{
+				const mrpt::obs::gnss::Message_NMEA_GGA & gga = obs->getMsgByClass<mrpt::obs::gnss::Message_NMEA_GGA>();
 				TPoint3D p;		// Transformed coordinates
 
 				// The first gps datum?
 				if (refCoords.isClear())
 				{
-					refCoords = obs->GGA_datum.getAsStruct<TGeodeticCoords>();
+					refCoords = gga.getAsStruct<TGeodeticCoords>();
 
 					// Local coordinates reference:
 					TPose3D _local_ENU;
@@ -459,14 +449,14 @@ DECLARE_OP_FUNCTION(op_export_gps_txt)
 
 				// Local XYZ coordinates transform:
 				mrpt::topography::geodeticToENU_WGS84(
-					obs->GGA_datum.getAsStruct<TGeodeticCoords>(),
+					gga.getAsStruct<TGeodeticCoords>(),
 					p,
 					refCoords);
 
 				// Geocentric XYZ:
 				TPoint3D geo;
 				mrpt::topography::geodeticToGeocentric_WGS84(
-					obs->GGA_datum.getAsStruct<TGeodeticCoords>(),
+					gga.getAsStruct<TGeodeticCoords>(),
 					geo );
 
 				// Save file:
@@ -475,17 +465,18 @@ DECLARE_OP_FUNCTION(op_export_gps_txt)
 				// If available, Cartessian X Y Z, VX VY VZ, as supplied by the GPS itself:
 				TPoint3D  cart_pos(0,0,0), cart_vel(0,0,0);
 				TPoint3D  cart_vel_local(0,0,0);
-				if (obs->has_PZS_datum && obs->PZS_datum.hasCartesianPosVel)
-				{
-					cart_pos.x = obs->PZS_datum.cartesian_x;
-					cart_pos.y = obs->PZS_datum.cartesian_y;
-					cart_pos.z = obs->PZS_datum.cartesian_z;
+				if (obs->has_PZS_datum) {
+					const mrpt::obs::gnss::Message_TOPCON_PZS & pzs = obs->getMsgByClass<mrpt::obs::gnss::Message_TOPCON_PZS>();
+					if (pzs.hasCartesianPosVel) {
+						cart_pos.x = pzs.cartesian_x;
+						cart_pos.y = pzs.cartesian_y;
+						cart_pos.z = pzs.cartesian_z;
+						cart_vel.x = pzs.cartesian_vx;
+						cart_vel.y = pzs.cartesian_vy;
+						cart_vel.z = pzs.cartesian_vz;
 
-					cart_vel.x = obs->PZS_datum.cartesian_vx;
-					cart_vel.y = obs->PZS_datum.cartesian_vy;
-					cart_vel.z = obs->PZS_datum.cartesian_vz;
-
-					cart_vel_local = TPoint3D( CPoint3D(cart_vel) - local_ENU );
+						cart_vel_local = TPoint3D( CPoint3D(cart_vel) - local_ENU );
+					}
 				}
 
 				::fprintf(f_this,
@@ -501,20 +492,20 @@ DECLARE_OP_FUNCTION(op_export_gps_txt)
 					"%14.4f "				// SAT Time
 					"\n",
 						tim,
-						DEG2RAD(obs->GGA_datum.latitude_degrees),
-						DEG2RAD(obs->GGA_datum.longitude_degrees),
-						obs->GGA_datum.altitude_meters,
-						obs->GGA_datum.fix_quality,
-						obs->GGA_datum.satellitesUsed,
-						obs->RMC_datum.speed_knots,
-						DEG2RAD(obs->RMC_datum.direction_degrees),
+						DEG2RAD(gga.fields.latitude_degrees),
+						DEG2RAD(gga.fields.longitude_degrees),
+						gga.fields.altitude_meters,
+						gga.fields.fix_quality,
+						gga.fields.satellitesUsed,
+						obs->has_RMC_datum ? DEG2RAD(obs->getMsgByClass<mrpt::obs::gnss::Message_NMEA_RMC>().fields.speed_knots) : 0.0,
+						obs->has_RMC_datum ? DEG2RAD(obs->getMsgByClass<mrpt::obs::gnss::Message_NMEA_RMC>().fields.direction_degrees) : 0.0,
 						p.x,p.y,p.z,
 						(int)m_rawlogEntry,  // rawlog index
 						geo.x, geo.y, geo.z,
 						cart_pos.x,cart_pos.y,cart_pos.z,
 						cart_vel.x,cart_vel.y,cart_vel.z,
 						cart_vel_local.x,cart_vel_local.y,cart_vel_local.z,
-                        mrpt::system::timestampTotime_t( obs->GGA_datum.UTCTime.getAsTimestamp( obs->timestamp ) )
+						mrpt::system::timestampTotime_t( gga.fields.UTCTime.getAsTimestamp( obs->timestamp ) )
 					   );
 
 				m_GPS_entriesSaved++;
@@ -524,17 +515,14 @@ DECLARE_OP_FUNCTION(op_export_gps_txt)
 					lstXYZallGPS[obs->timestamp][obs->sensorLabel] = CPoint3D(p);
 				}
 
-				if (obs->GGA_datum.fix_quality==4)
+				if (gga.fields.fix_quality==4)
 				{
 					lstAllGPSlabels_RTK.insert( obs->sensorLabel );
 					lstXYZallGPS_RTK[obs->timestamp][obs->sensorLabel] = CPoint3D(p);
 				}
 			}
-
-
 			return true; // All ok
 		}
-
 
 		// Destructor: close files and generate summary files:
 		~CRawlogProcessor_ExportGPS_TXT()
@@ -569,5 +557,106 @@ DECLARE_OP_FUNCTION(op_export_gps_txt)
 	// ---------------------------------
 	VERBOSE_COUT << "Time to process file (sec)        : " << proc.m_timToParse << "\n";
 	VERBOSE_COUT << "Number of records saved           : " << proc.m_GPS_entriesSaved << "\n";
-
 }
+
+// ======================================================================
+//		op_export_gps_all
+// ======================================================================
+DECLARE_OP_FUNCTION(op_export_gps_all)
+{
+	// A class to do this operation:
+	class CRawlogProcessor_ExportGPS_ALL : public CRawlogProcessorOnEachObservation
+	{
+	protected:
+		string              m_inFile;
+		map<string, FILE*>  lstFiles;
+		string              m_filPrefix;
+	public:
+		size_t m_GPS_entriesSaved;
+
+		CRawlogProcessor_ExportGPS_ALL(CFileGZInputStream &in_rawlog, TCLAP::CmdLine &cmdline, bool verbose) :
+			CRawlogProcessorOnEachObservation(in_rawlog,cmdline,verbose),
+			m_GPS_entriesSaved(0)
+		{
+			getArgValue<string>(cmdline,"input",m_inFile);
+			m_filPrefix =
+				extractFileDirectory(m_inFile) +
+				extractFileName(m_inFile);
+		}
+
+		// return false on any error.
+		bool processOneObservation(CObservationPtr  &o)
+		{
+			if (!IS_CLASS(o, CObservationGPS ) )
+				return true;
+
+			const CObservationGPS* obs = CObservationGPSPtr(o).pointer();
+
+			for (CObservationGPS::message_list_t::const_iterator it=obs->messages.begin();it!=obs->messages.end();++it)
+			{
+				const gnss::gnss_message* msg_ptr = it->second.get();
+				if (!msg_ptr) continue;
+				
+				const string sMsg = msg_ptr->getMessageTypeAsString();
+				if (sMsg.empty()) continue;
+
+				const string sLabelMsg = string(obs->sensorLabel)+string("_MSG_")+sMsg;
+				map<string, FILE*>::const_iterator  itF = lstFiles.find( sLabelMsg );
+
+				FILE *f_this;
+
+				if ( itF==lstFiles.end() )	// A new file for this sensorlabel??
+				{
+					const std::string fileName =
+						m_filPrefix+
+						string("_") +
+						fileNameStripInvalidChars( sLabelMsg ) +
+						string(".txt");
+
+					VERBOSE_COUT << "Writing GPS TXT file: " << fileName << endl;
+
+					f_this = lstFiles[sLabelMsg ] = os::fopen( fileName.c_str(), "wt");
+					if (!f_this)
+						THROW_EXCEPTION_CUSTOM_MSG1("Cannot open output file for write: %s", fileName.c_str() );
+
+					// The first line is a description of the columns:
+					std::stringstream buf;
+					msg_ptr->getAllFieldDescriptions(buf);
+					::fprintf(f_this,"%% %16s %16s %s\n%% ------------------------\n", "GPS_UNIX_time","PC_UNIX_time", buf.str().c_str());
+				}
+				else
+					f_this = itF->second;
+
+				std::stringstream buf;
+				msg_ptr->getAllFieldValues(buf);
+				::fprintf(f_this,"%16.06f %16.06f %s\n", mrpt::system::timestampTotime_t(obs->timestamp),mrpt::system::timestampTotime_t(obs->originalReceivedTimestamp), buf.str().c_str());
+				m_GPS_entriesSaved++;
+
+			} // for each msg
+			return true; // All ok
+		}
+
+		// Destructor: close files and generate summary files:
+		~CRawlogProcessor_ExportGPS_ALL()
+		{
+			VERBOSE_COUT << "Number of different files saved   : " << lstFiles.size() << endl;
+
+			for (map<string, FILE*>::const_iterator  it=lstFiles.begin();it!=lstFiles.end();++it) {
+				os::fclose(it->second);
+			}
+			lstFiles.clear();
+
+		} // end of destructor
+	};
+
+	// Process
+	// ---------------------------------
+	CRawlogProcessor_ExportGPS_ALL proc(in_rawlog,cmdline,verbose);
+	proc.doProcessRawlog();
+
+	// Dump statistics:
+	// ---------------------------------
+	VERBOSE_COUT << "Time to process file (sec)        : " << proc.m_timToParse << "\n";
+	VERBOSE_COUT << "Number of records saved           : " << proc.m_GPS_entriesSaved << "\n";
+}
+

@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -153,15 +153,38 @@ void mrpt::system::registerFatalExceptionHandlers()
 /*---------------------------------------------------------------
 					mrpt::system::MRPT_getCompilationDate
 ---------------------------------------------------------------*/
+#include <mrpt/version.h>
+#include <errno.h>
+#include <limits.h>
+#include <ctime>
+#include <cstdlib>
+
 string mrpt::system::MRPT_getCompilationDate()
 {
-	return string(__DATE__);
+	time_t now;
+	char *endptr;
+	const char *source_date_epoch = MRPT_SOURCE_DATE_EPOCH;
+	
+	errno = 0;
+	unsigned long epoch = strtoul(source_date_epoch, &endptr, 10);
+	if ((errno == ERANGE && (epoch == ULLONG_MAX || epoch == 0)) || (errno != 0 && epoch == 0)) {
+		// Last resort:
+ 		now = time(NULL);
+	}
+	else {
+		now = epoch;
+	}
+	struct tm *build_time = gmtime(&now);
+	const int year  = build_time->tm_year + 1900;
+	const int month = build_time->tm_mon + 1;
+	const int day   = build_time->tm_mday;
+
+	return mrpt::format("%i-%02i-%02i",year,month,day);
 }
 
 /*---------------------------------------------------------------
 					mrpt::system::MRPT_getVersion
 ---------------------------------------------------------------*/
-#include <mrpt/version.h>
 string mrpt::system::MRPT_getVersion()
 {
 	return string( ::MRPT_version_str );

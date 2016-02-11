@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -26,42 +26,29 @@ namespace mrpt
 	{
 		DEFINE_SERIALIZABLE_PRE_CUSTOM_BASE_LINKAGE( CHeightGridMap2D, CMetricMap, MAPS_IMPEXP  )
 
-		/** The contents of each cell in a CHeightGridMap2D map.
-		 **/
+		/** The contents of each cell in a CHeightGridMap2D map */
 		struct MAPS_IMPEXP THeightGridmapCell
 		{
-			/** Constructor
-			  */
-			THeightGridmapCell() : h(0), w(0)
-			{}
+			float     h;    //!< The current average height (in meters)
+			float     var;  //!< The current standard deviation of the height (in meters)
+			float     u;    //!< Auxiliary variable for storing the incremental mean value (in meters).
+			float     v;    //!< Auxiliary (in meters)
+			uint32_t  w;    //!< [For mrSimpleAverage model] The accumulated weight: initially zero if un-observed, increased by one for each observation
 
-			/** The current average height (in meters).
-			  */
-			float	h;
-
-			/** The current standard deviation of the height (in meters).
-			  */
-			float	var;
-
-			/** Auxiliary variable for storing the incremental mean value (in meters).
-			  */
-			float	u;
-
-			/** Auxiliary (in meters).
-			  */
-			float	v;
-
-
-			/** [mrSimpleAverage model] The accumulated weight: initially zero if un-observed, increased by one for each observation.
-			  */
-			uint32_t	w;
+			THeightGridmapCell() : h(),var(),u(),v(),w() {}
 		};
 
-		/** A mesh representation of a surface which keeps the estimated height for each (x,y) location.
+		/** Digital Elevation Model (DEM), a mesh or grid representation of a surface which keeps the estimated height for each (x,y) location.
 		  *  Important implemented features are the insertion of 2D laser scans (from arbitrary 6D poses) and the exportation as 3D scenes.
 		  *
-		  *   Each cell contains the up-to-date average height from measured falling in that cell. Algorithms that can be used:
-		  *		- mrSimpleAverage: Each cell only stores the current average value.
+		  * Each cell contains the up-to-date average height from measured falling in that cell. Algorithms that can be used:
+		  *   - mrSimpleAverage: Each cell only stores the current average value.
+		  *
+		  *  This class implements generic version of mrpt::maps::CMetric::insertObservation() accepting these types of sensory data:
+		  *   - mrpt::obs::CObservation2DRangeScan: 2D range scans
+		  *   - mrpt::obs::CObservationVelodyneScan
+		  *
+		  * \ingroup mrpt_maps_grp
 		  */
 		class MAPS_IMPEXP CHeightGridMap2D : public mrpt::maps::CMetricMap, public utils::CDynamicGrid<THeightGridmapCell>
 		{
@@ -74,8 +61,7 @@ namespace mrpt
 			  */
 			inline void clear() { CMetricMap::clear(); }
 
-			float cell2float(const THeightGridmapCell& c) const
-			{
+			float cell2float(const THeightGridmapCell& c) const MRPT_OVERRIDE {
 				return float(c.h);
 			}
 
@@ -85,11 +71,9 @@ namespace mrpt
 			enum TMapRepresentation
 			{
 				mrSimpleAverage = 0
-//				mrSlidingWindow
 			};
 
-			/** Constructor
-			  */
+			/** Constructor */
 			CHeightGridMap2D(
 				TMapRepresentation	mapType = mrSimpleAverage,
 				float				x_min = -2,
@@ -99,40 +83,21 @@ namespace mrpt
 				float				resolution = 0.1
 				);
 
-			 /** Returns true if the map is empty/no observation has been inserted.
-			   */
-			 bool  isEmpty() const;
+			 bool isEmpty() const MRPT_OVERRIDE; //!< Returns true if the map is empty/no observation has been inserted.
 
-			/** Parameters related with inserting observations into the map.
-			  */
+			/** Parameters related with inserting observations into the map */
 			struct MAPS_IMPEXP TInsertionOptions : public utils::CLoadableOptions
 			{
-				/** Default values loader:
-				  */
-				TInsertionOptions();
+				TInsertionOptions(); //!< Default values loader
 
-				/** See utils::CLoadableOptions
-				  */
-				void  loadFromConfigFile(
-					const mrpt::utils::CConfigFileBase  &source,
-					const std::string &section);
+				void   loadFromConfigFile(const mrpt::utils::CConfigFileBase &source,const std::string &section) MRPT_OVERRIDE; // See base docs
+				void   dumpToTextStream(mrpt::utils::CStream &out) const MRPT_OVERRIDE; // See base docs
 
-				/** See utils::CLoadableOptions
-				  */
-				void  dumpToTextStream(mrpt::utils::CStream	&out) const;
-
-				/** Wether to perform filtering by z-coordinate (default=false): coordinates are always RELATIVE to the robot for this filter.
-				  */
-				bool	filterByHeight;
-
-				/** Only when filterByHeight is true: coordinates are always RELATIVE to the robot for this filter.
-				  */
-				float	z_min,z_max;
-
-				float	minDistBetweenPointsWhenInserting;	//!< When inserting a scan, a point cloud is first created with this minimum distance between the 3D points (default=0).
+				bool   filterByHeight; //!< Wether to perform filtering by z-coordinate (default=false): coordinates are always RELATIVE to the robot for this filter.vvv
+				float  z_min,z_max; //!< Only when filterByHeight is true: coordinates are always RELATIVE to the robot for this filter.
+				float  minDistBetweenPointsWhenInserting; //!< When inserting a scan, a point cloud is first created with this minimum distance between the 3D points (default=0).
 
 				mrpt::utils::TColormap colorMap;
-
 			} insertionOptions;
 
 			/** See docs in base class: in this class it always returns 0 */
@@ -141,26 +106,19 @@ namespace mrpt
 					const mrpt::poses::CPose3D							&otherMapPose,
 					float									maxDistForCorr = 0.10f,
 					float									maxMahaDistForCorr = 2.0f
-					) const;
+					) const MRPT_OVERRIDE;
 
-			/** The implementation in this class just calls all the corresponding method of the contained metric maps.
-			  */
-			void  saveMetricMapRepresentationToFile(
-				const std::string	&filNamePrefix
-				) const;
+			/** The implementation in this class just calls all the corresponding method of the contained metric maps */
+			void  saveMetricMapRepresentationToFile(const std::string &filNamePrefix) const MRPT_OVERRIDE;
 
 			/** Returns a 3D object representing the map: by default, it will be a mrpt::opengl::CMesh object, unless
-			  *   it is specified otherwise in mrpt::
-			  */
-			void  getAs3DObject ( mrpt::opengl::CSetOfObjectsPtr	&outObj ) const;
+			  *   it is specified otherwise  */
+			void getAs3DObject(mrpt::opengl::CSetOfObjectsPtr &outObj) const MRPT_OVERRIDE;
 
-			/** Return the type of the gas distribution map, according to parameters passed on construction.
-			  */
+			/** Return the type of the gas distribution map, according to parameters passed on construction */
 			TMapRepresentation	 getMapType();
 
-
-			/** Gets the intersection between a 3D line and a Height Grid map (taking into account the different heights of each individual cell).
-			  */
+			/** Gets the intersection between a 3D line and a Height Grid map (taking into account the different heights of each individual cell)  */
 			bool intersectLine3D(const mrpt::math::TLine3D &r1, mrpt::math::TObject3D &obj) const;
 
 			/** Computes the minimum and maximum height in the grid.

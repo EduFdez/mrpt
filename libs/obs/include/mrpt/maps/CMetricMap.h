@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -41,6 +41,8 @@ namespace mrpt
 		 *   emitting the following events:
 		 *	  - mrpt::obs::mrptEventMetricMapClear: Upon call of the ::clear() method.
 		 *    - mrpt::obs::mrptEventMetricMapInsert: Upon insertion of an observation that effectively modifies the map (e.g. inserting an image into a grid map will NOT raise an event, inserting a laser scan will).
+		 *
+		 * Checkout each derived class documentation to learn which mrpt::obs::CObservation-derived classes are supported by CMetricMap::insertObservation()
 		 *
 		 * \note All derived class must implement a static class factory `<metric_map_class>::MapDefinition()` that builds a default TMetricMapInitializer [New in MRPT 1.3.0] 
 		 *

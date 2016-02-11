@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -27,7 +27,7 @@ namespace mrpt
 	 */
 	namespace system
 	{
-		/** \defgroup mrpt_system_os OS and compiler abstraction
+		/** \defgroup mrpt_system_os OS and compiler abstraction (in #include <mrpt/system/os.h>)
 		  * \ingroup mrpt_base_grp */
 
 		/** This namespace provides a OS-independent interface to low-level functions.
@@ -141,19 +141,16 @@ namespace mrpt
 		/** \addtogroup mrpt_system_os
 		  * @{ */
 
-		/** Shows the message "Press any key to continue" (or other custom message) to the current standard output and returns when a key is pressed.
-		  */
+		/** Shows the message "Press any key to continue" (or other custom message) to the current standard output and returns when a key is pressed */
 		void BASE_IMPEXP pause(const std::string &msg = std::string("Press any key to continue...") ) MRPT_NO_THROWS;
 
 		/** Clears the console window */
 		void BASE_IMPEXP clearConsole();
 
-		/** Returns the MRPT compilation date
-		  */
+		/** Returns the MRPT source code timestamp, according to the Reproducible-Builds specifications: https://reproducible-builds.org/specs/source-date-epoch/  */
 		std::string BASE_IMPEXP MRPT_getCompilationDate();
 
-		/** Returns a string describing the MRPT version including the SVN number.
-		  */
+		/** Returns a string describing the MRPT version */
 		std::string BASE_IMPEXP MRPT_getVersion();
 
 		/** Returns a const ref to a text with the same text that appears at the beginning of each MRPT file (useful for displaying the License text in GUIs) */
