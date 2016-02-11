@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -203,7 +203,7 @@ void CGillAnemometer::doProcess()
 		}
 		else
 		{
-			printf("ERROR: Windsonic reading incorrect format: %s [%u]\n", wind_reading.c_str(),list.size());
+			printf("ERROR: Windsonic reading incorrect format: %s [%u]\n", wind_reading.c_str(),static_cast<unsigned int>(list.size()) );
 		}
 
 	}

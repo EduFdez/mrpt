@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -40,38 +40,6 @@ void  Plane::writeToStream(mrpt::utils::CStream &out, int *out_Version) const
     //cout << "Write plane. Version " << *out_Version << endl;
     if (out_Version)
         *out_Version = 0;
-    //	else //if(*out_Version == 0)
-    //	{
-    //		// The data
-    //		out << static_cast<uint32_t>(numObservations);//out << uint32_t(numObservations);
-    //		out << areaVoxels;
-    //		out << areaHull;
-    //		out << elongation;
-    //    out << v3normal(0) << v3normal(1) << v3normal(2);
-    //    out << v3center(0) << v3center(1) << v3center(2);
-    //    out << v3PpalDir(0) << v3PpalDir(1) << v3PpalDir(2);
-    //    out << v3colorNrgb(0) << v3colorNrgb(1) << v3colorNrgb(2);
-    //    out << v3colorNrgbDev(0) << v3colorNrgbDev(1) << v3colorNrgbDev(2);
-    //
-    ////    out.WriteBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3normal(0),3);
-    ////    out.WriteBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3center(0),3);
-    ////    out.WriteBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3PpalDir(0),3);
-    ////    out.WriteBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3colorNrgb(0),3);
-    ////    out.WriteBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3colorNrgbDev(0),3);
-    //
-    //    out << (uint32_t)neighborPlanes.size();
-    //    for (std::map<unsigned,unsigned>::const_iterator it=neighborPlanes.begin(); it != neighborPlanes.end(); it++)
-    //      out << static_cast<uint32_t>(it->first) << static_cast<uint32_t>(it->second);
-    //
-    //    out << (uint32_t)polygonContourPtr->size();
-    //    for (uint32_t i=0; i < polygonContourPtr->size(); i++)
-    //      out << polygonContourPtr->points[i].x << polygonContourPtr->points[i].y << polygonContourPtr->points[i].z;
-    //
-    //    out << bFullExtent;
-    //    out << bFromStructure;
-    ////cout << "Write plane\n";
-    //	}
-    //	else if(*out_Version == 1)
     else
     {
         // The data
@@ -128,43 +96,6 @@ void  Plane::readFromStream(mrpt::utils::CStream &in, int version)
     switch(version)
     {
     case 0:
-        //		{
-        //			// The data
-        //			uint32_t n;
-        //			in >> n;
-        //			numObservations = (unsigned)n;
-        //			in >> areaVoxels;
-        //			in >> areaHull;
-        //			in >> elongation;
-        //			in >> v3normal(0) >> v3normal(1) >> v3normal(2);
-        //			in >> v3center(0) >> v3center(1) >> v3center(2);
-        //			in >> v3PpalDir(0) >> v3PpalDir(1) >> v3PpalDir(2);
-        //			in >> v3colorNrgb(0) >> v3colorNrgb(1) >> v3colorNrgb(2);
-        //			in >> v3colorNrgbDev(0) >> v3colorNrgbDev(1) >> v3colorNrgbDev(2);
-        ////			in.ReadBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3normal[0],sizeof(v3normal[0])*3);
-        ////			in.ReadBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3center[0],sizeof(v3center[0])*3);
-        ////			in.ReadBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3PpalDir[0],sizeof(v3PpalDir[0])*3);
-        ////			in.ReadBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3colorNrgb[0],sizeof(v3colorNrgb[0])*3);
-        ////			in.ReadBufferFixEndianness<Eigen::Vector3f::Scalar>(&v3colorNrgbDev[0],sizeof(v3colorNrgbDev[0])*3);
-        //
-        //			in >> n;
-        //			neighborPlanes.clear();
-        //      for (uint32_t i=0; i < n; i++)
-        //      {
-        //        uint32_t neighbor, commonObs;
-        //        in >> neighbor >> commonObs;
-        //        neighborPlanes[neighbor] = commonObs;
-        //      }
-        //
-        //			in >> n;
-        //			polygonContourPtr->resize(n);
-        //      for (unsigned i=0; i < n; i++)
-        //        in >> polygonContourPtr->points[i].x >> polygonContourPtr->points[i].y >> polygonContourPtr->points[i].z;
-        //
-        //      in >> bFullExtent;
-        //      in >> bFromStructure;
-        //
-        //		} break;
         ////	case 1:
     {
         //			// The data

@@ -4,7 +4,8 @@
 # Project related configuration options
 #---------------------------------------------------------------------------
 #PROJECT_NAME           = \"$MRPT_COMPLETE_NAME\"
-PROJECT_NAME           = \"The MRPT project\"
+PROJECT_NAME           = MRPT
+PROJECT_NUMBER         = $MRPT_VERSION_STR
 LAYOUT_FILE            = DoxygenLayout_MRPT.xml
 OUTPUT_DIRECTORY       = .
 CREATE_SUBDIRS         = NO
@@ -194,7 +195,7 @@ SKIP_FUNCTION_MACROS   = YES
 # Configuration::additions related to external references   
 #---------------------------------------------------------------------------
 TAGFILES               = 
-GENERATE_TAGFILE       = 
+GENERATE_TAGFILE       = dox_mrpt.tag
 ALLEXTERNALS           = NO
 EXTERNAL_GROUPS        = YES
 PERL_PATH              = /usr/bin/perl
@@ -207,10 +208,10 @@ HAVE_DOT               = YES
 CLASS_GRAPH            = YES
 COLLABORATION_GRAPH    = NO
 GROUP_GRAPHS           = YES
-UML_LOOK               = NO
+UML_LOOK               = YES
 TEMPLATE_RELATIONS     = YES
-INCLUDE_GRAPH          = YES
-INCLUDED_BY_GRAPH      = YES
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO
 CALL_GRAPH             = NO
 GRAPHICAL_HIERARCHY    = YES
 DIRECTORY_GRAPH        = YES

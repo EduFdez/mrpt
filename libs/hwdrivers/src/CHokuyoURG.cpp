@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -25,6 +25,7 @@ using namespace mrpt::system;
 using namespace mrpt::opengl;
 using namespace std;
 
+const int MINIMUM_PACKETS_TO_SET_TIMESTAMP_REFERENCE = 10;
 
 /*-------------------------------------------------------------
 						Constructor
@@ -33,16 +34,17 @@ CHokuyoURG::CHokuyoURG() :
 	m_firstRange(44),
 	m_lastRange(725),
 	m_motorSpeed_rpm(0),
-    m_sensorPose(0,0,0),
-    m_rx_buffer(40000),
+	m_sensorPose(0,0,0),
+	m_rx_buffer(40000),
 	m_verbose(true),
 	m_highSensMode(false),
-    m_reduced_fov(0),
+	m_reduced_fov(0),
 	m_com_port(""),
 	m_ip_dir(""),
-	m_port_dir(0),
+	m_port_dir(10940),
 	m_I_am_owner_serial_port(false),
 	m_timeStartUI( 0 ),
+	m_timeStartSynchDelay(0),
 	m_disable_firmware_timestamp(false)
 {
 	m_sensorLabel = "Hokuyo";
@@ -81,6 +83,7 @@ void  CHokuyoURG::doProcessSimple(
 	if (!checkCOMisOpen())
 	{
 		m_timeStartUI = 0;
+		m_timeStartSynchDelay = 0;
 		hardwareError = true;
 		return;
 	}
@@ -118,8 +121,15 @@ void  CHokuyoURG::doProcessSimple(
 		hardwareError = true;
 		return;
 	}
+	// Delay the sync of timestamps due to instability in the constant rate during the first few packets.
+	bool do_timestamp_sync = !m_disable_firmware_timestamp;
+	if (do_timestamp_sync && m_timeStartSynchDelay<MINIMUM_PACKETS_TO_SET_TIMESTAMP_REFERENCE)
+	{
+		do_timestamp_sync=false;
+		m_timeStartSynchDelay++;
+	}
 
-	if (!m_disable_firmware_timestamp)
+	if (do_timestamp_sync)
 	{
 		// Extract the timestamp of the sensor:
 		uint32_t nowUI	=
@@ -196,13 +206,19 @@ void  CHokuyoURG::loadConfig_sensorSpecific(
 	m_highSensMode = configSource.read_bool(iniSection,"HOKUYO_HS_mode",m_highSensMode);
 
 #ifdef MRPT_OS_WINDOWS
-	m_com_port = configSource.read_string(iniSection, "COM_port_WIN", m_com_port, true );
+	m_com_port = configSource.read_string(iniSection, "COM_port_WIN", m_com_port);
 #else
-	m_com_port = configSource.read_string(iniSection, "COM_port_LIN", m_com_port, true );
+	m_com_port = configSource.read_string(iniSection, "COM_port_LIN", m_com_port);
 #endif
 
 	m_ip_dir = configSource.read_string(iniSection, "IP_DIR", m_ip_dir );
 	m_port_dir = configSource.read_int(iniSection, "PORT_DIR", m_port_dir );
+
+	ASSERTMSG_(!m_com_port.empty() || !m_ip_dir.empty(), "Either COM_port or IP_DIR must be defined in the configuration file!");
+	ASSERTMSG_(m_com_port.empty() || m_ip_dir.empty(), "Both COM_port and IP_DIR set! Please, define only one of them.");
+	if (!m_ip_dir.empty()) { ASSERTMSG_(m_port_dir,"A TCP/IP port number `PORT_DIR` must be specified for Ethernet connection"); }
+
+	
 
 	m_disable_firmware_timestamp = configSource.read_bool(iniSection, "disable_firmware_timestamp", m_disable_firmware_timestamp);
 
@@ -351,14 +367,14 @@ bool  CHokuyoURG::setHighBaudrate()
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -405,7 +421,7 @@ bool CHokuyoURG::assureBufferHasBytes(const size_t nDesiredBytes)
 			// 0 bytes read
 		}
 
-        return (m_rx_buffer.size()>=nDesiredBytes);
+		return (m_rx_buffer.size()>=nDesiredBytes);
 	}
 }
 
@@ -568,7 +584,7 @@ bool  CHokuyoURG::enableSCIP20()
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
@@ -576,7 +592,7 @@ bool  CHokuyoURG::enableSCIP20()
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -609,14 +625,14 @@ bool  CHokuyoURG::switchLaserOn()
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -649,14 +665,14 @@ bool  CHokuyoURG::switchLaserOff()
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -695,14 +711,14 @@ bool  CHokuyoURG::setMotorSpeed(int motoSpeed_rpm)
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -734,14 +750,14 @@ bool  CHokuyoURG::setHighSensitivityMode(bool enabled)
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -774,14 +790,14 @@ bool  CHokuyoURG::displayVersionInfo( )
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -826,14 +842,14 @@ bool  CHokuyoURG::displaySensorInfo( TSensorInfo * out_data)
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -922,14 +938,14 @@ bool  CHokuyoURG::startScanningMode()
 	// Receive response:
 	if (!receiveResponse( cmd, rcv_status0,rcv_status1, rcv_data, rcv_dataLength ) )
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error waiting for response\n";
 		return false;
 	}
 
 	// DECODE:
 	if (rcv_status0!='0')
 	{
-		printf("ERROR!\n");
+		std::cerr << "Error in LIDAR status: "<< (int)rcv_status0 <<"\n";
 		return false;
 	}
 
@@ -1016,7 +1032,7 @@ bool  CHokuyoURG::checkCOMisOpen()
 			THROW_EXCEPTION("No stream bound to the laser nor COM serial port or ip and port provided in 'm_com_port','m_ip_dir' and 'm_port_dir'");
 		}
 
-		if ( !m_ip_dir.empty() && m_port_dir )
+		if ( !m_ip_dir.empty() )
 		{
 			// Try to open the serial port:
 			CClientTCPSocket	*theCOM = new CClientTCPSocket();

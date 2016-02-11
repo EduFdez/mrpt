@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2015, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -20,8 +20,6 @@
 #include <mrpt/utils/types_math.h> // Eigen
 #include <mrpt/system/threads.h>
 
-//#include <pcl/io/io.h>
-//#include <pcl/io/pcd_io.h>
 #include <pcl/features/integral_image_normal.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/ModelCoefficients.h>
@@ -158,6 +156,30 @@ PbMapMaker::PbMapMaker(const string &config_file) :
     rejectIntensity_F = 0, acceptIntensity_F = 0, rejectIntensity_T = 0, acceptIntensity_T = 0;
     rejectColor_F = 0, acceptColor_F = 0, rejectColor_T = 0, acceptColor_T = 0;
     rejectHistH_F = 0, acceptHistH_F = 0, rejectHistH_T = 0, acceptHistH_T = 0;
+}
+
+
+PbMapMaker::~PbMapMaker()
+{
+    cout << "\n\n\nPbMapMaker destructor called -> Save color information to file\n";
+    saveInfoFiles();
+
+    delete mpPlaneInferInfo;
+    delete mpPbMapLocaliser;
+
+    stop_pbMapMaker();
+
+    cout << " .. PbMapMaker has died." << endl;
+}
+
+
+void PbMapMaker::serializePbMap(string path)
+{
+    boost::mutex::scoped_lock updateLock(mtx_pbmap_busy);
+
+    mPbMap.savePbMap(path);
+
+    updateLock.unlock();
 }
 
 
@@ -1172,7 +1194,7 @@ void PbMapMaker::run()
             detectPlanesCloud( frameQueue.back().cloudPtr, frameQueue.back().pose,
                                configPbMap.dist_threshold, configPbMap.angle_threshold, configPbMap.minInliersRate);
 
-            if(configPbMap.makeClusters)
+            if(configPbMap.makeClusters) {
                 if(mPbMap.vPlanes.size() > minGrowPlanes)
                 {
                     // Evaluate the partition of the current groups with minNcut
@@ -1182,24 +1204,16 @@ void PbMapMaker::run()
 
                     minGrowPlanes += 2;
                 }
+            }
 
             ++numPrevKFs;
         }
     }
-
     //  saveInfoFiles(); // save watch statistics
 
     m_pbmaker_finished = true;
 }
 
-void PbMapMaker::serializePbMap(string path)
-{
-    boost::mutex::scoped_lock updateLock(mtx_pbmap_busy);
-
-    mPbMap.savePbMap(path);
-
-    updateLock.unlock();
-}
 
 bool PbMapMaker::stop_pbMapMaker()
 {
@@ -1212,19 +1226,6 @@ bool PbMapMaker::stop_pbMapMaker()
     pbmaker_hd.clear();
 
     return true;
-}
-
-PbMapMaker::~PbMapMaker()
-{
-    cout << "\n\n\nPbMapMaker destructor called -> Save color information to file\n";
-    saveInfoFiles();
-
-    delete mpPlaneInferInfo;
-    delete mpPbMapLocaliser;
-
-    stop_pbMapMaker();
-
-    cout << " .. PbMapMaker has died." << endl;
 }
 
 #endif
