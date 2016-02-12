@@ -1,5 +1,7 @@
 INCLUDE(../../cmakemodules/AssureCMakeRootFile.cmake) # Avoid user mistake in CMake source directory
 
+if(0)
+
 #-----------------------------------------------------------------
 # CMake file for the MRPT application:  icp-slam
 #
@@ -31,3 +33,5 @@ TARGET_LINK_LIBRARIES(${TMP_TARGET_NAME} ${MRPT_LINKER_LIBS})
 DeclareAppDependencies(${TMP_TARGET_NAME} mrpt-gui mrpt-slam)
 
 DeclareAppForInstall(${TMP_TARGET_NAME})
+
+endif(0)
