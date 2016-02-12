@@ -1193,9 +1193,9 @@ void Plane::mergePlane_convexHull(Plane &same_plane_patch)
     Vector4f nd; nd.block(0,0,3,1) = v3normal; nd(3) = d;
     Vector4f nd_merge; nd_merge.block(0,0,3,1) = same_plane_patch.v3normal; nd_merge(3) = same_plane_patch.d;
     Matrix4f total_information = information + same_plane_patch.information;
-    Matrix4f total_covariance;
-    JacobiSVD<Matrix4f> pseudo_inverse(total_information);
-    pseudo_inverse.pinv(total_covariance);
+    Matrix4f total_covariance = total_information.inverse();
+//    JacobiSVD<Matrix4f> pseudo_inverse(total_information);
+//    pseudo_inverse.pinv(total_covariance);
     Vector4f nd_fused = total_covariance*(information*nd + same_plane_patch.information*nd_merge);
 
     std::cout << "PREV v3normal " << v3normal.transpose() << std::endl;

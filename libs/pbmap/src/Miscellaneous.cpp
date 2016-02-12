@@ -12,14 +12,11 @@
  *  Writen by Eduardo Fernandez-Moral. See docs for <a href="group__mrpt__pbmap__grp.html" >mrpt-pbmap</a>
  */
 
-#include "pbmap-precomp.h"  // Precompiled headers
+#include <mrpt/pbmap/Miscellaneous.h>
 
-#if MRPT_HAS_PCL
+#define SMALL_NUM  0.00000001 // for comparison that avoids division overflow
 
-using namespace mrpt::pbmap;
-
-#define SMALL_NUM  0.00000001 // anything that avoids division overflow
-float dist3D_Segment_to_Segment2( Segment S1, Segment S2)
+float mrpt::pbmap::dist3D_Segment_to_Segment2(Segment S1, Segment S2)
 {
     Eigen::Vector3f   u = diffPoints(S1.P1, S1.P0);
     Eigen::Vector3f   v = diffPoints(S2.P1, S2.P0);
@@ -89,7 +86,7 @@ float dist3D_Segment_to_Segment2( Segment S1, Segment S2)
     return dP.squaredNorm();   // return the closest distance
 }
 
-bool isInHull(PointT &point3D, pcl::PointCloud<PointT>::Ptr hull3D)
+bool mrpt::pbmap::isInHull(PointT &point3D, pcl::PointCloud<PointT>::Ptr hull3D)
 {
     Eigen::Vector2f normalLine; // This vector points inward the hull
     Eigen::Vector2f r;
@@ -106,7 +103,7 @@ bool isInHull(PointT &point3D, pcl::PointCloud<PointT>::Ptr hull3D)
 }
 
 // Bhattacharyya histogram distance function
-double BhattacharyyaDist(std::vector<float> &hist1, std::vector<float> &hist2)
+double mrpt::pbmap::BhattacharyyaDist(std::vector<float> &hist1, std::vector<float> &hist2)
 {
     ASSERT_(hist1.size() == hist2.size());
     double BhattachDist;
@@ -118,5 +115,3 @@ double BhattacharyyaDist(std::vector<float> &hist1, std::vector<float> &hist2)
 
     return BhattachDist;
 }
-
-#endif
