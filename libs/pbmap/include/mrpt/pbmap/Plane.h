@@ -75,13 +75,14 @@ namespace pbmap {
         //    void calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud );
         void calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<size_t> &indices = DEFAULT_VECTOR );
 
-        void calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<size_t> &indices = DEFAULT_VECTOR );
-
-        /** \brief Compute the area of a 2D planar polygon patch - using a given normal
-    //      * \param polygonContourPtr the point cloud (planar)
-    //      * \param normal the plane normal
+        /** \brief Compute the convex hull of the planar patch and the plane parameters (centroid, elongation,...)
+          * \param[in] pointCloud plane segmentation
+          * \param[out] indices the plane normal
           */
-        float compute2DPolygonalArea (/*pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &polygonContourPtr, Vector<3> &normal*/);
+        void calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & pointCloud, std::vector<size_t> & indices = DEFAULT_VECTOR );
+
+        /** \brief Compute the area of a 2D planar polygon patch - using a given normal   */
+        float compute2DPolygonalArea();
 
         /** \brief Compute the patch's convex-hull area and mass center
           */

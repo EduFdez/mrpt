@@ -313,9 +313,8 @@ void Plane::calcElongationAndPpalDir()
 // Compute the plane parameters from a set of noisy points (described in our RAS paper)
 void Plane::computeInvariantParams (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & inliers )
 {
+//    std::cout << "Plane::computeInvariantParams... inliers " << inliers->size() << std::endl;
 //    double start_time = pcl::getTime();
-
-    //float d_prev = d;
 
     // Recompute the plane parameters {n,d,c,Sigma}
     float stdDevFactor = 0.01f;
@@ -334,9 +333,9 @@ void Plane::computeInvariantParams (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & in
     }
     //    v3center_ = v3center_ / total_weights;
     //    std::cout << " v3center_ " << v3center_.transpose() << std::endl;
-    //    std::cout << "v3center " << v3center.transpose() << std::endl;
     //    Eigen::Vector3f diff = v3center_-v3center;
     v3center = v3center_ / total_weights;
+//    std::cout << "v3center " << v3center.transpose() << std::endl;
 
     // Compute the inliers's covariance matrix M
     Eigen::Matrix3f M = Eigen::Matrix3f::Zero();
@@ -356,8 +355,8 @@ void Plane::computeInvariantParams (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & in
     //    std::cout << "svd eigenvectors \n" << svd.matrixU() << std::endl;
     //    std::cout << "svd eigenvectors \n" << svd.matrixV() << std::endl;
     //    std::cout << "svd eigenvalues \n" << svd.singularValues() << std::endl;
-    //std::cout << "v3normal " << v3normal.transpose() << std::endl;
-    //std::cout << "d " << d << " " << d_prev << std::endl;
+    //    std::cout << "v3normal " << v3normal.transpose() << std::endl;
+    //    std::cout << "d " << d << std::endl;
     //mrpt::system::pause();
 
     information(3,3) = total_weights;
@@ -370,14 +369,17 @@ void Plane::computeInvariantParams (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & in
     svd = JacobiSVD<MatrixXf>(information);//(M, ComputeThinU | ComputeThinV);
     info_3rd_eigenval = sqrt( svd.singularValues()[2] );
     //info_3rd_eigenval = ( svd.singularValues()[2] );
+//    std::cout << "information \n" << information << std::endl;
+//    std::cout << "info_3rd_eigenval " << info_3rd_eigenval << std::endl;
 
     //    double start_end = pcl::getTime();
     //    cout << "computeParams profiling " << (start_end - start_time)*1e6 << " us\n";
 }
 
 // Compute the plane parameters from a set of noisy points (described in our RAS paper)
-void Plane::computeParamsConvexHull ()
+void Plane::computeParamsConvexHull()
 {
+//    std::cout << "Plane::computeParamsConvexHull... " << std::endl;
 //    double start_time = pcl::getTime();
 
     // Shift the points to fulfill the plane equation
@@ -399,6 +401,7 @@ void Plane::computeParamsConvexHull ()
         weighted_sum_vertices += weights[j]*p_j;
     }
     v3center = weighted_sum_vertices / total_weights;
+    //std::cout << "v3center " << v3center.transpose() << std::endl;
 
     Eigen::Matrix3f M = Eigen::Matrix3f::Zero();
     for (unsigned int i = 0; i < polygonContourPtr->size(); i++)
@@ -413,6 +416,7 @@ void Plane::computeParamsConvexHull ()
         v3PpalDir = svd.matrixU().col(0);
         elongation = sqrt( svd.singularValues()[0] / svd.singularValues()[1] );
     }
+    //std::cout << " elongation " << elongation << " v3PpalDir " << v3PpalDir.transpose() << std::endl;
 
     //    double start_end = pcl::getTime();
     //    cout << "computeParams profiling " << (start_end - start_time)*1e6 << " us\n";
@@ -762,11 +766,11 @@ float cross(const mPointHull &O, const mPointHull &A, const mPointHull &B)
 //  }
 //
 //  // Fill convexHull vector
-//  size_t hull_noRep = k-1; // Neglect the last_point = first_point
+//  size_t c_hull_size = k-1; // Neglect the last_point = first_point
 //  H.resize(k);
-//  polygonContourPtr->resize(hull_noRep);
+//  polygonContourPtr->resize(c_hull_size);
 //
-//  for(size_t i=0; i < hull_noRep; i++)
+//  for(size_t i=0; i < c_hull_size; i++)
 //  {
 //    polygonContourPtr->points[i] = pointCloud->points[ H[i].id ];
 //  }
@@ -829,12 +833,12 @@ void Plane::calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, 
     }
 
     // Fill convexHull vector (polygonContourPtr)
-    size_t hull_noRep = k-1; // Neglect the last_point = first_point
+    size_t c_hull_size = k-1; // Neglect the last_point = first_point
     H.resize(k);
-    polygonContourPtr->resize(hull_noRep);
-    indices.resize(hull_noRep);
+    polygonContourPtr->resize(c_hull_size);
+    indices.resize(c_hull_size);
 
-    for(size_t i=0; i < hull_noRep; i++)
+    for(size_t i=0; i < c_hull_size; i++)
     {
         polygonContourPtr->points[i] = pointCloud->points[ H[i].id ];
         indices[i] = H[i].id;
@@ -847,6 +851,8 @@ void Plane::calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, 
 
 void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<size_t> &indices)
 {
+    std::cout << "Plane::calcConvexHullandParams... cloud " << pointCloud->size() << " indices " << indices.size() << std::endl;
+
     // Find axis with largest normal component and project onto perpendicular plane
     int k0, k1, k2;
     k0 = (fabs (v3normal(0) ) > fabs(v3normal[1])) ? 0  : 1;
@@ -903,12 +909,13 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
     }
 
     // Fill convexHull vector (polygonContourPtr)
-    size_t hull_noRep = k-1; // Neglect the last_point = first_point
+    size_t c_hull_size = k-1; // No repetition -> Neglect the last_point = first_point
     H.resize(k);
-    polygonContourPtr->resize(hull_noRep);
-    indices.resize(hull_noRep);
+    polygonContourPtr->resize(c_hull_size);
+    indices.resize(c_hull_size);
+    std::cout << "indices " << c_hull_size << std::endl;
 
-    for(size_t i=0; i < hull_noRep; i++)
+    for(size_t i=0; i < c_hull_size; i++)
     {
         polygonContourPtr->points[i] = pointCloud->points[ H[i].id ];
         indices[i] = H[i].id;
@@ -916,12 +923,13 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
 
     // Shift the points to fulfill the plane equation
     forcePtsLayOnPlane(polygonContourPtr);
+    std::cout << "forcePtsLayOnPlane " << std::endl;
 
     // Calc area and mass center
     float ct = fabs ( v3normal[k0] );
     float AreaX2 = 0.0;
     Eigen::Vector3f massCenter = Eigen::Vector3f::Zero();
-    for(size_t i=0, j=1; i < hull_noRep; i++, j++)
+    for(size_t i=0, j=1; i < c_hull_size; i++, j++)
     {
         float cross_segment = H[i].x * H[j].y - H[i].y * H[j].x;
 
@@ -929,7 +937,9 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
         massCenter[k1] += (H[i].x + H[j].x) * cross_segment;
         massCenter[k2] += (H[i].y + H[j].y) * cross_segment;
     }
-    areaHull = fabs (AreaX2) / (2 * ct);
+    areaHull = fabs(AreaX2) / (2 * ct);
+    std::cout << "areaHull " << areaHull << std::endl;
+    std::cout << "massCenter " << massCenter.transpose() << std::endl;
 
     //  std::cout << " PREV v3center " << v3center.transpose() << std::endl;
     //  float error = v3center.transpose()*v3normal+d;
@@ -938,6 +948,7 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
     v3center[k1] /= (3*AreaX2);
     v3center[k2] /= (3*AreaX2);
     v3center[k0] = (-d - v3normal[k1]*massCenter[k1] - v3normal[k2]*massCenter[k2]) / v3normal[k0];
+    std::cout << "v3center " << v3center.transpose() << std::endl;
 
     //d = -v3normal .dot( v3center );
 
@@ -946,7 +957,7 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
     //  Eigen::Vector2f p1, p2;
     //  p2[0] = H[0].x-massCenter[k1]; p2[1] = H[0].y-massCenter[k2];
     ////  float perimeter = 0.0;
-    //  for(size_t i=1; i < hull_noRep; i++)
+    //  for(size_t i=1; i < c_hull_size; i++)
     //  {
     //    p1 = p2;
     //    p2[0] = H[i].x-massCenter[k1]; p2[1] = H[i].y-massCenter[k2];
@@ -1003,9 +1014,8 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
         v3PpalDir = svd.matrixU().col(0);
         elongation = sqrt( svd.singularValues()[0] / svd.singularValues()[1] );
     }
-    //  std::cout << " POST elongation " << elongation << std::endl;
-    //  std::cout << " v3center " << v3center.transpose() << std::endl;
-    //  std::cout << " v3PpalDir " << v3PpalDir.transpose() << std::endl;
+    std::cout << " elongation " << elongation << " v3PpalDir " << v3PpalDir.transpose() << std::endl;
+
     //  error = v3center.transpose()*v3normal+d;
     //  std::cout << " fit error " << error << std::endl;
 }
