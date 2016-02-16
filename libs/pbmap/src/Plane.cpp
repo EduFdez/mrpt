@@ -336,8 +336,6 @@ void Plane::computeInvariantParams (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & in
     //    std::cout << " v3center_ " << v3center_.transpose() << std::endl;
     //    std::cout << "v3center " << v3center.transpose() << std::endl;
     //    Eigen::Vector3f diff = v3center_-v3center;
-    Eigen::Vector3f diff = Eigen::Vector3f::Ones();
-    ASSERT_( diff.isMuchSmallerThan(2*Eigen::Vector3f::Ones()) ); // This does not work
     v3center = v3center_ / total_weights;
 
     // Compute the inliers's covariance matrix M
