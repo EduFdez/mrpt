@@ -31,7 +31,7 @@
 #define USE_COMPLETNESS_HEURISTICS 1
 #define USE_INFERRED_STRUCTURE 1
 
-static std::vector<size_t> DEFAULT_VECTOR;
+static std::vector<int> DEFAULT_VECTOR;
 
 namespace mrpt {
 namespace pbmap {
@@ -73,13 +73,13 @@ namespace pbmap {
          * Calculate the plane's convex hull with the monotone chain algorithm.
         */
         //    void calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud );
-        void calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<size_t> &indices = DEFAULT_VECTOR );
+        void calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<int> &indices = DEFAULT_VECTOR );
 
         /** \brief Compute the convex hull of the planar patch and the plane parameters (centroid, elongation,...)
           * \param[in] pointCloud plane segmentation
           * \param[out] indices the plane normal
           */
-        void calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & pointCloud, std::vector<size_t> & indices = DEFAULT_VECTOR );
+        void calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & pointCloud, std::vector<int> &indices = DEFAULT_VECTOR );
 
         /** \brief Compute the area of a 2D planar polygon patch - using a given normal   */
         float compute2DPolygonalArea();
