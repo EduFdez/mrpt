@@ -171,7 +171,7 @@ bool PlaneInferredInfo::isSurroundingBackground(Plane &plane, pcl::PointCloud<pc
 
             // Fill pointCloud corresponding to the outerPolygon
             plane.outerPolygonPtr->points.push_back(outerPt);
-            double dist2Plane = plane.v3normal.dot(getVector3fromPointXYZ(outerPt) - plane.v3center);
+            double dist2Plane = plane.v3normal.dot(outerPt.getVector3fMap() - plane.v3center);
             if(dist2Plane > 0.1)
                 return false;
         }

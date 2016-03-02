@@ -192,11 +192,11 @@ bool PbMapMaker::arePlanesNearby(Plane &plane1, Plane &plane2, const float distT
         return true;
 
     for(unsigned i=1; i < plane1.polygonContourPtr->size(); i++)
-        if( (getVector3fromPointXYZ(plane1.polygonContourPtr->points[i]) - plane2.v3center).squaredNorm() < distThres2 )
+            if( (plane1.polygonContourPtr->points[i].getVector3fMap() - plane2.v3center).squaredNorm() < distThres2 )
             return true;
 
     for(unsigned j=1; j < plane2.polygonContourPtr->size(); j++)
-        if( (plane1.v3center - getVector3fromPointXYZ(plane2.polygonContourPtr->points[j]) ).squaredNorm() < distThres2 )
+        if( (plane1.v3center - plane2.polygonContourPtr->points[j].getVector3fMap() ).squaredNorm() < distThres2 )
             return true;
 
     for(unsigned i=1; i < plane1.polygonContourPtr->size(); i++)
@@ -218,24 +218,24 @@ bool PbMapMaker::arePlanesNearby(Plane &plane1, Plane &plane2, const float distT
 
     // c)
     for(unsigned i=1; i < plane1.polygonContourPtr->size(); i++)
-        if( plane2.v3normal.dot(getVector3fromPointXYZ(plane1.polygonContourPtr->points[i]) - plane2.v3center) < distThreshold )
+        if( plane2.v3normal.dot(plane1.polygonContourPtr->points[i].getVector3fMap() - plane2.v3center) < distThreshold )
             if(isInHull(plane1.polygonContourPtr->points[i], plane2.polygonContourPtr) )
                 return true;
 
     for(unsigned j=1; j < plane2.polygonContourPtr->size(); j++)
-        if( plane1.v3normal.dot(getVector3fromPointXYZ(plane2.polygonContourPtr->points[j]) - plane1.v3center) < distThreshold )
+        if( plane1.v3normal.dot(plane2.polygonContourPtr->points[j].getVector3fMap() - plane1.v3center) < distThreshold )
             if(isInHull(plane2.polygonContourPtr->points[j], plane1.polygonContourPtr) )
                 return true;
 
     //cout << "Polygons intersect?\n";
     // d)
     //  for(unsigned i=1; i < plane1.polygonContourPtr->size(); i++)
-    //    if( plane2.v3normal.dot(getVector3fromPointXYZ(plane1.polygonContourPtr->points[i]) - plane2.v3center) < distThreshold )
+    //    if( plane2.v3normal.dot(plane1.polygonContourPtr->points[i].getVector3fMap() - plane2.v3center) < distThreshold )
     //    {
     ////    cout << "Elements\n" << plane2.v3normal << "\n xyz " << plane1.polygonContourPtr->points[i].x << " " << plane1.polygonContourPtr->points[i].y << " " << plane1.polygonContourPtr->points[i].z
     ////          << " xyz2 " << plane1.polygonContourPtr->points[i-1].x << " " << plane1.polygonContourPtr->points[i-1].y << " " << plane1.polygonContourPtr->points[i-1].z << endl;
     ////    ASSERT_( plane2.v3normal.dot(diffPoints(plane1.polygonContourPtr->points[i], plane1.polygonContourPtr->points[i-1]) ) != 0 );
-    //      float d = (plane2.v3normal.dot(plane2.v3center - getVector3fromPointXYZ(plane1.polygonContourPtr->points[i-1]) ) ) / (plane2.v3normal.dot(diffPoints(plane1.polygonContourPtr->points[i], plane1.polygonContourPtr->points[i-1]) ) );
+    //      float d = (plane2.v3normal.dot(plane2.v3center - plane1.polygonContourPtr->points[i-1].getVector3fMap() ) ) / (plane2.v3normal.dot(diffPoints(plane1.polygonContourPtr->points[i], plane1.polygonContourPtr->points[i-1]) ) );
     //      PointT intersection;
     //      intersection.x = d * plane1.polygonContourPtr->points[i].x + (1-d) * plane1.polygonContourPtr->points[i-1].x;
     //      intersection.y = d * plane1.polygonContourPtr->points[i].y + (1-d) * plane1.polygonContourPtr->points[i-1].y;
@@ -547,11 +547,11 @@ void PbMapMaker::detectPlanesCloud( pcl::PointCloud<PointT>::Ptr &pointCloudPtr_
 
     std::vector<pcl::PlanarRegion<PointT>, aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
     std::vector<pcl::ModelCoefficients> model_coefficients;
-    std::vector<pcl::PointIndices> inlier_indices;
+    std::vector<pcl::PointIndices> inliers;
     pcl::PointCloud<pcl::Label>::Ptr labels (new pcl::PointCloud<pcl::Label>);
     std::vector<pcl::PointIndices> label_indices;
     std::vector<pcl::PointIndices> boundary_indices;
-    mps.segmentAndRefine (regions, model_coefficients, inlier_indices, labels, label_indices, boundary_indices);
+    mps.segmentAndRefine (regions, model_coefficients, inliers, labels, label_indices, boundary_indices);
 
 #ifdef _VERBOSE
     double plane_extract_end = pcl::getTime();
@@ -578,7 +578,7 @@ void PbMapMaker::detectPlanesCloud( pcl::PointCloud<PointT>::Ptr &pointCloudPtr_
         // Extract the planar inliers from the input cloud
         pcl::ExtractIndices<pcl::PointXYZRGBA> extract;
         extract.setInputCloud (pointCloudPtr_arg2);
-        extract.setIndices ( boost::make_shared<const pcl::PointIndices> (inlier_indices[i]) );
+        extract.setIndices ( boost::make_shared<const pcl::PointIndices> (inliers[i]) );
         extract.setNegative (false);
         extract.filter (*plane.planePointCloudPtr);    // Write the planar point cloud
 

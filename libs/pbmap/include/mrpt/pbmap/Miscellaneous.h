@@ -105,13 +105,6 @@ namespace mrpt {
 namespace pbmap {
     typedef pcl::PointXYZRGBA PointT;
 
-    /*! Transform the (x,y,z) coordinates of a PCL point into a Eigen::Vector3f.*/
-    template<class pointPCL>
-    Eigen::Vector3f getVector3fromPointXYZ(pointPCL &pt)
-    {
-        return Eigen::Vector3f(pt.x,pt.y,pt.z);
-    }
-
     template <class POINT>
     inline Eigen::Vector3f diffPoints(const POINT &P1, const POINT &P2)
     {

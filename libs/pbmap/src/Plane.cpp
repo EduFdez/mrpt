@@ -851,7 +851,7 @@ void Plane::calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, 
 
 void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<int> & indices)
 {
-    std::cout << "Plane::calcConvexHullandParams... cloud " << pointCloud->size() << " indices " << indices.size() << std::endl;
+    //std::cout << "Plane::calcConvexHullandParams... cloud " << pointCloud->size() << " indices " << indices.size() << std::endl;
 
     // Find axis with largest normal component and project onto perpendicular plane
     int k0, k1, k2;
@@ -912,7 +912,7 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
     size_t c_hull_size = k-1; // No repetition -> Neglect the last_point = first_point
     H.resize(k);
     indices.resize(c_hull_size);
-    //std::cout << "polygonContourPtr " << polygonContourPtr->size() << std::endl;
+    //std::cout << "indices " << c_hull_size << std::endl;
     for(size_t i=0; i < c_hull_size; i++)
     {
 //        std::cout << i << " index " << c_hull_size << std::endl;
@@ -951,7 +951,7 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
     v3center[k1] /= (3*AreaX2);
     v3center[k2] /= (3*AreaX2);
     v3center[k0] = (-d - v3normal[k1]*massCenter[k1] - v3normal[k2]*massCenter[k2]) / v3normal[k0];
-//    std::cout << "v3center " << v3center.transpose() << std::endl;
+    //std::cout << "v3center " << v3center.transpose() << std::endl;
 
     //d = -v3normal .dot( v3center );
 
@@ -1017,7 +1017,7 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
         v3PpalDir = svd.matrixU().col(0);
         elongation = sqrt( svd.singularValues()[0] / svd.singularValues()[1] );
     }
-//    std::cout << " elongation " << elongation << " v3PpalDir " << v3PpalDir.transpose() << std::endl;
+    //std::cout << " elongation " << elongation << " v3PpalDir " << v3PpalDir.transpose() << std::endl;
 
     //  error = v3center.transpose()*v3normal+d;
     //  std::cout << " fit error " << error << std::endl;
@@ -1033,11 +1033,11 @@ bool Plane::isPlaneNearby(Plane &plane_nearby, const float distThreshold)
         return true;
 
     for(unsigned i=1; i < polygonContourPtr->size(); i++)
-        if( (getVector3fromPointXYZ(polygonContourPtr->points[i]) - plane_nearby.v3center).squaredNorm() < distThres2 )
+        if( (polygonContourPtr->points[i].getVector3fMap() - plane_nearby.v3center).squaredNorm() < distThres2 )
             return true;
 
     for(unsigned j=1; j < plane_nearby.polygonContourPtr->size(); j++)
-        if( (v3center - getVector3fromPointXYZ(plane_nearby.polygonContourPtr->points[j]) ).squaredNorm() < distThres2 )
+        if( (v3center - plane_nearby.polygonContourPtr->points[j].getVector3fMap() ).squaredNorm() < distThres2 )
             return true;
 
     for(unsigned i=1; i < polygonContourPtr->size(); i++)
