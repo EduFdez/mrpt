@@ -7,18 +7,19 @@ if(0)
 #
 #  Run with "cmake ." at the root directory
 #
-#  July 2014, Eduardo Fernández-Moral <efernandezmoral@gmail.com>
+#  January 2017, Eduardo Fernández-Moral <efernandezmoral@gmail.com>
 #-----------------------------------------------------------------
-PROJECT(LRF-calib)
+PROJECT(kinect-rig-calib)
+
 
 # ---------------------------------------------
 # TARGET:
 # ---------------------------------------------
 # Define the executable target:
-ADD_EXECUTABLE(LRF-calib
-               LRF-calib_main.cpp)
+ADD_EXECUTABLE(kinect-rig-calib
+               kinect-rig-calib_main.cpp)
 
-SET(TMP_TARGET_NAME "LRF-calib")
+SET(TMP_TARGET_NAME "kinect-rig-calib")
 
 
 
@@ -28,7 +29,7 @@ TARGET_LINK_LIBRARIES(${TMP_TARGET_NAME} ${MRPT_LINKER_LIBS})
 # Dependencies on MRPT libraries:
 #  Just mention the top-level dependency, the rest will be detected automatically, 
 #  and all the needed #include<> dirs added (see the script DeclareAppDependencies.cmake for further details)
-DeclareAppDependencies(${TMP_TARGET_NAME} mrpt-gui mrpt-slam)
+DeclareAppDependencies(${TMP_TARGET_NAME} mrpt-gui mrpt-pbmap)
 
 DeclareAppForInstall(${TMP_TARGET_NAME})
 
