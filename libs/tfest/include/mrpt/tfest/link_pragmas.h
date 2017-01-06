@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -17,18 +17,6 @@
 // In each mrpt library, search and replace:
 //  MRPT_XXX_EXPORT, MRPT_XXX_IMPORT
 //  TFEST_IMPEXP, mrpt_xxx_EXPORTS
-
-// If we are building the DLL (_EXPORTS), do not link against the .lib files:
-#if !defined(mrpt_tfest_EXPORTS) && (defined(_MSC_VER) || defined(__BORLANDC__))
-#	if defined(_DEBUG)
-#		pragma comment (lib, BOOST_JOIN( BOOST_JOIN("libmrpt-tfest",MRPT_VERSION_POSTFIX),"-dbg.lib"))
-#	else
-#		pragma comment (lib, BOOST_JOIN( BOOST_JOIN("libmrpt-tfest",MRPT_VERSION_POSTFIX),".lib"))
-#	endif
-#endif
-
-
-
 
 /*   The macros below for DLL import/export are required for Windows only.
     Mostly all the definitions in this file are copied or at least topod
@@ -87,7 +75,7 @@
 #		define TFEST_IMPEXP MRPT_TFEST_IMPORT
 #	endif
 #else /* not making nor using DLL */
-#    define TFEST_IMPEXP 
+#    define TFEST_IMPEXP
 #endif
 
 

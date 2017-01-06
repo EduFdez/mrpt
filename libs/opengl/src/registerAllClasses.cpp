@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -11,21 +11,14 @@
 
 #define MRPT_NO_WARN_BIG_HDR
 #include <mrpt/opengl.h>
-
-#include <mrpt/utils/CStartUpClassesRegister.h>
+#include <mrpt/utils/initializer.h>
 
 using namespace mrpt::opengl;
 using namespace mrpt::utils;
 
-void registerAllClasses_mrpt_opengl();
-
-CStartUpClassesRegister  mrpt_opengl_class_reg(&registerAllClasses_mrpt_opengl);
-
-/*---------------------------------------------------------------
-					registerAllClasses_mrpt_opengl
-  ---------------------------------------------------------------*/
-void registerAllClasses_mrpt_opengl()
+MRPT_INITIALIZER(registerAllClasses_mrpt_opengl)
 {
+#if !defined(DISABLE_MRPT_AUTO_CLASS_REGISTRATION)
 	// Opengl classes:
 	registerClass( CLASS_ID( CRenderizable ) );
 	registerClass( CLASS_ID( C3DSScene ) );
@@ -67,5 +60,6 @@ void registerAllClasses_mrpt_opengl()
 	// These ones are in the lib: mrpt-obsmaps
 	//registerClass( CLASS_ID( CPlanarLaserScan ) );
 	//registerClass( CLASS_ID( CAngularObservationMesh ) );
+#endif
 }
 

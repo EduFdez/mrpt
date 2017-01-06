@@ -2,14 +2,12 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
 
 #include "opengl-precomp.h"  // Precompiled header
-
-//MRPT_TODO("Replace this class with a wrapper to assimp")
 
 // Include the lib3ds library:
 #include <lib3ds/file.h>
@@ -326,9 +324,9 @@ void render_node(Lib3dsNode *node, Lib3dsFile	*file)
             }
             else
             {
-              static const Lib3dsRgba a={0.7, 0.7, 0.7, 1.0};
-              static const Lib3dsRgba d={0.7, 0.7, 0.7, 1.0};
-              static const Lib3dsRgba s={1.0, 1.0, 1.0, 1.0};
+              static const Lib3dsRgba a={0.7f, 0.7f, 0.7f, 1.0f};
+              static const Lib3dsRgba d={0.7f, 0.7f, 0.7f, 1.0f};
+              static const Lib3dsRgba s={1.0f, 1.0f, 1.0f, 1.0f};
               glMaterialfv(GL_FRONT, GL_AMBIENT, a);
               glMaterialfv(GL_FRONT, GL_DIFFUSE, d);
               glMaterialfv(GL_FRONT, GL_SPECULAR, s);
@@ -631,7 +629,7 @@ void C3DSScene::loadFrom3DSFile( const std::string &filepath )
     light = lib3ds_light_new("light0");
     light->spot_light = 0;
     light->see_cone = 0;
-    light->color[0] = light->color[1] = light->color[2] = .6;
+    light->color[0] = light->color[1] = light->color[2] = .6f;
     light->position[0] = cx + size * .75;
     light->position[1] = cy - size * 1.;
     light->position[2] = cz + size * 1.5;
@@ -644,7 +642,7 @@ void C3DSScene::loadFrom3DSFile( const std::string &filepath )
     light = lib3ds_light_new("light1");
     light->spot_light = 0;
     light->see_cone = 0;
-    light->color[0] = light->color[1] = light->color[2] = .3;
+    light->color[0] = light->color[1] = light->color[2] = .3f;
     light->position[0] = cx - size;
     light->position[1] = cy - size;
     light->position[2] = cz + size * .75;
@@ -657,7 +655,7 @@ void C3DSScene::loadFrom3DSFile( const std::string &filepath )
     light = lib3ds_light_new("light2");
     light->spot_light = 0;
     light->see_cone = 0;
-    light->color[0] = light->color[1] = light->color[2] = .3;
+    light->color[0] = light->color[1] = light->color[2] = .3f;
     light->position[0] = cx;
     light->position[1] = cy + size;
     light->position[2] = cz + size;

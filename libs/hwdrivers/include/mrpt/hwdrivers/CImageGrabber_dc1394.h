@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -168,7 +168,7 @@ namespace mrpt
 
 			/** Grab an image from the opened camera (for monocular cameras).
 			 * \param out_observation The object to be filled with sensed data.
-			 *
+			 * \note This may be blocking when using software trigger and no frame is available yet. Ensure trigger before getObservation() or take into account that this call may block.
 			 * \return false on any error, true if all go fine.
 			*/
 			bool  getObservation( mrpt::obs::CObservationImage &out_observation);

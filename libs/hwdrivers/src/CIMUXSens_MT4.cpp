@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -541,6 +541,7 @@ void CIMUXSens_MT4::doProcess()
 			obsGPS->setMsg(rGPSs);
 			obsGPS->timestamp = obs->timestamp;
 			obsGPS->originalReceivedTimestamp = obs->timestamp;
+			obsGPS->has_satellite_timestamp = false;
 			obsGPS->sensorPose	= m_sensorPose;
 			obsGPS->sensorLabel	= m_sensorLabel;
 

@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -11,9 +11,6 @@
 
 #include <mrpt/utils/CStream.h>
 
-/*---------------------------------------------------------------
-	Class
-  ---------------------------------------------------------------*/
 namespace mrpt
 {
 	namespace utils
@@ -51,7 +48,8 @@ namespace mrpt
 			  */
 			bool open(const std::string &fileName );
 			void close(); //!< Closes the file
-			bool fileOpenCorrectly(); //!< Says if file was open successfully or not.
+			bool fileOpenCorrectly(); //!< Returns true if the file was open without errors.
+			bool is_open() { return fileOpenCorrectly(); } //!< Returns true if the file was open without errors.
 			bool checkEOF(); //!< Will be true if EOF has been already reached.
 
 			uint64_t getTotalBytesCount() MRPT_OVERRIDE; //!< Method for getting the total number of <b>compressed</b> bytes of in the file (the physical size of the compressed file).

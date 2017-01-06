@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -22,33 +22,37 @@ using namespace mrpt::nav;
 using namespace std;
 
 IMPLEMENTS_SERIALIZABLE( CLogFileRecord_ND, CHolonomicLogFileRecord,mrpt::nav )
-
-
+IMPLEMENTS_SERIALIZABLE( CHolonomicND, CAbstractHolonomicReactiveMethod,mrpt::nav)
 
 /**  Initialize the parameters of the navigator, from some
 *    configuration file, or default values if filename is set to NULL.
 */
 CHolonomicND::CHolonomicND(const mrpt::utils::CConfigFileBase *INI_FILE ) :
+	CAbstractHolonomicReactiveMethod("ND_CONFIG"),
 	m_last_selected_sector ( std::numeric_limits<unsigned int>::max() )
 {
 	if (INI_FILE!=NULL)
 		initialize( *INI_FILE );
 }
 
+void CHolonomicND::initialize(const mrpt::utils::CConfigFileBase &INI_FILE)
+{
+	options.loadFromConfigFile(INI_FILE, getConfigFileSectionName());
+}
 
 /*---------------------------------------------------------------
 						Navigate
   ---------------------------------------------------------------*/
 void  CHolonomicND::navigate(
 	const mrpt::math::TPoint2D &target,
-	const std::vector<float>	&obstacles,
+	const std::vector<double>	&obstacles,
 	double			maxRobotSpeed,
 	double			&desiredDirection,
 	double			&desiredSpeed,
-	CHolonomicLogFileRecordPtr &logRecord)
+	CHolonomicLogFileRecordPtr &logRecord,
+	const double    max_obstacle_dist,
+	const mrpt::nav::ClearanceDiagram *clearance)
 {
-	MRPT_UNUSED_PARAM(maxRobotSpeed);
-
 	TGapArray			gaps;
 	TSituations			situation;
 	unsigned int		selectedSector;
@@ -93,18 +97,16 @@ void  CHolonomicND::navigate(
 
 		// Speed control: Reduction factors
 		// ---------------------------------------------
-		//double		targetNearnessFactor = max(0.20, min(1.0, 1.0-exp(-(target.norm()+0.01)/options.TARGET_SLOW_APPROACHING_DISTANCE)));
-		const double targetNearnessFactor = std::min( 1.0, target.norm()/(options.TARGET_SLOW_APPROACHING_DISTANCE));
-		//printf(" TARGET NEARNESS = %f\n",targetNearnessFactor);
-		double		riskFactor = min(1.0, riskEvaluation / options.RISK_EVALUATION_DISTANCE );
+		const double targetNearnessFactor = m_enableApproachTargetSlowDown ? 
+			std::min(1.0, target.norm() / (options.TARGET_SLOW_APPROACHING_DISTANCE))
+			:
+			1.0;
 
-		//desiredSpeed = maxRobotSpeed * min(riskFactor,targetNearnessFactor);
-		desiredSpeed = min(riskFactor,targetNearnessFactor);
-
+		const double riskFactor = std::min(1.0, riskEvaluation / options.RISK_EVALUATION_DISTANCE );
+		desiredSpeed = maxRobotSpeed * std::min(riskFactor,targetNearnessFactor);
 	}
 
 	m_last_selected_sector = selectedSector;
-
 
 	// LOG --------------------------
 	if (log)
@@ -135,16 +137,17 @@ void  CHolonomicND::navigate(
 				Find gaps in the obtacles (Beta version)
   ---------------------------------------------------------------*/
 void  CHolonomicND::gapsEstimator(
-	const std::vector<float>         & obstacles,
+	const std::vector<double>         & obstacles,
 	const mrpt::math::TPoint2D  & target,
 	TGapArray                   & gaps_out)
 {
 	const size_t n = obstacles.size();
+	ASSERT_(n>2);
 
 	// ================ Parameters ================
-	const int		GAPS_MIN_WIDTH = 3;
-	const double	GAPS_MIN_DEPTH_CONSIDERED = 0.6;
-	const double	GAPS_MAX_RELATIVE_DEPTH = 0.5;
+	const int     GAPS_MIN_WIDTH = ceil(n*0.01); // was: 3
+	const double  GAPS_MIN_DEPTH_CONSIDERED = 0.6;
+	const double  GAPS_MAX_RELATIVE_DEPTH = 0.5;
 	// ============================================
 
 	// Find the maximum distances to obstacles:
@@ -168,7 +171,7 @@ void  CHolonomicND::gapsEstimator(
 
 			bool    is_inside = false;
 			size_t  sec_ini=0, sec_end=0;
-			float  maxDist=0.f;
+			double  maxDist=0.;
 
 			for (size_t i=0;i<n;i++)
 			{
@@ -187,7 +190,7 @@ void  CHolonomicND::gapsEstimator(
 
 					is_inside = false;
 
-					if ( (sec_end-sec_ini) >= GAPS_MIN_WIDTH )
+					if ( (sec_end-sec_ini) >= (size_t)GAPS_MIN_WIDTH )
 					{
 						// Add new gap:
 						gaps_temp.resize( gaps_temp.size() + 1 );
@@ -296,7 +299,7 @@ void  CHolonomicND::gapsEstimator(
 						Search the best gap.
   ---------------------------------------------------------------*/
 void  CHolonomicND::searchBestGap(
-	const std::vector<float>         & obstacles,
+	const std::vector<double>         & obstacles,
 	const double                  maxObsRange,
 	const TGapArray             & in_gaps,
 	const mrpt::math::TPoint2D  & target,
@@ -315,26 +318,15 @@ void  CHolonomicND::searchBestGap(
 
 	// D1 : Straight path?
 	// --------------------------------------------------------
-	const int freeSectorsNearTarget = 0.05*obstacles.size();
+	const int freeSectorsNearTarget = ceil(0.02*obstacles.size());
 	bool theyAreFree = true, caseD1 = false;
 	if (target_sector>static_cast<unsigned int>(freeSectorsNearTarget) &&
 		target_sector<static_cast<unsigned int>(obstacles.size()-freeSectorsNearTarget) )
 	{
 		const double min_free_dist = std::min(1.05*target_dist, 0.95*maxObsRange);
-		int index_obstacles;
-
-		for (int j=-freeSectorsNearTarget;j<=freeSectorsNearTarget;j++)
-		{
-			if (int(target_sector) + j < 0)
-				index_obstacles = obstacles.size() + (target_sector + j);
-			else if (target_sector + j >= obstacles.size())
-				index_obstacles = (target_sector + j) - obstacles.size();
-			else
-				index_obstacles = target_sector + j;
-
-			if (obstacles[ index_obstacles ]<min_free_dist)
-						theyAreFree = false;
-		}
+		for (int j=-freeSectorsNearTarget;theyAreFree && j<=freeSectorsNearTarget;j++)
+			if (obstacles[ (int(target_sector) + j) % obstacles.size()]<min_free_dist)
+				theyAreFree = false;
 		caseD1 = theyAreFree;
 	}
 
@@ -452,7 +444,7 @@ void  CHolonomicND::searchBestGap(
 void  CHolonomicND::calcRepresentativeSectorForGap(
 	TGap                        & gap,
 	const mrpt::math::TPoint2D  & target,
-	const std::vector<float>         & obstacles)
+	const std::vector<double>         & obstacles)
 {
 	int sector;
 	const unsigned int sectors_to_be_wide = round( options.WIDE_GAP_SIZE_PERCENT * obstacles.size());
@@ -505,8 +497,8 @@ void  CHolonomicND::calcRepresentativeSectorForGap(
 						Evaluate each gap
   ---------------------------------------------------------------*/
 void  CHolonomicND::evaluateGaps(
-	const std::vector<float>	&obstacles,
-	const float		maxObsRange,
+	const std::vector<double>	&obstacles,
+	const double maxObsRange,
 	const TGapArray		&gaps,
 	const unsigned int	target_sector,
 	const float		target_dist,
@@ -526,7 +518,7 @@ void  CHolonomicND::evaluateGaps(
 		const float d = min3(
 			obstacles[ gap->representative_sector ],
 			maxObsRange,
-			0.95f*target_dist );
+			0.95*target_dist );
 
 		// The TP-Space representative coordinates for this gap:
 		const double	phi = M_PI*(-1 + 2*(0.5+gap->representative_sector)/double(obstacles.size()));
@@ -564,7 +556,7 @@ void  CHolonomicND::evaluateGaps(
 		// Factor #3: Punish paths that take us far away wrt the target:  **** I don't understand it *********
 		// -----------------------------------------------------
 		double	closestX,closestY;
-		float dist_eucl = math::minimumDistanceFromPointToSegment(
+		double dist_eucl = math::minimumDistanceFromPointToSegment(
 			target_x, target_y, // Point
 			0,0,  x,y,          // Segment
 			closestX,closestY   // Out
@@ -707,7 +699,7 @@ void CHolonomicND::TOptions::loadFromConfigFile(const mrpt::utils::CConfigFileBa
 void CHolonomicND::TOptions::saveToConfigFile(mrpt::utils::CConfigFileBase &cfg , const std::string &section) const
 {
 	MRPT_START
-	const int WN = 40, WV = 20;
+	const int WN = 25, WV = 30;
 
 	cfg.write(section,"WIDE_GAP_SIZE_PERCENT",WIDE_GAP_SIZE_PERCENT,   WN,WV, "");
 	cfg.write(section,"MAX_SECTOR_DIST_FOR_D2_PERCENT",MAX_SECTOR_DIST_FOR_D2_PERCENT,   WN,WV, "");
@@ -721,3 +713,36 @@ void CHolonomicND::TOptions::saveToConfigFile(mrpt::utils::CConfigFileBase &cfg 
 
 	MRPT_END
 }
+
+void  CHolonomicND::writeToStream(mrpt::utils::CStream &out,int *version) const
+{
+	if (version)
+		*version = 0;
+	else
+	{
+		// Params:
+		out << options.factorWeights << options.MAX_SECTOR_DIST_FOR_D2_PERCENT << 
+			options.RISK_EVALUATION_DISTANCE << options.RISK_EVALUATION_SECTORS_PERCENT <<
+			options.TARGET_SLOW_APPROACHING_DISTANCE << options.TOO_CLOSE_OBSTACLE << options.WIDE_GAP_SIZE_PERCENT;
+		// State:
+		out << m_last_selected_sector;
+	}
+}
+void  CHolonomicND::readFromStream(mrpt::utils::CStream &in,int version)
+{
+	switch(version)
+	{
+	case 0:
+		{
+		// Params:
+		in >> options.factorWeights >> options.MAX_SECTOR_DIST_FOR_D2_PERCENT >> 
+			options.RISK_EVALUATION_DISTANCE >> options.RISK_EVALUATION_SECTORS_PERCENT >>
+			options.TARGET_SLOW_APPROACHING_DISTANCE >> options.TOO_CLOSE_OBSTACLE >> options.WIDE_GAP_SIZE_PERCENT;
+		// State:
+		in >> m_last_selected_sector;
+		} break;
+	default:
+		MRPT_THROW_UNKNOWN_SERIALIZATION_VERSION(version)
+	};
+}
+

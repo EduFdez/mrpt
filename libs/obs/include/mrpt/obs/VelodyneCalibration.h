@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -35,7 +35,7 @@ namespace obs
 		void clear(); //!< Clear all previous contents
 
 		/** Loads default calibration files for common LIDAR models.
-		  * \param[in] lidar_model Valid model names are: `VLP-16`, `HDL-32`
+		  * \param[in] lidar_model Valid model names are: `VLP16`, `HDL32`
 		  * \return It always return a calibration structure, but it may be empty if the model name is unknown. See \a empty()
 		  * \note Default files can be inspected in `[MRPT_SRC or /usr]/share/mrpt/config_files/rawlog-grabber/velodyne_default_calib_{*}.xml`
 		  */

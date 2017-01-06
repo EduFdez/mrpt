@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -23,13 +23,6 @@
 #include <mrpt/gui/WxUtils.h>
 #include <mrpt/gui/WxSubsystem.h>
 
-#if MRPT_HAS_BUMBLEBEE
-	#include <PGRFlyCapture.h>
-	#include <triclops.h>
-	#include <pgrflycapturestereo.h>
-	#include <pnmutils.h>
-#endif
-
 using namespace mrpt;
 using namespace mrpt::hwdrivers;
 using namespace mrpt::gui;
@@ -44,35 +37,40 @@ IMPLEMENTS_GENERIC_SENSOR(CCameraSensor,mrpt::hwdrivers)
                 Constructor
    ----------------------------------------------------- */
 CCameraSensor::CCameraSensor() :
+	mrpt::utils::COutputLogger("CCameraSensor"),
 	m_sensorPose			(),
 	m_grabber_type			("opencv"),
 	m_capture_grayscale		(false),
 	m_cv_camera_index		(0),
 	m_cv_camera_type		("CAMERA_CV_AUTODETECT"),
 	m_cv_options			(),
+	// ---
 	m_dc1394_camera_guid	(0),
 	m_dc1394_camera_unit	(0),
 	m_dc1394_options		(),
 	m_preview_decimation	(0),
 	m_preview_reduction		(1),
-	m_bumblebee_camera_index(0),
-	m_bumblebee_options		(),
-	m_bumblebee_monocam		(-1),
+	// ---
+	m_bumblebee_dc1394_camera_guid(0),
+	m_bumblebee_dc1394_camera_unit(0),
+	m_bumblebee_dc1394_framerate(15),
+	// ---
 	m_svs_camera_index(0),
 	m_svs_options                   (),
+	// ---
 	m_sr_open_from_usb		(true),
 	m_sr_save_3d			(true),
 	m_sr_save_range_img		(true),
 	m_sr_save_intensity_img	(true),
 	m_sr_save_confidence	(true),
-
+	// ---
 	m_kinect_save_3d		(true), // These options are also used for OpenNI2 grabber
 	m_kinect_save_range_img (true),
 	m_kinect_save_intensity_img(true),
 	m_kinect_video_rgb		(true),
-
+	// ---
 	m_fcs_start_synch_capture(false),
-
+	// ---
 	m_img_dir_url			(""),
 	m_img_dir_left_format	("imL_%04d.jpg"),
 	m_img_dir_right_format	("imR_%04d.jpg"),
@@ -80,14 +78,14 @@ CCameraSensor::CCameraSensor() :
 	m_img_dir_end_index		(100),
 	m_img_dir_is_stereo		(true),
 	m_img_dir_counter		(0),
-
+	// ---
 	m_external_images_own_thread(false),
 	m_cap_cv             (NULL),
 	m_cap_dc1394         (NULL),
 	m_cap_flycap         (NULL),
 	m_cap_flycap_stereo_l(NULL),
 	m_cap_flycap_stereo_r(NULL),
-	m_cap_bumblebee      (NULL),
+	m_cap_bumblebee_dc1394(NULL),
 	m_cap_svs            (NULL),
 	m_cap_ffmpeg         (NULL),
 	m_cap_rawlog         (NULL),
@@ -155,17 +153,15 @@ void CCameraSensor::initialize()
 			THROW_EXCEPTION("[CCameraSensor::initialize] ERROR: Couldn't open dc1394 camera.")
 		}
 	}
-	else if (m_grabber_type=="bumblebee")
+	else if (m_grabber_type=="bumblebee_dc1394")
 	{
-		//m_cap_bumblebee
-		cout << format("[CCameraSensor::initialize] bumblebee camera: %u...\n", (unsigned int)( m_bumblebee_camera_index ) );
-		m_cap_bumblebee = new CStereoGrabber_Bumblebee( m_bumblebee_camera_index, m_bumblebee_options );
+		cout << format("[CCameraSensor::initialize] bumblebee_libdc1394 camera: GUID:0x%08X Index:%i FPS:%f...\n", (unsigned int)( m_bumblebee_dc1394_camera_guid ), m_bumblebee_dc1394_camera_unit, m_bumblebee_dc1394_framerate );
+		m_cap_bumblebee_dc1394 = new CStereoGrabber_Bumblebee_libdc1394( m_bumblebee_dc1394_camera_guid,m_bumblebee_dc1394_camera_unit, m_bumblebee_dc1394_framerate );
 	}
 	else if(m_grabber_type=="svs")
 	{
 		cout << format("[CCameraSensor::initialize] SVS camera: %u...\n", (unsigned int)( m_svs_camera_index ) );
 		m_cap_svs = new CStereoGrabber_SVS( m_svs_camera_index, m_svs_options );
-
 	}
 	else if (m_grabber_type=="ffmpeg")
 	{
@@ -368,7 +364,7 @@ void CCameraSensor::close()
 	delete_safe(m_cap_flycap);
 	delete_safe(m_cap_flycap_stereo_l);
 	delete_safe(m_cap_flycap_stereo_r);
-	delete_safe(m_cap_bumblebee);
+	delete_safe(m_cap_bumblebee_dc1394);
 	delete_safe(m_cap_ffmpeg);
 	delete_safe(m_cap_rawlog);
 	delete_safe(m_cap_swissranger);
@@ -456,14 +452,10 @@ void  CCameraSensor::loadConfig_sensorSpecific(
 	MRPT_LOAD_HERE_CONFIG_VAR( dc1394_trigger_polarity, int, m_dc1394_options.trigger_polarity, configSource, iniSection )
 	MRPT_LOAD_HERE_CONFIG_VAR( dc1394_ring_buffer_size, int, m_dc1394_options.ring_buffer_size, configSource, iniSection )
 
-	// Bumblebee options:
-	m_bumblebee_camera_index			= configSource.read_int( iniSection, "bumblebee_camera_index", m_bumblebee_camera_index );
-	m_bumblebee_options.frame_width 	= configSource.read_int( iniSection, "bumblebee_frame_width", m_bumblebee_options.frame_width );
-	m_bumblebee_options.frame_height	= configSource.read_int( iniSection, "bumblebee_frame_height", m_bumblebee_options.frame_height );
-	m_bumblebee_options.color			= !m_capture_grayscale;
-	m_bumblebee_monocam                 = configSource.read_int( iniSection, "bumblebee_mono", m_bumblebee_monocam );
-	m_bumblebee_options.getRectified	= configSource.read_bool( iniSection, "bumblebee_get_rectified", m_bumblebee_options.getRectified );
-
+	// Bumblebee_dc1394 options:
+	MRPT_LOAD_HERE_CONFIG_VAR( bumblebee_dc1394_camera_guid, uint64_t, m_bumblebee_dc1394_camera_guid, configSource, iniSection )
+	MRPT_LOAD_HERE_CONFIG_VAR( bumblebee_dc1394_camera_unit, int, m_bumblebee_dc1394_camera_unit, configSource, iniSection )
+	MRPT_LOAD_HERE_CONFIG_VAR( bumblebee_dc1394_framerate, double, m_bumblebee_dc1394_framerate, configSource, iniSection )
 
 	// SVS options:
 	m_svs_camera_index                              = configSource.read_int( iniSection, "svs_camera_index", m_svs_camera_index );
@@ -541,31 +533,6 @@ void  CCameraSensor::loadConfig_sensorSpecific(
 		THROW_EXCEPTION_CUSTOM_MSG1("ERROR: DC1394 framerate seems to be not a valid number: %f",the_fps);
 
 	m_dc1394_options.framerate =  it_fps->second;
-
-	// ... for bumblebee
-#if MRPT_HAS_BUMBLEBEE
-	map<double,FlyCaptureFrameRate>	map_fps_bb;
-	map<double,FlyCaptureFrameRate>::iterator it_fps_bb;
-	map_fps_bb[1.875]	= FLYCAPTURE_FRAMERATE_1_875;
-	map_fps_bb[3.75]	= FLYCAPTURE_FRAMERATE_3_75;
-	map_fps_bb[7.5]		= FLYCAPTURE_FRAMERATE_7_5;
-	map_fps_bb[15]		= FLYCAPTURE_FRAMERATE_15;
-	map_fps_bb[30]		= FLYCAPTURE_FRAMERATE_30;
-//	map_fps_bb[50]		= FLYCAPTURE_FRAMERATE_50;
-	map_fps_bb[60]		= FLYCAPTURE_FRAMERATE_60;
-	map_fps_bb[120]		= FLYCAPTURE_FRAMERATE_120;
-	map_fps_bb[240]		= FLYCAPTURE_FRAMERATE_240;
-
-	the_fps = configSource.read_double( iniSection, "bumblebee_fps", -1 );
-	if (the_fps>0)
-	{
-		it_fps_bb = map_fps_bb.find( the_fps );
-		if ( it_fps_bb == map_fps_bb.end() )
-			THROW_EXCEPTION_CUSTOM_MSG1("ERROR: Bumblebee framerate seems to be not a valid number: %f",the_fps);
-
-		m_bumblebee_options.framerate = it_fps_bb->second;
-	}
-#endif
 
 	// Special stuff: color encoding:
 	map<string,grabber_dc1394_color_coding_t>			map_color;
@@ -693,44 +660,34 @@ void CCameraSensor::getNextFrame( vector<CSerializablePtr> & out_obs )
 		}
 		else capture_ok = true;
 	}
-    else if (m_cap_openni2)
-    {
-        obs3D = CObservation3DRangeScan::Create();
-        // Specially at start-up, there may be a delay grabbing so a few calls return false: add a timeout.
-        const mrpt::system::TTimeStamp t0 = mrpt::system::now();
-        double max_timeout = 3.0; // seconds
-        bool there_is_obs, hardware_error;
-        do
-        {
-            m_cap_openni2->getNextObservation(*obs3D, there_is_obs, hardware_error);
-            if (!there_is_obs) mrpt::system::sleep(1);
-        } while (!there_is_obs && mrpt::system::timeDifference(t0,mrpt::system::now())<max_timeout);
+	else if (m_cap_openni2)
+	{
+		obs3D = CObservation3DRangeScan::Create();
+		// Specially at start-up, there may be a delay grabbing so a few calls return false: add a timeout.
+		const mrpt::system::TTimeStamp t0 = mrpt::system::now();
+		double max_timeout = 3.0; // seconds
+		bool there_is_obs, hardware_error;
+		do
+		{
+			m_cap_openni2->getNextObservation(*obs3D, there_is_obs, hardware_error);
+			if (!there_is_obs) mrpt::system::sleep(1);
+		} while (!there_is_obs && mrpt::system::timeDifference(t0,mrpt::system::now())<max_timeout);
 
-        if (!there_is_obs || hardware_error)
-        {	// Error
-            m_state = CGenericSensor::ssError;
-            THROW_EXCEPTION("Error grabbing image from OpenNI2 camera.");
-        }
-        else capture_ok = true;
-    }
-	else if (m_cap_bumblebee)
+		if (!there_is_obs || hardware_error)
+		{	// Error
+			m_state = CGenericSensor::ssError;
+			THROW_EXCEPTION("Error grabbing image from OpenNI2 camera.");
+		}
+		else capture_ok = true;
+	}
+	else if (m_cap_bumblebee_dc1394)
 	{
 		stObs = CObservationStereoImages::Create();
-		if (!m_cap_bumblebee->getStereoObservation( *stObs ))
-		{	// Error
+		if (!m_cap_bumblebee_dc1394->getStereoObservation( *stObs )) {
 			m_state = CGenericSensor::ssError;
 			THROW_EXCEPTION("Error grabbing stereo images");
 		}
-		else
-		{
-			// Stereo or mono?
-			if (m_bumblebee_monocam==0 || m_bumblebee_monocam==1)
-			{
-				obs = CObservationImage::Create();
-				obs->timestamp = stObs->timestamp;
-				obs->image.copyFastFrom( m_bumblebee_monocam==0 ? stObs->imageLeft : stObs->imageRight );
-				stObs.clear();
-			}
+		else {
 			capture_ok = true;
 		}
 	}
@@ -1279,8 +1236,6 @@ CCameraSensorPtr mrpt::hwdrivers::prepareVideoSourceFromUserSelection()
 /* ------------------------------------------------------------------------
 						prepareVideoSourceFromPanel
    ------------------------------------------------------------------------ */
-MRPT_TODO("Add flycap")
-MRPT_TODO("Add duo3D")
 CCameraSensorPtr mrpt::hwdrivers::prepareVideoSourceFromPanel(void *_panel)
 {
 #if MRPT_HAS_WXWIDGETS

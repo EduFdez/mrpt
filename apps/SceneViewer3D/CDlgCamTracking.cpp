@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -185,7 +185,7 @@ void CDlgCamTracking::UpdateTableFromPoses()
 {
 	gridPoses->BeginBatch();
 
-	gridPoses->DeleteRows(0,gridPoses->GetCols());
+	gridPoses->DeleteRows(0,gridPoses->GetNumberRows());
 
 	const size_t N = m_poses.size();
 	gridPoses->InsertRows(0, N );

@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -12,9 +12,6 @@
 #include <mrpt/utils/CStream.h>
 #include <fstream>
 
-/*---------------------------------------------------------------
-	Class
-  ---------------------------------------------------------------*/
 namespace mrpt
 {
 	namespace utils
@@ -47,7 +44,8 @@ namespace mrpt
 			  */
 			bool open(const std::string &fileName );
 			void close(); //!< Close the stream
-			bool  fileOpenCorrectly(); //!< Says if file was open successfully or not.
+			bool fileOpenCorrectly(); //!< Returns true if the file was open without errors.
+			bool is_open() { return fileOpenCorrectly(); } //!< Returns true if the file was open without errors.
 			bool checkEOF(); //!< Will be true if EOF has been already reached.
 
 			/** Method for moving to a specified position in the streamed resource.
