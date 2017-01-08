@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -24,7 +24,7 @@ namespace obs
 	struct OBS_IMPEXP T2DScanProperties {
 		size_t  nRays;
 		double  aperture;
-		bool    rightToLeft;
+		bool    rightToLeft; //!< Angles storage order: true=counterclockwise; false=clockwise
 	};
 	bool OBS_IMPEXP operator<(const T2DScanProperties&a, const T2DScanProperties&b);	//!< Order operator, so T2DScanProperties can appear in associative STL containers.
 

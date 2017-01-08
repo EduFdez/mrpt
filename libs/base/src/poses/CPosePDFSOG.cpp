@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -65,7 +65,7 @@ void CPosePDFSOG::getMean(CPose2D &p) const
 		mrpt::poses::SE_average<2> se_averager;
 		for (const_iterator it=m_modes.begin();it!=m_modes.end();++it)
 		{
-			const double w = (it)->log_w;
+			const double w = exp((it)->log_w);
 			se_averager.append( (it)->mean, w);
 		}
 		se_averager.get_average(p);
@@ -193,11 +193,6 @@ void  CPosePDFSOG::readFromStream(mrpt::utils::CStream &in,int version)
 	};
 }
 
-
-
-/*---------------------------------------------------------------
-						operator =
-  ---------------------------------------------------------------*/
 void  CPosePDFSOG::copyFrom(const CPosePDF &o)
 {
 	MRPT_START

@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -12,7 +12,6 @@
 #include <mrpt/utils/CConfigFile.h>
 #include <mrpt/utils/CTicTac.h>
 #include <mrpt/utils/CTimeLogger.h>
-#include <mrpt/utils/CStartUpClassesRegister.h>
 #include <mrpt/system/os.h>
 #include <mrpt/math/geometry.h>
 #include <mrpt/utils/CStream.h>
@@ -61,9 +60,6 @@ IMPLEMENTS_VIRTUAL_SERIALIZABLE(CPointsMap, CMetricMap,mrpt::maps)
 float CPointsMap::COLOR_3DSCENE_R = 0;
 float CPointsMap::COLOR_3DSCENE_G = 0;
 float CPointsMap::COLOR_3DSCENE_B = 1;
-
-extern CStartUpClassesRegister  mrpt_maps_class_reg;
-const int dumm = mrpt_maps_class_reg.do_nothing(); // Avoid compiler removing this class in static linking
 
 /*---------------------------------------------------------------
 						Constructor
@@ -384,6 +380,8 @@ void CPointsMap::determineMatching2D(
 
 	// We'll assume that the real allocated memory in the source buffers at least have room for a maximum
 	//  of 3 more floats, and pad with zeroes there (yeah, fuck correct-constness....)
+	// JLBC OCT/2016: resize() methods in maps have been modified to enforce capacities to be 4*N by design, 
+	// but will leave this code here just in case (for some edge cases?)
 	if ( otherMap->x.capacity()<nLocalPoints_4align ||
 		 otherMap->y.capacity()<nLocalPoints_4align )
 	{
@@ -682,7 +680,7 @@ void CPointsMap::TInsertionOptions::readFromStream(mrpt::utils::CStream &in)
 
 
 CPointsMap::TLikelihoodOptions::TLikelihoodOptions() :
-	sigma_dist          ( 0.05 ),
+    sigma_dist          ( 0.0025 ),
 	max_corr_distance   ( 1.0 ),
 	decimation          ( 10 )
 {
@@ -792,32 +790,13 @@ void  CPointsMap::getAs3DObject( mrpt::opengl::CSetOfObjectsPtr	&outObj ) const
 	outObj->insert(obj);
 }
 
-
-/*---------------------------------------------------------------
-   Computes the ratio in [0,1] of correspondences between "this" and the "otherMap" map, whose 6D pose relative to "this" is "otherMapPose"
- *   In the case of a multi-metric map, this returns the average between the maps. This method always return 0 for grid maps.
- * \param  otherMap					  [IN] The other map to compute the matching with.
- * \param  otherMapPose				  [IN] The 6D pose of the other map as seen from "this".
- * \param  maxDistForCorr			  [IN] The minimum distance between 2 non-probabilistic map elements for counting them as a correspondence.
- * \param  maxMahaDistForCorr		  [IN] The minimum Mahalanobis distance between 2 probabilistic map elements for counting them as a correspondence.
- *
- * \return The matching ratio [0,1]
- * \sa determineMatching2D
----------------------------------------------------------------*/
-float  CPointsMap::compute3DMatchingRatio(
-		const mrpt::maps::CMetricMap								*otherMap2,
-		const CPose3D							&otherMapPose,
-		float									maxDistForCorr,
-		float									maxMahaDistForCorr
-		) const
+float  CPointsMap::compute3DMatchingRatio(const mrpt::maps::CMetricMap *otherMap2, const mrpt::poses::CPose3D &otherMapPose, const TMatchingRatioParams &mrp) const
 {
-	MRPT_UNUSED_PARAM(maxMahaDistForCorr);
-
 	TMatchingPairList     correspondences;
 	TMatchingParams       params;
 	TMatchingExtraResults extraResults;
 
-	params.maxDistForCorrespondence = maxDistForCorr;
+	params.maxDistForCorrespondence = mrp.maxDistForCorr;
 
 	this->determineMatching3D(
 		otherMap2->getAsSimplePointsMap(),
@@ -969,6 +948,8 @@ void CPointsMap::boundingBox(
 
 			// We'll assume that the real allocated memory in the source buffers at least have room for a maximum
 			//  of 3 more floats, and pad with zeroes there (yeah, fuck correct-constness....)
+			// JLBC OCT/2016: resize() methods in maps have been modified to enforce capacities to be 4*N by design, 
+			// but will leave this code here just in case (for some edge cases?)
 			if ( x.capacity()<nPoints_4align ||
 				 y.capacity()<nPoints_4align ||
 				 z.capacity()<nPoints_4align )
@@ -2110,7 +2091,7 @@ void CPointsMap::loadFromVelodyneScan(
 	ASSERT_EQUAL_(scan.point_cloud.x.size(),scan.point_cloud.intensity.size());
 
 	if (scan.point_cloud.x.empty())
-		const_cast<mrpt::obs::CObservationVelodyneScan *>(&scan)->generatePointCloud();
+		return;
 
 	this->mark_as_modified();
 

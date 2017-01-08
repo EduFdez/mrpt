@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -65,12 +65,13 @@ namespace obs
 	public:
 		typedef std::map<gnss::gnss_message_type_t, gnss::gnss_message_ptr> message_list_t;
 
-		CObservationGPS(  ); //!< ctor
+		CObservationGPS(); //!< ctor
 
 		/** @name GNSS (GPS) data fields
 		  * @{ */
 		mrpt::poses::CPose3D     sensorPose;//!< The sensor pose on the robot/vehicle
 		mrpt::system::TTimeStamp originalReceivedTimestamp; //!< The local computer-based timestamp based on the reception of the message in the computer. \sa CObservation::timestamp in the base class, which should contain the accurate satellite-based UTC timestamp.
+		bool                     has_satellite_timestamp;   //!< If true, CObservation::timestamp has been generated from accurate satellite clock. Otherwise, no GPS data is available and timestamps are based on the local computer clock.
 		/** The main piece of data in this class: a list of GNNS messages.
 		  * Normally users might prefer to access the list via the methods CObservationGPS::getMsgByClass() and CObservationGPS::setMsg()
 		  * Typically only one message, may be multiple if all have the same timestamp. */
@@ -120,7 +121,7 @@ namespace obs
 		template <class MSG_CLASS>
 		MSG_CLASS * getMsgByClassPtr() {
 			message_list_t::iterator it = messages.find(static_cast<gnss::gnss_message_type_t>(MSG_CLASS::msg_type));
-			return it==messages.end() ? dynamic_cast<MSG_CLASS*>(NULL) : dynamic_cast<MSG_CLASS*>(it->second.get());
+			return it==messages.end() ? reinterpret_cast<MSG_CLASS*>(NULL) : dynamic_cast<MSG_CLASS*>(it->second.get());
 		}
 		/** \overload */
 		template <class MSG_CLASS>
@@ -137,6 +138,8 @@ namespace obs
 		void getSensorPose( mrpt::poses::CPose3D &out_sensorPose ) const MRPT_OVERRIDE { out_sensorPose = sensorPose; } // See base class docs
 		void setSensorPose( const mrpt::poses::CPose3D &newSensorPose ) MRPT_OVERRIDE { sensorPose = newSensorPose; } // See base class docs
 		void getDescriptionAsText(std::ostream &o) const MRPT_OVERRIDE; // See base class docs
+
+		mrpt::system::TTimeStamp getOriginalReceivedTimeStamp() const MRPT_OVERRIDE; // See base class docs
 		/** @} */
 
 		/** @name Deprecated, backwards compatible (MRPT <1.4.0) data and types
@@ -166,8 +169,11 @@ namespace obs
 
 		/** @name Utilities
 		  * @{ */
-		static bool GPS_time_to_UTC(uint16_t gps_week,double gps_sec, mrpt::system::TTimeParts &utc_out); //!< Return false on invalid input data
-		static bool GPS_time_to_UTC(uint16_t gps_week,double gps_sec, mrpt::system::TTimeStamp &utc_out); //!< Return false on invalid input data
+		static bool GPS_time_to_UTC(
+			uint16_t gps_week,double gps_sec,
+			const int leap_seconds_count /**< [in] GPS to UTC time number of leap seconds (normally grabbed from satellital live data) */,
+			mrpt::system::TTimeStamp &utc_out /**< [out] UTC timestamp */ ); //!< Return false on invalid input data
+		static bool GPS_time_to_UTC(uint16_t gps_week,double gps_sec,const int leap_seconds_count, mrpt::system::TTimeParts &utc_out); //!< \overload
 		/** @} */
 	}; // End of class def.
 	DEFINE_SERIALIZABLE_POST_CUSTOM_BASE_LINKAGE( CObservationGPS , CObservation, OBS_IMPEXP)

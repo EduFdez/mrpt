@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -19,6 +19,7 @@
 #include <mrpt/gui/CDisplayWindow3D.h>
 #include <mrpt/maps/CColouredPointsMap.h>
 #include <mrpt/utils/CTicTac.h>
+#include <mrpt/utils/CFileGZOutputStream.h>
 #include <mrpt/opengl/CGridPlaneXY.h>
 #include <mrpt/opengl/stock_objects.h>
 #include <mrpt/opengl/CPointCloudColoured.h>
@@ -39,10 +40,12 @@ using namespace std;
 // Declare the supported options.
 TCLAP::CmdLine cmd("velodyne-view", ' ', mrpt::system::MRPT_getVersion().c_str());
 
-TCLAP::ValueArg<std::string>	arg_out_rawlog("o","out-rawlog","Grab to an output rawlog",false,"","out.rawlog",cmd);
-TCLAP::ValueArg<std::string>	arg_in_pcap("i","in-pcap","Instead of listening to a live sensor, read data from a PCAP file",false,"","dataset.pcap",cmd);
+TCLAP::ValueArg<std::string>	arg_out_rawlog("o","out-rawlog","If set, grab dataset in rawlog format",false,"","out.rawlog",cmd);
+TCLAP::ValueArg<std::string>	arg_in_pcap ("i","in-pcap","Instead of listening to a live sensor, read data from a PCAP file",false,"","in_dataset.pcap",cmd);
+TCLAP::ValueArg<std::string>	arg_out_pcap("","out-pcap","If set, grab all packets to a PCAP log file. Set name prefix only.",false,"","out",cmd);
 TCLAP::ValueArg<std::string>	arg_ip_filter("","ip-filter","Only listen to a LIDAR emitting commands from a given IP",false,"","192.168.1.201",cmd);
 TCLAP::ValueArg<std::string>	arg_calib_file("c","calib","Optionally, select the calibration XML file for the LIDAR",false,"","calib.xml",cmd);
+TCLAP::ValueArg<std::string>	arg_model("m","model","If no calibration file is specified, set the model to load default values",false,"VLP16", CVelodyneScanner::TModelPropertiesFactory::getListKnownModels(),cmd);
 TCLAP::SwitchArg				arg_nologo("n","nologo","Skip the logo at startup",cmd, false);
 TCLAP::SwitchArg				arg_verbose("v","verbose","Verbose debug output",cmd, false);
 
@@ -66,14 +69,22 @@ void thread_grabbing(TThreadParam &p)
 {
 	try
 	{
+		CFileGZOutputStream f_out_rawlog;
+		if (arg_out_rawlog.isSet()) {
+			if (!f_out_rawlog.open(arg_out_rawlog.getValue()))
+				THROW_EXCEPTION_CUSTOM_MSG1("Error creating output rawlog file: %s", arg_out_rawlog.getValue().c_str())
+		}
+
 		mrpt::hwdrivers::CVelodyneScanner velodyne;
 
 		if (arg_verbose.isSet())
 			velodyne.enableVerbose(true);
 
 		// Set params:
+		velodyne.setModelName( mrpt::utils::TEnumType<mrpt::hwdrivers::CVelodyneScanner::model_t>::name2value( arg_model.getValue() ) );
 		if (arg_ip_filter.isSet())  velodyne.setDeviceIP( arg_ip_filter.getValue() ); // Default: from any IP
 		if (arg_in_pcap.isSet())    velodyne.setPCAPInputFile(arg_in_pcap.getValue());
+		if (arg_out_pcap.isSet())   velodyne.setPCAPOutputFile(arg_out_pcap.getValue());
 
 		// If you have a calibration file, better than default values:
 		if (arg_calib_file.isSet())
@@ -102,6 +113,13 @@ void thread_grabbing(TThreadParam &p)
 			CObservationGPSPtr           obs_gps;
 
 			hard_error = !velodyne.getNextObservation(obs,obs_gps);
+
+			// Save to log file:
+			if (f_out_rawlog.fileOpenCorrectly())
+			{
+				if (obs) f_out_rawlog << *obs;
+				if (obs_gps) f_out_rawlog << *obs_gps;
+			}
 
 			if (obs)      {p.new_obs.set(obs); nScans++;}
 			if (obs_gps)  p.new_obs_gps.set(obs_gps);
@@ -170,6 +188,10 @@ int VelodyneView(int argc, char **argv)
 	// --------------------------------------------------------
 	mrpt::gui::CDisplayWindow3D  win3D("Velodyne 3D view",800,600);
 
+    // Allow rendering large number of points without decimation:
+    mrpt::global_settings::OCTREE_RENDER_MAX_DENSITY_POINTS_PER_SQPIXEL = 1;
+    mrpt::global_settings::OCTREE_RENDER_MAX_POINTS_PER_NODE=1e7;
+
 	win3D.setCameraAzimuthDeg(140);
 	win3D.setCameraElevationDeg(20);
 	win3D.setCameraZoom(8.0);
@@ -192,6 +214,8 @@ int VelodyneView(int argc, char **argv)
 
 	CObservationVelodyneScanPtr  last_obs;
 	CObservationGPSPtr           last_obs_gps;
+	bool view_freeze = false; // for pausing the view
+	CObservationVelodyneScan::TGeneratePointCloudParameters pc_params;
 
 	while (win3D.isOpen() && !thrPar.quit)
 	{
@@ -216,9 +240,9 @@ int VelodyneView(int argc, char **argv)
 			else rmc_datum = "NO";
 
 			win3D.get3DSceneAndLock();
-			win3D.addTextMessage(5,25,
+			win3D.addTextMessage(5,40,
 				format("POS. frame rx at %s, RMC=%s",mrpt::system::dateTimeLocalToString(last_obs_gps->timestamp).c_str(),rmc_datum.c_str()),
-				TColorf(1,1,1),"mono",10.0, mrpt::opengl::NICE, 101 );
+				TColorf(1,1,1),"mono",10.0, mrpt::opengl::NICE, 102 );
 			win3D.unlockAccess3DScene();
 			do_view_refresh=true;
 		}
@@ -232,9 +256,9 @@ int VelodyneView(int argc, char **argv)
 			if (!last_obs->scan_packets.empty())
 			{
 				win3D.get3DSceneAndLock();
-				win3D.addTextMessage(5,40,
+				win3D.addTextMessage(5,55,
 					format("LIDAR scan rx at %s with %u packets",mrpt::system::dateTimeLocalToString(last_obs->timestamp).c_str(), static_cast<unsigned int>(last_obs->scan_packets.size())),
-					TColorf(1,1,1),"mono",10.0, mrpt::opengl::NICE, 102 );
+					TColorf(1,1,1),"mono",10.0, mrpt::opengl::NICE, 103 );
 				win3D.unlockAccess3DScene();
 				do_view_refresh=true;
 			}
@@ -242,8 +266,8 @@ int VelodyneView(int argc, char **argv)
 			// Update visualization ---------------------------------------
 
 			// Show 3D points:
+			if (!view_freeze)
 			{
-				CObservationVelodyneScan::TGeneratePointCloudParameters pc_params;
 				last_obs->generatePointCloud(pc_params);
 
 				CColouredPointsMap pntsMap;
@@ -281,6 +305,15 @@ int VelodyneView(int argc, char **argv)
 					win3D.setCameraZoom( win3D.getCameraZoom() / 1.2 );
 					win3D.repaint();
 					break;
+				case ' ':
+					view_freeze = !view_freeze;
+					break;
+				case '1': 
+					pc_params.dualKeepLast = !pc_params.dualKeepLast;
+					break;
+				case '2':
+					pc_params.dualKeepStrongest = !pc_params.dualKeepStrongest;
+					break;
 				// ...and the rest in the sensor thread:
 				default:
 					thrPar.pushed_key = key;
@@ -289,7 +322,8 @@ int VelodyneView(int argc, char **argv)
 		}
 
 		win3D.get3DSceneAndLock();
-		win3D.addTextMessage(5,10,"'o'/'i'-zoom out/in, mouse: orbit 3D,ESC: quit", TColorf(1,1,1),"mono",10.0, mrpt::opengl::NICE, 110 );
+		win3D.addTextMessage(5,10,"'o'/'i'-zoom out/in, mouse: orbit 3D, spacebar: freeze, ESC: quit", TColorf(1,1,1),"mono",10.0, mrpt::opengl::NICE, 110 );
+		win3D.addTextMessage(5,25,mrpt::format("'1'/'2': Toggle view dual last (%s)/strongest(%s) returns.",pc_params.dualKeepLast ? "ON":"OFF",pc_params.dualKeepStrongest ? "ON":"OFF"), TColorf(1,1,1),"mono",10.0, mrpt::opengl::NICE, 111 );
 		win3D.unlockAccess3DScene();
 
 		mrpt::system::sleep(50);

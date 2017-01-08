@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -13,9 +13,6 @@
 
 #include <fstream>
 
-/*---------------------------------------------------------------
-	Class
-  ---------------------------------------------------------------*/
 namespace mrpt
 {
 namespace utils
@@ -58,11 +55,11 @@ namespace utils
 		/** Close the stream. */
 		void close();
 
-		 /** Destructor */
-		 virtual ~CFileOutputStream();
+		/** Destructor */
+		virtual ~CFileOutputStream();
 
-		 /** Says if file was open successfully or not */
-		 bool  fileOpenCorrectly();
+		bool fileOpenCorrectly(); //!< Returns true if the file was open without errors.
+		bool is_open() { return fileOpenCorrectly(); } //!< Returns true if the file was open without errors.
 
 		// See base class docs
 		uint64_t Seek(uint64_t Offset, CStream::TSeekOrigin Origin = sFromBeginning) MRPT_OVERRIDE;

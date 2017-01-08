@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -344,9 +344,9 @@ void CSwissRanger3DCamera::getNextObservation(
 	bool &there_is_obs,
 	bool &hardware_error )
 {
-#if MRPT_HAS_SWISSRANGE
 	there_is_obs=false;
 	hardware_error = false;
+#if MRPT_HAS_SWISSRANGE
 
 	int bytesRx = SR_Acquire( SRCAM(m_cam) );
 	if (!bytesRx)

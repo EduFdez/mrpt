@@ -8,7 +8,7 @@ CMAKE_CXX_FLAGS="-Wall -Wextra -Wabi -O2"
 
 function build ()
 {
-  #env 
+  #env
   mkdir $BUILD_DIR && cd $BUILD_DIR
 
   # gcc is too slow and we have a time limit in Travis CI: exclude examples when building with gcc
@@ -22,11 +22,20 @@ function build ()
   make -j2
 }
 
+command_exists () {
+    type "$1" &> /dev/null ;
+}
+
 function test ()
 {
   mkdir $BUILD_DIR && cd $BUILD_DIR
   cmake $MRPT_DIR -DBUILD_APPLICATIONS=FALSE
-  make test
+  # Use `test_gdb` to show stack traces of failing unit tests.
+  if command_exists gdb ; then
+    make test_gdb
+  else
+    make test
+  fi
 }
 
 function doc ()
@@ -37,6 +46,5 @@ function doc ()
 case $TASK in
   build ) build;;
   test ) test;;
-  testhwdrivers ) testhwdrivers;;
   doc ) doc;;
 esac

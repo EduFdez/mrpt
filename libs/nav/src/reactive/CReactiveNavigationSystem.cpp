@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -10,7 +10,7 @@
 #include "nav-precomp.h" // Precomp header
 
 #include <mrpt/nav/reactive/CReactiveNavigationSystem.h>
-#include <mrpt/nav/tpspace/motion_planning_utils.h>
+#include <mrpt/nav/tpspace/CPTG_DiffDrive_CollisionGridBased.h>
 #include <mrpt/system/filesystem.h>
 #include <mrpt/utils/CConfigFileMemory.h>
 #include <typeinfo>  // For typeid()
@@ -27,9 +27,9 @@ using namespace std;
 					Constructor
   ---------------------------------------------------------------*/
 CReactiveNavigationSystem::CReactiveNavigationSystem(
-	CReactiveInterfaceImplementation   &react_iterf_impl,
-    bool					enableConsoleOutput,
-    bool					enableLogToFile)
+	CRobot2NavInterface   &react_iterf_impl,
+	bool					enableConsoleOutput,
+	bool					enableLogToFile)
 	:
 	CAbstractPTGBasedReactive(react_iterf_impl,enableConsoleOutput,enableLogToFile),
 	minObstaclesHeight           (-1.0),
@@ -53,70 +53,53 @@ CReactiveNavigationSystem::~CReactiveNavigationSystem()
   ---------------------------------------------------------------*/
 void CReactiveNavigationSystem::changeRobotShape( const math::CPolygon &shape )
 {
-	m_collisionGridsMustBeUpdated = true;
-
+	m_PTGsMustBeReInitialized = true;
 	if ( shape.verticesCount()<3 )
 		THROW_EXCEPTION("The robot shape has less than 3 vertices!!")
-
 	m_robotShape = shape;
+}
+void CReactiveNavigationSystem::changeRobotCircularShapeRadius( const double R )
+{
+	m_PTGsMustBeReInitialized = true;
+	ASSERT_(R>0);
+	m_robotShapeCircularRadius = R;
 }
 
 
 /** Reload the configuration from a file. See details in CReactiveNavigationSystem docs. */
-void CReactiveNavigationSystem::loadConfigFile(const mrpt::utils::CConfigFileBase &ini)
-{
-	mrpt::utils::CConfigFileMemory dummyRobotParams;
-	this->loadConfigFile(ini,dummyRobotParams);
-}
-
-/*---------------------------------------------------------------
-						loadConfigFile
-  ---------------------------------------------------------------*/
-void CReactiveNavigationSystem::loadConfigFile(const mrpt::utils::CConfigFileBase &ini, const mrpt::utils::CConfigFileBase &robotIni )
+void CReactiveNavigationSystem::internal_loadConfigFile(const mrpt::utils::CConfigFileBase &ini, const std::string &sect_prefix)
 {
 	MRPT_START
 
-	m_collisionGridsMustBeUpdated = true;
+	const std::string sectCfg = sect_prefix + std::string("ReactiveParams"); // Was: "NAVIGATION_CONFIG". JLB changed this to make it consistent with 2D version and allow refactoring this method.
 
-	// Load config from INI file:
-	// ------------------------------------------------------------
-	robotName = robotIni.read_string("ROBOT_NAME","Name", "ReactiveParams" /* Default section for the rest of params */);
+	unsigned int PTG_COUNT = ini.read_int(sectCfg,"PTG_COUNT",0, true );
 
-	unsigned int PTG_COUNT = ini.read_int(robotName,"PTG_COUNT",0, true );
+	MRPT_LOAD_CONFIG_VAR_NO_DEFAULT(minObstaclesHeight,float,  ini,sectCfg);
+	MRPT_LOAD_CONFIG_VAR_NO_DEFAULT(maxObstaclesHeight,float,  ini,sectCfg);
 
-	refDistance = ini.read_float(robotName,"MAX_REFERENCE_DISTANCE",5 );
-	colGridRes = ini.read_float(robotName,"LUT_CELL_SIZE",0.0f );
-	// backwards compt config file:
-	if (!colGridRes) colGridRes = ini.read_float(robotName,"RESOLUCION_REJILLA_X",0.02f );
-
-	MRPT_LOAD_CONFIG_VAR_NO_DEFAULT(robotMax_V_mps,float,  ini,robotName);
-	MRPT_LOAD_CONFIG_VAR_NO_DEFAULT(robotMax_W_degps,float,  ini,robotName);
-	MRPT_LOAD_CONFIG_VAR(SPEEDFILTER_TAU,float,  ini,robotName);
-
-	ini.read_vector( robotName, "weights", vector<float>(0), weights, true );
-	ASSERT_(weights.size()==6);
-
-	MRPT_LOAD_CONFIG_VAR_NO_DEFAULT(minObstaclesHeight,float,  ini,robotName);
-	MRPT_LOAD_CONFIG_VAR_NO_DEFAULT(maxObstaclesHeight,float,  ini,robotName);
-
-	MRPT_LOAD_CONFIG_VAR_NO_DEFAULT(DIST_TO_TARGET_FOR_SENDING_EVENT,float,  ini,robotName);
-
-	badNavAlarm_AlarmTimeout = ini.read_float("GLOBAL_CONFIG","ALARM_SEEMS_NOT_APPROACHING_TARGET_TIMEOUT", badNavAlarm_AlarmTimeout, true);
-
-	// Load robot shape:
+	// Load robot shape: 1/2 polygon
 	// ---------------------------------------------
-	math::CPolygon		shape;
 	vector<float>        xs,ys;
+	ini.read_vector(sectCfg,"RobotModel_shape2D_xs",vector<float>(0), xs, false );
+	ini.read_vector(sectCfg,"RobotModel_shape2D_ys",vector<float>(0), ys, false );
+	ASSERTMSG_(xs.size()==ys.size(),"Config parameters `RobotModel_shape2D_xs` and `RobotModel_shape2D_ys` must have the same length!");
+	if (!xs.empty())
+	{
+		math::CPolygon shape;
+		for (size_t i=0;i<xs.size();i++)
+			shape.AddVertex(xs[i],ys[i]);
+		changeRobotShape( shape );
+	}
 
-	ini.read_vector(robotName,"RobotModel_shape2D_xs",vector<float>(0), xs, true );
-	ini.read_vector(robotName,"RobotModel_shape2D_ys",vector<float>(0), ys, true );
-	ASSERT_(xs.size()==ys.size());
-
-	// Add to polygon
-	for (size_t i=0;i<xs.size();i++)
-		shape.AddVertex(xs[i],ys[i]);
-
-	changeRobotShape( shape );
+	// Load robot shape: 2/2 circle
+	// ---------------------------------------------
+	const double robot_shape_radius = ini.read_double(sectCfg,"RobotModel_circular_shape_radius",.0, false );
+	ASSERT_(robot_shape_radius>=.0);
+	if (robot_shape_radius!=.0)
+	{
+		changeRobotCircularShapeRadius( robot_shape_radius );
+	}
 
 	// Load PTGs from file:
 	// ---------------------------------------------
@@ -124,139 +107,86 @@ void CReactiveNavigationSystem::loadConfigFile(const mrpt::utils::CConfigFileBas
 	for (size_t i=0;i<PTGs.size();i++)	delete PTGs[i];
 	PTGs.assign(PTG_COUNT,NULL);
 
-	printf_debug("\n");
-
-	MRPT_TODO("Refactor loading params & simulating trajectories?")
-
-	for ( unsigned int n=0;n<PTG_COUNT;n++ )
+	for ( unsigned int n=0;n<PTG_COUNT;n++)
 	{
-		// load params of this PTG:
-
-		TParameters<double> params;
-		params["ref_distance"] = refDistance;
-		params["resolution"]   = colGridRes;
-
-		params["PTG_type"]	= ini.read_int(robotName,format("PTG%u_Type", n ),1, true );
-		params["v_max"]		= ini.read_float(robotName,format("PTG%u_v_max_mps", n ), 5, true);
-		params["w_max"]		= DEG2RAD(ini.read_float(robotName,format("PTG%u_w_max_gps", n ), 0, true));
-		params["K"]			= ini.read_int(robotName,format("PTG%u_K", n ), 1, false);
-		params["cte_a0v"]	= DEG2RAD( ini.read_float(robotName,format("PTG%u_cte_a0v_deg", n ), 0, false) );
-		params["cte_a0w"]	= DEG2RAD( ini.read_float(robotName,format("PTG%u_cte_a0w_deg", n ), 0, false) );
-
-		const int nAlfas = ini.read_int(robotName,format("PTG%u_nAlfas", n ),100, true );
-
-		// Generate it:
-		printf_debug("[loadConfigFile] Generating PTG#%u...",n);
-
-		PTGs[n] = CParameterizedTrajectoryGenerator::CreatePTG(params);
-
-		printf_debug(PTGs[n]->getDescription().c_str());
-
-		const float min_dist = 0.015f;
-		m_timelogger.enter("PTG.simulateTrajectories");
-		PTGs[n]->simulateTrajectories(
-		    nAlfas,					// alphas,
-		    75,						// max.tim,
-		    refDistance,			// max.dist,
-		    10*refDistance/min_dist,	// max.n,
-		    0.0005f,				// diferencial_t
-		    min_dist					// min_dist
-			);
-		m_timelogger.leave("PTG.simulateTrajectories");
-
-		// Just for debugging, etc.
-		//PTGs[n]->debugDumpInFiles(n);
-
-		printf_debug("...OK!\n");
+		// Factory:
+		const std::string sPTGName = ini.read_string(sectCfg,format("PTG%u_Type", n ),"", true );
+		PTGs[n] = CParameterizedTrajectoryGenerator::CreatePTG(sPTGName,ini,sectCfg, format("PTG%u_",n) );
 	}
-	printf_debug("\n");
 
-	this->loadHolonomicMethodConfig(ini,"GLOBAL_CONFIG");
-
-	// Mostrar configuracion cargada de fichero:
-	// --------------------------------------------------------
-	printf_debug("\tLOADED CONFIGURATION:\n");
-	printf_debug("-------------------------------------------------------------\n");
-
-	ASSERT_(!m_holonomicMethod.empty())
-	printf_debug("  Holonomic method \t\t= %s\n",typeid(m_holonomicMethod[0]).name());
-	printf_debug("\n  GPT Count\t\t\t= %u\n", (int)PTG_COUNT );
-	printf_debug("  Max. ref. distance\t\t= %f\n", refDistance );
-	printf_debug("  Cells resolution \t= %.04f\n", colGridRes );
-	printf_debug("  Max. speed (v,w)\t\t= (%.04f m/sec, %.04f deg/sec)\n", robotMax_V_mps, robotMax_W_degps );
-	printf_debug("  Robot Shape Points Count \t= %u\n", m_robotShape.verticesCount() );
-	printf_debug("  Obstacles 'z' axis range \t= [%.03f,%.03f]\n", minObstaclesHeight, maxObstaclesHeight );
-	printf_debug("\n\n");
-
-	m_init_done = true;
+	logFmt(mrpt::utils::LVL_DEBUG," Obstacles 'z' axis range = [%.03f,%.03f]\n", minObstaclesHeight, maxObstaclesHeight );
 
 	MRPT_END
 }
 
-/*************************************************************************
-
-                         STEP1_CollisionGridsBuilder
-
-     -> C-Paths generation.
-     -> Check de colision entre cada celda de la rejilla y el contorno
-          del robot
-
-*************************************************************************/
-void CReactiveNavigationSystem::STEP1_CollisionGridsBuilder()
+void CReactiveNavigationSystem::STEP1_InitPTGs()
 {
-	if (m_collisionGridsMustBeUpdated)
+	if (m_PTGsMustBeReInitialized)
 	{
-		m_collisionGridsMustBeUpdated = false;
+		m_PTGsMustBeReInitialized = false;
 
-		m_timelogger.enter("build_PTG_collision_grids");
+		mrpt::utils::CTimeLoggerEntry tle(m_timelogger,"STEP1_InitPTGs");
 
 		for (unsigned int i=0;i<PTGs.size();i++)
 		{
-			mrpt::nav::build_PTG_collision_grids(
-				PTGs[i],
-				m_robotShape,
-				format("ReacNavGrid_%s_%03u.dat.gz",robotName.c_str(),i),
-				m_enableConsoleOutput /*verbose*/
-				);
-		}
+			PTGs[i]->deinitialize();
 
-		m_timelogger.leave("build_PTG_collision_grids");
+			logFmt(mrpt::utils::LVL_INFO,"[CReactiveNavigationSystem::STEP1_InitPTGs] Initializing PTG#%u (`%s`)...", i,PTGs[i]->getDescription().c_str());
+
+			// Polygonal robot shape?
+			{
+				mrpt::nav::CPTG_RobotShape_Polygonal *ptg = dynamic_cast<mrpt::nav::CPTG_RobotShape_Polygonal *>(PTGs[i]);
+				if (ptg)
+					ptg->setRobotShape(m_robotShape);
+			}
+			// Circular robot shape?
+			{
+				mrpt::nav::CPTG_RobotShape_Circular *ptg = dynamic_cast<mrpt::nav::CPTG_RobotShape_Circular*>(PTGs[i]);
+				if (ptg)
+					ptg->setRobotShapeRadius(m_robotShapeCircularRadius);
+			}
+
+			// Init:
+			PTGs[i]->initialize(
+				format("%s/ReacNavGrid_%s_%03u.dat.gz", ptg_cache_files_directory.c_str(), robotName.c_str(), i),
+				m_enableConsoleOutput /*verbose*/
+			);
+			logStr(mrpt::utils::LVL_INFO,"Done!");
+		}
 	}
 }
 
-/*************************************************************************
-		STEP2_SenseObstacles
-*************************************************************************/
-bool CReactiveNavigationSystem::STEP2_SenseObstacles()
+bool CReactiveNavigationSystem::implementSenseObstacles(mrpt::system::TTimeStamp &obstacles_timestamp)
 {
 	try
 	{
-		CTimeLoggerEntry tle(m_timelogger,"navigationStep.STEP2_Sense");
+		bool ret; // Return true on success
+		{
+			CTimeLoggerEntry tle1(m_timelogger, "navigationStep.STEP2_Sense");
+			CTimeLoggerEntry tle2(m_timlog_delays, "senseObstacles()");
+			ret = m_robot.senseObstacles(m_WS_Obstacles, obstacles_timestamp);
+		}
 
-		// Return true on success:
-		return m_robot.senseObstacles( m_WS_Obstacles );
+		return ret;
 		// Note: Clip obstacles by "z" axis coordinates is more efficiently done in STEP3_WSpaceToTPSpace()
 	}
 	catch (std::exception &e)
 	{
-		printf_debug("[CReactiveNavigationSystem::STEP2_Sense] Exception:");
-		printf_debug((char*)(e.what()));
+		MRPT_LOG_ERROR_STREAM << "[CReactiveNavigationSystem::STEP2_Sense] Exception:" << e.what();
 		return false;
 	}
 	catch (...)
 	{
-		printf_debug("[CReactiveNavigationSystem::STEP2_Sense] Unexpected exception!\n");
+		MRPT_LOG_ERROR_STREAM << "[CReactiveNavigationSystem::STEP2_Sense] Unexpected exception!";
 		return false;
 	}
 
 }
 
-/*************************************************************************
-				STEP3_WSpaceToTPSpace
-*************************************************************************/
-void CReactiveNavigationSystem::STEP3_WSpaceToTPSpace(const size_t ptg_idx,std::vector<float> &out_TPObstacles)
+void CReactiveNavigationSystem::STEP3_WSpaceToTPSpace(const size_t ptg_idx,std::vector<double> &out_TPObstacles, mrpt::nav::ClearanceDiagram &out_clearance, const mrpt::poses::CPose2D &rel_pose_PTG_origin_wrt_sense)
 {
-	CParameterizedTrajectoryGenerator	*ptg = this->PTGs[ptg_idx];
+	CParameterizedTrajectoryGenerator	*ptg = this->getPTG(ptg_idx);
+	out_clearance.clear();
 
 	const float OBS_MAX_XY = this->refDistance*1.1f;
 
@@ -267,18 +197,15 @@ void CReactiveNavigationSystem::STEP3_WSpaceToTPSpace(const size_t ptg_idx,std::
 
 	for (size_t obs=0;obs<nObs;obs++)
 	{
-		const float ox=xs[obs], oy = ys[obs], oz=zs[obs];
+		double ox,oy,oz=zs[obs];
+		rel_pose_PTG_origin_wrt_sense.composePoint(xs[obs], ys[obs], ox, oy);
 
 		if (ox>-OBS_MAX_XY && ox<OBS_MAX_XY &&
 			oy>-OBS_MAX_XY && oy<OBS_MAX_XY &&
 			oz>=minObstaclesHeight && oz<=maxObstaclesHeight)
 		{
-			const CParameterizedTrajectoryGenerator::TCollisionCell & cell = ptg->m_collisionGrid.getTPObstacle(ox,oy);
-
-			// Keep the minimum distance:
-			for (CParameterizedTrajectoryGenerator::TCollisionCell::const_iterator i=cell.begin();i!=cell.end();++i)
-				if ( i->second < out_TPObstacles[ i->first ] )
-					out_TPObstacles[i->first] = i->second;
+			ptg->updateTPObstacle(ox, oy, out_TPObstacles);
+			ptg->updateClearance(ox, oy, out_clearance);
 		}
 	}
 }
@@ -290,12 +217,13 @@ void CReactiveNavigationSystem::loggingGetWSObstaclesAndShape(CLogFileRecord &ou
 	out_log.WS_Obstacles = m_WS_Obstacles;
 
 	const size_t nVerts = m_robotShape.size();
-    out_log.robotShape_x.resize(nVerts);
-    out_log.robotShape_y.resize(nVerts);
+	out_log.robotShape_x.resize(nVerts);
+	out_log.robotShape_y.resize(nVerts);
+	out_log.robotShape_radius = m_robotShapeCircularRadius;
 
-    for (size_t i=0;i<nVerts;i++)
-    {
+	for (size_t i=0;i<nVerts;i++)
+	{
 		out_log.robotShape_x[i]= m_robotShape.GetVertex_x(i);
 		out_log.robotShape_y[i]= m_robotShape.GetVertex_y(i);
-    }
+	}
 }

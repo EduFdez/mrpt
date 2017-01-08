@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -382,7 +382,6 @@ bool  CImageGrabber_dc1394::getObservation( mrpt::obs::CObservationImage &out_ob
     }
 
 	// get frame from ring buffer:
-    MRPT_TODO("Thread will keep frozen in this line when using software trigger if no frame is available: Assure trigger before getObservation")
     err = dc1394_capture_dequeue(THE_CAMERA, DC1394_CAPTURE_POLICY_WAIT, &frame);
     //dc1394error_t err=dc1394_capture_dequeue(THE_CAMERA, DC1394_CAPTURE_POLICY_POLL, &frame);
 	if (err!=DC1394_SUCCESS)
@@ -429,9 +428,9 @@ bool  CImageGrabber_dc1394::getObservation( mrpt::obs::CObservationImage &out_ob
 		}
 
 		if ((err = dc1394_bayer_decoding_8bit(imageBuf, imageBufRGB,
-											  width, 2*height,
-											  DC1394_COLOR_FILTER_GBRG, // Has to be this value for Bumblebee!
-											  DC1394_BAYER_METHOD_HQLINEAR)) != DC1394_SUCCESS)
+		  width, 2*height,
+		  DC1394_COLOR_FILTER_GBRG, // Has to be this value for Bumblebee!
+		  DC1394_BAYER_METHOD_HQLINEAR)) != DC1394_SUCCESS)
 		{
 			cerr << "[CImageGrabber_dc1394] ERROR: Could not apply Bayer conversion: " << err << endl;
 			return false;

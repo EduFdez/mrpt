@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2016, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -44,7 +44,12 @@ void TestOpenGLObjects()
 	const double STEP_X = 25;
 
 	// XY Grid
+  /**
+   * Define each one of the objects in its own scope and just attach it to the
+   * scene by using insert(obj) method call.
+   */
 	{
+    // using mrpt smart pointers so that obj survives outside this scope.
 		opengl::CGridPlaneXYPtr obj = opengl::CGridPlaneXY::Create(-7,7,-7,7,0,1);
 		obj->setColor(0.7,0.7,0.7);
 		obj->setLocation(off_x,0,0);
