@@ -32,6 +32,32 @@ using namespace Eigen;
 
 IMPLEMENTS_SERIALIZABLE(Plane, CSerializable, mrpt::pbmap)
 
+Plane::Plane() :
+    elongation(1.0),
+    bFullExtent(false),
+    bFromStructure(false),
+    //      contourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>),
+    polygonContourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>),
+    planePointCloudPtr(new pcl::PointCloud<pcl::PointXYZRGBA>)
+{
+      //      vector< vector<int> > vec(4, vector<int>(4));
+}
+
+//Plane::Plane(const Plane & p) //:
+////    polygonContourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>(*p.polygonContourPtr)),
+////    planePointCloudPtr(new pcl::PointCloud<pcl::PointXYZRGBA>(*p.planePointCloudPtr)),
+////    outerPolygonPtr(new pcl::PointCloud<pcl::PointXYZRGBA>(*p.outerPolygonPtr))
+//{
+//    cout << "Plane::Plane(const Plane & p) \n";
+//    *this = p;
+//    polygonContourPtr.reset(new pcl::PointCloud<pcl::PointXYZRGBA>(*p.polygonContourPtr));
+//    planePointCloudPtr.reset(new pcl::PointCloud<pcl::PointXYZRGBA>(*p.planePointCloudPtr));
+////    outerPolygonPtr.reset(new pcl::PointCloud<pcl::PointXYZRGBA>(*p.outerPolygonPtr));
+////    polygonContourPtr = p.polygonContourPtr;
+////    planePointCloudPtr = p.planePointCloudPtr;
+////    outerPolygonPtr = p.outerPolygonPtr;
+//}
+
 /*---------------------------------------------------------------
                         writeToStream
  ---------------------------------------------------------------*/
