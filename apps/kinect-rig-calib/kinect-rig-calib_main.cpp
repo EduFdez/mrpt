@@ -26,8 +26,9 @@
 
 //#include <mrpt/math/CMatrixFixedNumeric.h>
 //#include <mrpt/utils/CArray.h>
-#include <mrpt/slam/CRawlog.h>
-#include <mrpt/slam/CObservation3DRangeScan.h>
+#include <mrpt/obs/CRawlog.h>
+#include <mrpt/obs/CObservation3DRangeScan.h>
+#include <mrpt/maps/CColouredPointsMap.h>
 #include <mrpt/poses/CPose3D.h>
 #include <mrpt/gui/CDisplayWindow3D.h>
 //#include <mrpt/gui/CDisplayWindowPlots.h>
@@ -54,9 +55,11 @@
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/visualization/pcl_visualizer.h>
 
+#include <omp.h>
+
 using namespace mrpt;
 using namespace mrpt::obs;
-using namespace mrpt::slam;
+using namespace mrpt::maps;
 using namespace mrpt::opengl;
 using namespace mrpt::gui;
 using namespace mrpt::system;
@@ -67,9 +70,9 @@ using namespace std;
 using namespace Eigen;
 
 
-typedef PointT PointT;
+typedef pcl::PointXYZRGB PointT;
 
-void ContinuousFeaturesPCL::computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor)
+pcl::PointCloud<pcl::Normal>::Ptr computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor)
 {
     //ImgRGBD_3D::fastBilateralFilter(cloud, cloud);
 
@@ -82,15 +85,15 @@ void ContinuousFeaturesPCL::computeImgNormal(const pcl::PointCloud<PointT>::Ptr 
     ne.setNormalSmoothingSize(smooth_factor);
     ne.setDepthDependentSmoothing(true);
 
-    normal_cloud_.reset(new pcl::PointCloud<pcl::Normal>);
+    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud(new pcl::PointCloud<pcl::Normal>);
     ne.setInputCloud(cloud);
-    ne.compute(*normal_cloud_);
-    //return normal_cloud_;
+    ne.compute(*normal_cloud);
+    return normal_cloud;
 }
 
-size_t ContinuousFeaturesPCL::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
-                                            vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions, std::vector<pcl::ModelCoefficients> & model_coefficients, std::vector<pcl::PointIndices> & inliers,
-                                            const float dist_threshold, const float angle_threshold, const size_t min_inliers)
+size_t segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
+                    vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions, std::vector<pcl::ModelCoefficients> & model_coefficients, std::vector<pcl::PointIndices> & inliers,
+                    const float dist_threshold, const float angle_threshold, const size_t min_inliers)
 {
 //#if _VERBOSE_PROFILING
 //    //cout << "ContinuousFeaturesPCL::segmentPlanes... \n";
@@ -102,13 +105,13 @@ size_t ContinuousFeaturesPCL::segmentPlanes(const pcl::PointCloud<PointT>::Ptr &
     pcl::PointCloud<PointT>::Ptr cloud_filtered = cloud;
 //    ImgRGBD_3D::fastBilateralFilter(cloud, cloud_filtered, 30, 0.5);
 //    computeImgNormal(cloud_filtered);
-    computeImgNormal(cloud_filtered, 0.02f, 10.0f);
+    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud = computeImgNormal(cloud_filtered, 0.02f, 10.0f);
 
     pcl::OrganizedMultiPlaneSegmentation<PointT, pcl::Normal, pcl::Label> mps;
     mps.setMinInliers(min_inliers);
     mps.setAngularThreshold(angle_threshold); // (0.017453 * 2.0) // 3 degrees
     mps.setDistanceThreshold(dist_threshold); //2cm
-    mps.setInputNormals(normal_cloud_);
+    mps.setInputNormals(normal_cloud);
     mps.setInputCloud(cloud_filtered);
 
 //    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
@@ -127,6 +130,107 @@ size_t ContinuousFeaturesPCL::segmentPlanes(const pcl::PointCloud<PointT>::Ptr &
 //#endif
 
     return n_regions;
+}
+
+mrpt::opengl::COpenGLScenePtr scene;	//!< Opengl scene
+mrpt::gui::CDisplayWindow3D	window;
+
+poses::CPose3D cam_pose(0,0,0,0,0,0);
+
+void initializeScene()
+{
+    poses::CPose3D rel_lenspose(0,-0.05,0,0,0,0);
+
+    global_settings::OCTREE_RENDER_MAX_POINTS_PER_NODE = 1000000;
+    window.resize(1000,900);
+    window.setPos(900,0);
+    window.setCameraZoom(16);
+    window.setCameraAzimuthDeg(0);
+    window.setCameraElevationDeg(90);
+    window.setCameraPointingToPoint(0,0,0);
+    window.setCameraPointingToPoint(0,0,1);
+
+    scene = window.get3DSceneAndLock();
+
+    // Lights:
+    scene->getViewport()->setNumberOfLights(1);
+    CLight & light0 = scene->getViewport()->getLight(0);
+    light0.light_ID = 0;
+    light0.setPosition(0,0,1,1);
+
+    //Grid (ground)
+    CGridPlaneXYPtr ground = CGridPlaneXY::Create();
+    scene->insert( ground );
+
+    //Reference
+    CSetOfObjectsPtr reference = stock_objects::CornerXYZ();
+    scene->insert( reference );
+
+    //					Cameras and points
+    //------------------------------------------------------
+
+    //DifOdo camera
+    CBoxPtr camera_odo = CBox::Create(math::TPoint3D(-0.02,-0.1,-0.01),math::TPoint3D(0.02,0.1,0.01));
+    camera_odo->setPose(cam_pose + rel_lenspose);
+    camera_odo->setColor(0,1,0);
+    scene->insert( camera_odo );
+
+    //Frustum
+    opengl::CFrustumPtr FOV = opengl::CFrustum::Create(0.3, 2, 57.3*fovh, 57.3*fovv, 1.f, true, false);
+    FOV->setColor(0.7,0.7,0.7);
+    FOV->setPose(cam_pose);
+    scene->insert( FOV );
+
+    //Reference cam
+    CSetOfObjectsPtr reference_gt = stock_objects::CornerXYZ();
+    reference_gt->setScale(0.2);
+    reference_gt->setPose(cam_pose);
+    scene->insert( reference_gt );
+
+    //Camera points
+    CPointCloudColouredPtr cam_points = CPointCloudColoured::Create();
+    cam_points->setPointSize(2);
+    cam_points->enablePointSmooth(1);
+    cam_points->setPose(cam_pose);
+    scene->insert( cam_points );
+
+    window.unlockAccess3DScene();
+    window.repaint();
+}
+
+void CDifodoDatasets::updateScene(CColouredPointsMap & pts_map)
+{
+    CPose3D rel_lenspose(0,-0.022,0,0,0,0);
+
+    scene = window.get3DSceneAndLock();
+
+    //Reference gt
+    CSetOfObjectsPtr reference_gt = scene->getByClass<CSetOfObjects>(0);
+    reference_gt->setPose(gt_pose);
+
+    //Camera points
+    CPointCloudColouredPtr cam_points = scene->getByClass<CPointCloudColoured>(0);
+    cam_points->clear();
+    cam_points->setPose(gt_pose);
+    cam_points->loadFromPointsMap(&pts_map);
+//    for (unsigned int y=0; y<cols; y++)
+//        for (unsigned int z=0; z<rows; z++)
+//            cam_points->push_back(depth[repr_level](z,y), xx[repr_level](z,y), yy[repr_level](z,y),
+//                                    1.f-sqrt(weights(z,y)), sqrt(weights(z,y)), 0);
+
+
+    //Frustum
+    CFrustumPtr FOV = scene->getByClass<CFrustum>(0);
+    FOV->setPose(gt_pose);
+
+//    //Ellipsoid showing covariance
+//    math::CMatrixFloat33 cov3d = 20.f*est_cov.topLeftCorner(3,3);
+//    CEllipsoidPtr ellip = scene->getByClass<CEllipsoid>(0);
+//    ellip->setCovMatrix(cov3d);
+//    ellip->setPose(cam_pose + rel_lenspose);
+
+    window.unlockAccess3DScene();
+    window.repaint();
 }
 
 //template<typename typedata,int m_rows,int m_cols>
@@ -342,10 +446,16 @@ int main(int argc, char **argv)
         //==============================================================================
         //									Main operation
         //==============================================================================
+
+        // Plane segmentation parameters
+        const float dist_threshold = 0.04;
+        const float angle_threshold = 0.07f;
+        const size_t min_inliers = 500;
+
         while ( n_obs < dataset.size() )
         {
             observation = dataset.getAsObservation(n_obs);
-            //cout << n_obs << " observation: " << observation->sensorLabel << ". Timestamp " << timestampTotime_t(observation->timestamp) << " " << observation->timestamp << endl;
+            cout << n_obs << " observation: " << observation->sensorLabel << endl; //<< ". Timestamp " << timestampTotime_t(observation->timestamp) << endl;
             ++n_obs;
             if(!IS_CLASS(observation, CObservation3DRangeScan))
                 continue;
@@ -383,7 +493,7 @@ int main(int argc, char **argv)
                 {
                     for(size_t j=i; j < num_sensors; j++)
                     {
-                        if(fabs(obs_sensor_time[i]-obs_sensor_time[j]) > 0.01) // maximum de-synchronization in seconds
+                        if(fabs(obs_sensor_time[i]-obs_sensor_time[j]) > 0.03) // maximum de-synchronization in seconds
                         {
                             is_synch = false;
                             if( (obs_sensor_time[j]-obs_sensor_time[i]) > 0 )
@@ -411,33 +521,53 @@ int main(int argc, char **argv)
 
                 //						Segment local planes
                 //==================================================================
-                vector<pcl::PointCloud<PointT>::Ptr> v_cloud(num_sensors, new pcl::PointCloud<PointT>);
-                #pragma omp parallel num_threads(8)
+                vector<pcl::PointCloud<PointT>::Ptr> v_cloud(num_sensors);
+                #pragma omp parallel num_threads(num_sensors)
                 {
-                  sensor_id = omp_get_thread_num();
-                  obsRGBD[sensor_id]->project3DPointsFromDepthImageInto(
-                    *v_cloud[sensor_id],
-                    false /* without obs.sensorPose */
-                    );
+                    sensor_id = omp_get_thread_num();
+                    v_cloud[sensor_id].reset(new pcl::PointCloud<PointT>);
+//                    obsRGBD[sensor_id]->project3DPointsFromDepthImageInto(*(v_cloud[sensor_id]), false /* without obs.sensorPose */);
+
+//                    CSimplePointsMap pntsMap;
+                    CColouredPointsMap pntsMap;
+//                    obsRGBD[sensor_id]->project3DPointsFromDepthImageInto(pntsMap, false /* without obs.sensorPose */);
+                    pntsMap.colorScheme.scheme = CColouredPointsMap::cmFromIntensityImage;
+                    pntsMap.loadFromRangeScan(*obsRGBD[sensor_id]);
+//                    pntsMap.getPCLPointCloudXYZ(*v_cloud[sensor_id]);
+                    pntsMap.getPCLPointCloudXYZRGB(*v_cloud[sensor_id]);
+                    cout << sensor_id << " v_cloud " << v_cloud[sensor_id]->height << "x" << v_cloud[sensor_id]->width << endl;
+
+//                    pcl::visualization::CloudViewer viewer ("Simple Cloud Viewer");
+//                    viewer.showCloud(v_cloud[sensor_id]);
+//                    while (!viewer.wasStopped ())
+//                        boost::this_thread::sleep (boost::posix_time::milliseconds (10));
+
+
+//                    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
+//                    std::vector<pcl::ModelCoefficients> model_coefficients;
+//                    std::vector<pcl::PointIndices> inliers;
+//                    size_t n_planes = segmentPlanes(v_cloud[sensor_id], regions, model_coefficients, inliers, dist_threshold, angle_threshold, min_inliers);
+//                    cout << sensor_id << "n_planes " << n_planes << endl;
+
                 }
 
 
 
-                cout << "frame360.segmentPlanesLocal() \n";
-                //frame360.segmentPlanesLocal();
-                for(int sensor_id = 0; sensor_id < NUM_ASUS_SENSORS; sensor_id++)
-                    frame360.local_planes_[sensor_id] = frame360.extractPbMap( frame360.getCloudRGBDAsus(sensor_id).getPointCloud(), 0.02f, 0.039812f, 5000 );
+//                cout << "frame360.segmentPlanesLocal() \n";
+//                //frame360.segmentPlanesLocal();
+//                for(int sensor_id = 0; sensor_id < NUM_ASUS_SENSORS; sensor_id++)
+//                    frame360.local_planes_[sensor_id] = frame360.extractPbMap( frame360.getCloudRGBDAsus(sensor_id).getPointCloud(), 0.02f, 0.039812f, 5000 );
 
-                cout << "Merge planes \n";
-                mrpt::pbmap::PbMap &planes = frame360.planes_;
-                //planes.vPlanes.clear();
-                vector<unsigned> planesSourceIdx(5, 0);
-                for(int sensor_id = 0; sensor_id < NUM_ASUS_SENSORS; sensor_id++)
-                {
-                    planes.MergeWith(frame360.local_planes_[sensor_id], calib.Rt_[sensor_id]);
-                    planesSourceIdx[sensor_id+1] = planesSourceIdx[sensor_id] + frame360.local_planes_[sensor_id].vPlanes.size();
-                    //          cout << planesSourceIdx[sensor_id+1] << " ";
-                }
+//                cout << "Merge planes \n";
+//                mrpt::pbmap::PbMap &planes = frame360.planes_;
+//                //planes.vPlanes.clear();
+//                vector<unsigned> planesSourceIdx(5, 0);
+//                for(int sensor_id = 0; sensor_id < NUM_ASUS_SENSORS; sensor_id++)
+//                {
+//                    planes.MergeWith(frame360.local_planes_[sensor_id], calib.Rt_[sensor_id]);
+//                    planesSourceIdx[sensor_id+1] = planesSourceIdx[sensor_id] + frame360.local_planes_[sensor_id].vPlanes.size();
+//                    //          cout << planesSourceIdx[sensor_id+1] << " ";
+//                }
 
 //                if(display)
                     //Show both images and the plane segmentation
@@ -459,67 +589,4 @@ int main(int argc, char **argv)
             printf("Untyped exception!!");
             return -1;
     }
-}
-
-
-typedef PointT PointT;
-
-void ContinuousFeaturesPCL::computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor)
-{
-    //ImgRGBD_3D::fastBilateralFilter(cloud, cloud);
-
-    pcl::IntegralImageNormalEstimation<PointT, pcl::Normal> ne;
-    ne.setNormalEstimationMethod(ne.COVARIANCE_MATRIX);
-    //ne.setNormalEstimationMethod(ne.SIMPLE_3D_GRADIENT);
-    //ne.setNormalEstimationMethod(ne.AVERAGE_DEPTH_CHANGE);
-    //ne.setNormalEstimationMethod(ne.AVERAGE_3D_GRADIENT);
-    ne.setMaxDepthChangeFactor(depth_thres); // For VGA: 0.02f, 10.0f
-    ne.setNormalSmoothingSize(smooth_factor);
-    ne.setDepthDependentSmoothing(true);
-
-    normal_cloud_.reset(new pcl::PointCloud<pcl::Normal>);
-    ne.setInputCloud(cloud);
-    ne.compute(*normal_cloud_);
-    //return normal_cloud_;
-}
-
-size_t ContinuousFeaturesPCL::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
-                                            vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions, std::vector<pcl::ModelCoefficients> & model_coefficients, std::vector<pcl::PointIndices> & inliers,
-                                            const float dist_threshold, const float angle_threshold, const size_t min_inliers)
-{
-//#if _VERBOSE_PROFILING
-//    //cout << "ContinuousFeaturesPCL::segmentPlanes... \n";
-//    double time_start = rv::utils::getTime();
-//    //for(size_t k=0; k<1000; k++)
-//    {
-//#endif
-
-    pcl::PointCloud<PointT>::Ptr cloud_filtered = cloud;
-//    ImgRGBD_3D::fastBilateralFilter(cloud, cloud_filtered, 30, 0.5);
-//    computeImgNormal(cloud_filtered);
-    computeImgNormal(cloud_filtered, 0.02f, 10.0f);
-
-    pcl::OrganizedMultiPlaneSegmentation<PointT, pcl::Normal, pcl::Label> mps;
-    mps.setMinInliers(min_inliers);
-    mps.setAngularThreshold(angle_threshold); // (0.017453 * 2.0) // 3 degrees
-    mps.setDistanceThreshold(dist_threshold); //2cm
-    mps.setInputNormals(normal_cloud_);
-    mps.setInputCloud(cloud_filtered);
-
-//    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
-//    std::vector<pcl::ModelCoefficients> model_coefficients;
-//    std::vector<pcl::PointIndices> inliers;
-    pcl::PointCloud<pcl::Label>::Ptr labels (new pcl::PointCloud<pcl::Label>);
-    std::vector<pcl::PointIndices> label_indices;
-    std::vector<pcl::PointIndices> boundary_indices;
-    mps.segmentAndRefine(regions, model_coefficients, inliers, labels, label_indices, boundary_indices);
-    size_t n_regions = regions.size();
-
-//#if _VERBOSE_PROFILING
-//    }
-//    double time_end = rv::utils::getTime();
-//    cout << "ContinuousFeaturesPCL::segmentPlanes " << (time_end - time_start)*1000 << " ms. \n";
-//#endif
-
-    return n_regions;
 }
