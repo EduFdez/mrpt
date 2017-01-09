@@ -31,6 +31,8 @@
 #define USE_COMPLETNESS_HEURISTICS 1
 #define USE_INFERRED_STRUCTURE 1
 
+typedef pcl::PointXYZRGBA PointT;
+
 static std::vector<int> DEFAULT_VECTOR;
 
 namespace mrpt {
@@ -45,27 +47,27 @@ namespace pbmap {
          *
          * \ingroup mrpt_pbmap_grp
          */
-        class PBMAP_IMPEXP Plane : public mrpt::utils::CSerializable
-        {
-                                              // This must be added to any CSerializable derived class:
-                                              DEFINE_SERIALIZABLE( Plane )
+    class PBMAP_IMPEXP Plane : public mrpt::utils::CSerializable
+    {
+        // This must be added to any CSerializable derived class:
+        DEFINE_SERIALIZABLE( Plane )
 
-                                              public:
-                                              Plane() :
-                                              elongation(1.0),
-                                              bFullExtent(false),
-                                              bFromStructure(false),
-                                              //      contourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>),
-                                              polygonContourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>),
-                                              planePointCloudPtr(new pcl::PointCloud<pcl::PointXYZRGBA>)
+      public:
+        Plane() :
+            elongation(1.0),
+            bFullExtent(false),
+            bFromStructure(false),
+            //      contourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>),
+            polygonContourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>),
+            planePointCloudPtr(new pcl::PointCloud<pcl::PointXYZRGBA>)
         {
-                                              //      vector< vector<int> > vec(4, vector<int>(4));
-    }
+        //      vector< vector<int> > vec(4, vector<int>(4));
+        }
 
-                                              /*!
-                                               * Force the plane inliers to lay on the plane
-                                               */
-                                              void forcePtsLayOnPlane();
+        /*!
+        * Force the plane inliers to lay on the plane
+        */
+        void forcePtsLayOnPlane();
 
         void forcePtsLayOnPlane(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & inliers);
 

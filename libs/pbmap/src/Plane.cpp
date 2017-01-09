@@ -182,7 +182,7 @@ void Plane::forcePtsLayOnPlane()
     }
 }
 
-void Plane::forcePtsLayOnPlane(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & inliers)
+void Plane::forcePtsLayOnPlane(pcl::PointCloud<PointT>::Ptr & inliers)
 {
     // The plane equation has the form Ax + By + Cz + D = 0, where the vector N=(A,B,C) is the normal and the constant D can be calculated as D = -N*(PlanePoint) = -N*PlaneCenter
     const double D = -(v3normal.dot(v3center));
@@ -311,7 +311,7 @@ void Plane::calcElongationAndPpalDir()
 }
 
 // Compute the plane parameters from a set of noisy points (described in our RAS paper)
-void Plane::computeInvariantParams (pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & inliers )
+void Plane::computeInvariantParams (pcl::PointCloud<PointT>::Ptr & inliers )
 {
 //    std::cout << "Plane::computeInvariantParams... inliers " << inliers->size() << std::endl;
 //    double start_time = pcl::getTime();
@@ -710,7 +710,7 @@ float cross(const mPointHull &O, const mPointHull &A, const mPointHull &B)
 ///**!
 // * Calculate the plane's convex hull with the monotone chain algorithm.
 //*/
-//void Plane::calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud)
+//void Plane::calcConvexHull(pcl::PointCloud<PointT>::Ptr &pointCloud)
 //{
 //  // Find axis with largest normal component and project onto perpendicular plane
 //  int k0;//, k1, k2;
@@ -777,7 +777,7 @@ float cross(const mPointHull &O, const mPointHull &A, const mPointHull &B)
 //
 //}
 
-void Plane::calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<int> &indices)
+void Plane::calcConvexHull(pcl::PointCloud<PointT>::Ptr &pointCloud, std::vector<int> &indices)
 {
     // Find axis with largest normal component and project onto perpendicular plane
     int k0;//, k1, k2;
@@ -849,7 +849,7 @@ void Plane::calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, 
 }
 
 
-void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<int> & indices)
+void Plane::calcConvexHullandParams(pcl::PointCloud<PointT>::Ptr &pointCloud, std::vector<int> & indices)
 {
     //std::cout << "Plane::calcConvexHullandParams... cloud " << pointCloud->size() << " indices " << indices.size() << std::endl;
 
@@ -921,7 +921,7 @@ void Plane::calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &poi
 //        polygonContourPtr->points[i] = pointCloud->points[ H[i].id ];
         indices[i] = H[i].id;
     }
-    polygonContourPtr.reset(new pcl::PointCloud<pcl::PointXYZRGBA>(*pointCloud, indices));
+    polygonContourPtr.reset(new pcl::PointCloud<PointT>(*pointCloud, indices));
     //    std::cout << "polygonContourPtr " << polygonContourPtr->size() << std::endl;
 
     // Shift the points to fulfill the plane equation
@@ -1134,9 +1134,9 @@ void Plane::mergePlane(Plane &same_plane_patch)
     *planePointCloudPtr += *same_plane_patch.planePointCloudPtr; // Add the points of the new detection and perform a voxel grid
 
     // Filter the points of the patch with a voxel-grid. This points are used only for visualization
-    static pcl::VoxelGrid<pcl::PointXYZRGBA> merge_grid;
+    static pcl::VoxelGrid<PointT> merge_grid;
     merge_grid.setLeafSize(0.05,0.05,0.05);
-    pcl::PointCloud<pcl::PointXYZRGBA> mergeCloud;
+    pcl::PointCloud<PointT> mergeCloud;
     merge_grid.setInputCloud (planePointCloudPtr);
     merge_grid.filter (mergeCloud);
     planePointCloudPtr->clear();
@@ -1229,9 +1229,9 @@ void Plane::mergePlane_convexHull(Plane &same_plane_patch)
     *planePointCloudPtr += *same_plane_patch.planePointCloudPtr; // Add the points of the new detection and perform a voxel grid
 
     // Filter the points of the patch with a voxel-grid. This points are used only for visualization
-    static pcl::VoxelGrid<pcl::PointXYZRGBA> merge_grid;
+    static pcl::VoxelGrid<PointT> merge_grid;
     merge_grid.setLeafSize(0.05,0.05,0.05);
-    pcl::PointCloud<pcl::PointXYZRGBA> mergeCloud;
+    pcl::PointCloud<PointT> mergeCloud;
     merge_grid.setInputCloud (planePointCloudPtr);
     merge_grid.filter (mergeCloud);
     planePointCloudPtr->clear();

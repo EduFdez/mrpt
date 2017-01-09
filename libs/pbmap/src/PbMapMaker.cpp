@@ -509,15 +509,15 @@ void PbMapMaker::detectPlanesCloud( pcl::PointCloud<PointT>::Ptr &pointCloudPtr_
     pcl::PointCloud<PointT>::Ptr pointCloudPtr_arg2(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud(*pointCloudPtr_arg,*pointCloudPtr_arg2);
 
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr alignedCloudPtr(new pcl::PointCloud<pcl::PointXYZRGBA>);
+    pcl::PointCloud<PointT>::Ptr alignedCloudPtr(new pcl::PointCloud<PointT>);
     pcl::transformPointCloud(*pointCloudPtr_arg,*alignedCloudPtr,poseKF);
 
     { mrpt::synch::CCriticalSectionLocker csl(&CS_visualize);
         *mPbMap.globalMapPtr += *alignedCloudPtr;
         // Downsample voxel map's point cloud
-        static pcl::VoxelGrid<pcl::PointXYZRGBA> grid;
+        static pcl::VoxelGrid<PointT> grid;
         grid.setLeafSize(0.02,0.02,0.02);
-        pcl::PointCloud<pcl::PointXYZRGBA> globalMap;
+        pcl::PointCloud<PointT> globalMap;
         grid.setInputCloud (mPbMap.globalMapPtr);
         grid.filter (globalMap);
         mPbMap.globalMapPtr->clear();
@@ -576,21 +576,21 @@ void PbMapMaker::detectPlanesCloud( pcl::PointCloud<PointT>::Ptr &pointCloudPtr_
         //      plane.v3normal *= -1;
 
         // Extract the planar inliers from the input cloud
-        pcl::ExtractIndices<pcl::PointXYZRGBA> extract;
+        pcl::ExtractIndices<PointT> extract;
         extract.setInputCloud (pointCloudPtr_arg2);
         extract.setIndices ( boost::make_shared<const pcl::PointIndices> (inliers[i]) );
         extract.setNegative (false);
         extract.filter (*plane.planePointCloudPtr);    // Write the planar point cloud
 
-        static pcl::VoxelGrid<pcl::PointXYZRGBA> plane_grid;
+        static pcl::VoxelGrid<PointT> plane_grid;
         plane_grid.setLeafSize(0.05,0.05,0.05);
-        pcl::PointCloud<pcl::PointXYZRGBA> planeCloud;
+        pcl::PointCloud<PointT> planeCloud;
         plane_grid.setInputCloud (plane.planePointCloudPtr);
         plane_grid.filter (planeCloud);
         plane.planePointCloudPtr->clear();
         pcl::transformPointCloud(planeCloud,*plane.planePointCloudPtr,poseKF);
 
-        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr contourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>);
+        pcl::PointCloud<PointT>::Ptr contourPtr(new pcl::PointCloud<PointT>);
         contourPtr->points = regions[i].getContour();
         plane_grid.setLeafSize(0.1,0.1,0.1);
         plane_grid.setInputCloud (contourPtr);
@@ -941,9 +941,9 @@ void PbMapMaker::mergePlanes(Plane &updatePlane, Plane &discardPlane)
     *updatePlane.planePointCloudPtr += *discardPlane.planePointCloudPtr; // Add the points of the new detection and perform a voxel grid
 
     // Filter the points of the patch with a voxel-grid. This points are used only for visualization
-    static pcl::VoxelGrid<pcl::PointXYZRGBA> merge_grid;
+    static pcl::VoxelGrid<PointT> merge_grid;
     merge_grid.setLeafSize(0.05,0.05,0.05);
-    pcl::PointCloud<pcl::PointXYZRGBA> mergeCloud;
+    pcl::PointCloud<PointT> mergeCloud;
     merge_grid.setInputCloud (updatePlane.planePointCloudPtr);
     merge_grid.filter (mergeCloud);
     updatePlane.planePointCloudPtr->clear();
