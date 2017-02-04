@@ -855,6 +855,8 @@ bool reactive_navigator_demoframe::reinitSimulator()
 
 void reactive_navigator_demoframe::simulateOneStep(double time_step)
 {
+	WX_START_TRY
+
 	const double simul_time = m_robotSimul->getTime();
 
 	static double LAST_TIM_LIDAR    = -1e6;
@@ -1019,9 +1021,9 @@ void reactive_navigator_demoframe::simulateOneStep(double time_step)
 		if (lfr.nSelectedPTG<=(int)ptg_nav->getPTG_count())  // the == case is for "NOP motion cmd"
 		{
 			const bool is_NOP_op = (lfr.nSelectedPTG == (int)ptg_nav->getPTG_count());
-			const size_t idx_ptg = is_NOP_op ? lfr.ptg_index_NOP : lfr.nSelectedPTG;
+			const int idx_ptg = is_NOP_op ? lfr.ptg_index_NOP : lfr.nSelectedPTG;
 
-			mrpt::nav::CParameterizedTrajectoryGenerator* ptg = ptg_nav->getPTG(idx_ptg);
+			mrpt::nav::CParameterizedTrajectoryGenerator* ptg = idx_ptg >= 0 ? ptg_nav->getPTG(idx_ptg) : nullptr;
 			if (ptg)
 			{
 				// Draw path:
@@ -1046,7 +1048,7 @@ void reactive_navigator_demoframe::simulateOneStep(double time_step)
 					double min_shape_dists = 1.0;
 					for (double d=min_shape_dists;d<max_dist;d+=min_shape_dists)
 					{
-						uint16_t step;
+						uint32_t step;
 						if (!ptg->getPathStepForDist(selected_k, d, step))
 							continue;
 						mrpt::math::TPose2D p;
@@ -1114,6 +1116,8 @@ void reactive_navigator_demoframe::simulateOneStep(double time_step)
 			}
 		}
 	}
+
+	WX_END_TRY
 }
 
 void reactive_navigator_demoframe::updateViewsDynamicObjects()

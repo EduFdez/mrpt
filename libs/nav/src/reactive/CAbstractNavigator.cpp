@@ -20,9 +20,9 @@ using namespace std;
 
 const double PREVIOUS_POSES_MAX_AGE = 20; // seconds
 
-// Ctor: CAbstractNavigator::TNavigationParams 
+// Ctor: CAbstractNavigator::TNavigationParams
 CAbstractNavigator::TNavigationParams::TNavigationParams() :
-	target(0,0,0), 
+	target(0,0,0),
 	targetAllowedDistance(0.5),
 	targetIsRelative(false),
 	targetIsIntermediaryWaypoint(false)
@@ -30,7 +30,7 @@ CAbstractNavigator::TNavigationParams::TNavigationParams() :
 }
 
 // Gets navigation params as a human-readable format:
-std::string CAbstractNavigator::TNavigationParams::getAsText() const 
+std::string CAbstractNavigator::TNavigationParams::getAsText() const
 {
 	string s;
 	s+= mrpt::format("navparams.target = (%.03f,%.03f,%.03f deg)\n", target.x, target.y,target.phi );
@@ -45,7 +45,7 @@ CAbstractNavigator::TRobotPoseVel::TRobotPoseVel() :
 	pose(0,0,0),
 	velGlobal(0,0,0),
 	velLocal(0,0,0),
-	timestamp(INVALID_TIMESTAMP) 
+	timestamp(INVALID_TIMESTAMP)
 {
 }
 
@@ -58,8 +58,10 @@ CAbstractNavigator::CAbstractNavigator(CRobot2NavInterface &react_iterf_impl) :
 	m_navigationEndEventSent(false),
 	m_navigationState     ( IDLE ),
 	m_navigationParams    ( NULL ),
+	m_lastNavTargetReached(false),
 	m_robot               ( react_iterf_impl ),
 	m_curPoseVel          (),
+	m_last_curPoseVelUpdate_time(INVALID_TIMESTAMP),
 	m_latestPoses         (),
 	m_timlog_delays       (true, "CAbstractNavigator::m_timlog_delays"),
 	m_badNavAlarm_AlarmTimeout(30.0),
@@ -83,6 +85,7 @@ void CAbstractNavigator::cancel()
 	mrpt::synch::CCriticalSectionLocker csl(&m_nav_cs);
 	MRPT_LOG_DEBUG("CAbstractNavigator::cancel() called.");
 	m_navigationState = IDLE;
+	m_lastNavTargetReached = false;
 	this->stop(false /*not emergency*/);
 }
 
@@ -210,6 +213,8 @@ void CAbstractNavigator::navigationStep()
 			// Have we really reached the target?
 			if ( targetDist < m_navigationParams->targetAllowedDistance )
 			{
+				m_lastNavTargetReached = true;
+
 				if (!m_navigationParams->targetIsIntermediaryWaypoint) {
 					this->stop(false /*not emergency*/);
 				}
@@ -243,7 +248,7 @@ void CAbstractNavigator::navigationStep()
 				}
 			}
 
-			// ==== The normal execution of the navigation: Execute one step ==== 
+			// ==== The normal execution of the navigation: Execute one step ====
 			performNavigationStep();
 
 		}
@@ -276,6 +281,7 @@ void CAbstractNavigator::navigate(const CAbstractNavigator::TNavigationParams *p
 	mrpt::synch::CCriticalSectionLocker csl(&m_nav_cs);
 
 	m_navigationEndEventSent = false;
+	m_lastNavTargetReached = false;
 
 	// Copy data:
 	mrpt::utils::delete_safe(m_navigationParams);
@@ -284,7 +290,7 @@ void CAbstractNavigator::navigate(const CAbstractNavigator::TNavigationParams *p
 	// Transform: relative -> absolute, if needed.
 	if ( m_navigationParams->targetIsRelative )
 	{
-		this->updateCurrentPoseAndSpeeds(false /*update_seq_latest_poses*/);
+		this->updateCurrentPoseAndSpeeds();
 
 		const mrpt::poses::CPose2D relTarget(m_navigationParams->target);
 		mrpt::poses::CPose2D absTarget;
@@ -303,14 +309,28 @@ void CAbstractNavigator::navigate(const CAbstractNavigator::TNavigationParams *p
 	m_badNavAlarm_lastMinDistTime = mrpt::system::getCurrentTime();
 }
 
-void CAbstractNavigator::updateCurrentPoseAndSpeeds(bool update_seq_latest_poses)
+void CAbstractNavigator::updateCurrentPoseAndSpeeds()
 {
+	// Ignore calls too-close in time, e.g. from the navigationStep() methods of
+	// AbstractNavigator and a derived, overriding class.
+	const mrpt::system::TTimeStamp tim_now = mrpt::system::now();
+	const double MIN_TIME_BETWEEN_POSE_UPDATES = 20e-3;
+	if (m_last_curPoseVelUpdate_time != INVALID_TIMESTAMP)
+	{
+		const double last_call_age = mrpt::system::timeDifference(m_last_curPoseVelUpdate_time, tim_now);
+		if (last_call_age < MIN_TIME_BETWEEN_POSE_UPDATES)
+		{
+			MRPT_LOG_DEBUG_FMT("updateCurrentPoseAndSpeeds: ignoring call, since last call was only %f ms ago.", last_call_age*1e3);
+			return;  // previous data is still valid: don't query the robot again
+		}
+	}
+
 	{
 		mrpt::utils::CTimeLoggerEntry tle(m_timlog_delays, "getCurrentPoseAndSpeeds()");
 		if (!m_robot.getCurrentPoseAndSpeeds(m_curPoseVel.pose, m_curPoseVel.velGlobal, m_curPoseVel.timestamp))
 		{
 			m_navigationState = NAV_ERROR;
-			try { 
+			try {
 				this->stop(true /*emergency*/);
 			}
 			catch (...) {}
@@ -321,15 +341,18 @@ void CAbstractNavigator::updateCurrentPoseAndSpeeds(bool update_seq_latest_poses
 	m_curPoseVel.velLocal = m_curPoseVel.velGlobal;
 	m_curPoseVel.velLocal.rotate(-m_curPoseVel.pose.phi);
 
+	m_last_curPoseVelUpdate_time = tim_now;
+
 	// Append to list of past poses:
 	m_latestPoses.insert(m_curPoseVel.timestamp, mrpt::poses::CPose3D(mrpt::math::TPose3D(m_curPoseVel.pose)));
 
 	// Purge old ones:
-	while (!m_latestPoses.empty() &&
+	while (m_latestPoses.size()>1 &&
 		mrpt::system::timeDifference(m_latestPoses.begin()->first, m_latestPoses.rbegin()->first) > PREVIOUS_POSES_MAX_AGE)
 	{
 		m_latestPoses.erase(m_latestPoses.begin());
 	}
+	//MRPT_LOG_DEBUG_STREAM << "updateCurrentPoseAndSpeeds: " << m_latestPoses.size() << " poses in list of latest robot poses.";
 }
 
 bool CAbstractNavigator::changeSpeeds(const mrpt::kinematics::CVehicleVelCmd &vel_cmd)

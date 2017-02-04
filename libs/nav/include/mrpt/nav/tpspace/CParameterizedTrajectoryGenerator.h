@@ -109,6 +109,9 @@ namespace nav
 			return inverseMap_WS2TP(x,y,k,d);
 		}
 
+		/** Returns true if a given TP-Space point maps to a unique point in Workspace, and viceversa. Default implementation returns `true`. */
+		virtual bool isBijectiveAt(uint16_t k, uint32_t step) const { return true; }
+
 		/** Converts a discretized "alpha" value into a feasible motion command or action. See derived classes for the meaning of these actions */
 		virtual mrpt::kinematics::CVehicleVelCmdPtr directionToMotionCommand( uint16_t k ) const = 0;
 
@@ -129,12 +132,12 @@ namespace nav
 
 		/** Access path `k` ([0,N-1]=>[-pi,pi] in alpha): pose of the vehicle at discrete step `step`.
 		  * \sa getPathStepCount(), getAlphaValuesCount() */
-		virtual void getPathPose(uint16_t k, uint16_t step, mrpt::math::TPose2D &p) const = 0;
+		virtual void getPathPose(uint16_t k, uint32_t step, mrpt::math::TPose2D &p) const = 0;
 
 		/** Access path `k` ([0,N-1]=>[-pi,pi] in alpha): traversed distance at discrete step `step`.
 		  * \return Distance in pseudometers (real distance, NOT normalized to [0,1] for [0,refDist])
 		  * \sa getPathStepCount(), getAlphaValuesCount() */
-		virtual double getPathDist(uint16_t k, uint16_t step) const = 0;
+		virtual double getPathDist(uint16_t k, uint32_t step) const = 0;
 
 		/** Returns the duration (in seconds) of each "step"
 		* \sa getPathStepCount() */
@@ -150,7 +153,7 @@ namespace nav
 		  * \return false if no step fulfills the condition for the given trajectory `k` (e.g. out of reference distance).
 		  * Note that, anyway, the maximum distance (closest point) is returned in `out_step`.
 		  * \sa getPathStepCount(), getAlphaValuesCount() */
-		virtual bool getPathStepForDist(uint16_t k, double dist, uint16_t &out_step) const = 0;
+		virtual bool getPathStepForDist(uint16_t k, double dist, uint32_t &out_step) const = 0;
 
 		/** Updates the radial map of closest TP-Obstacles given a single obstacle point at (ox,oy)
 		  * \param [in,out] tp_obstacles A vector of length `getAlphaValuesCount()`, initialized with `initTPObstacles()` (collision-free ranges, in "pseudometers", un-normalized).
@@ -179,6 +182,13 @@ namespace nav
 		  * navigation implementations will check for many other conditions. Default method in the base virtual class returns 0. 
 		  * \param path_k Queried path `k` index  [0,N-1] */
 		virtual double maxTimeInVelCmdNOP(int path_k) const;
+
+		/** Returns the actual distance (in meters) of the path, discounting possible circular loops of the path (e.g. if it comes back to the origin). 
+		  * Default: refDistance */
+		virtual double getActualUnloopedPathLength(uint16_t k) const { return this->refDistance; }
+
+		/** Query the PTG for the relative priority factor (0,1) of this PTG, in comparison to others, if the k-th path is to be selected. */
+		virtual double evalPathRelativePriority(uint16_t k, double target_distance) const { return 1.0; }
 
 		/** Returns an approximation of the robot radius. */
 		virtual double getApproxRobotRadius() const = 0;
@@ -271,7 +281,6 @@ protected:
 		uint16_t  m_alphaValuesCount; //!< The number of discrete values for "alpha" between -PI and +PI.
 		double    m_score_priority;
 		uint16_t  m_clearance_num_points; //!< Number of steps for the piecewise-constant approximation of clearance from TPS distances [0,1] (Default=5) \sa updateClearance()
-		bool      m_use_approx_clearance; //!< Approx clearance by directly calc distances in TP-Space, without checking WS robot shape directly (Default=true)
 
 		bool      m_is_initialized;
 

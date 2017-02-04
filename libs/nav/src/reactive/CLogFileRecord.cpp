@@ -37,7 +37,7 @@ CLogFileRecord::CLogFileRecord() :
 void  CLogFileRecord::writeToStream(mrpt::utils::CStream &out,int *version) const
 {
 	if (version)
-		*version = 19;
+		*version = 21;
 	else
 	{
 		uint32_t	i,n;
@@ -57,6 +57,7 @@ void  CLogFileRecord::writeToStream(mrpt::utils::CStream &out,int *version) cons
 			out << infoPerPTG[i].TP_Robot; // v17
 			out << infoPerPTG[i].timeForTPObsTransformation << infoPerPTG[i].timeForHolonomicMethod; // made double in v12
 			out << infoPerPTG[i].desiredDirection << infoPerPTG[i].desiredSpeed << infoPerPTG[i].evaluation; // made double in v12
+			out << infoPerPTG[i].evaluation_org << infoPerPTG[i].evaluation_priority; // added in v21
 			out << *infoPerPTG[i].HLFR;
 
 			// Version 9: Removed security distances. Added optional field with PTG info.
@@ -67,7 +68,9 @@ void  CLogFileRecord::writeToStream(mrpt::utils::CStream &out,int *version) cons
 
 			out << infoPerPTG[i].clearance.raw_clearances; // v19
 		}
-		out << nSelectedPTG << WS_Obstacles << robotOdometryPose << WS_target_relative /*v8*/;
+		out << nSelectedPTG << WS_Obstacles;
+		out << WS_Obstacles_original; // v20
+		out << robotOdometryPose << WS_target_relative /*v8*/;
 		// v16:
 		out << ptg_index_NOP << ptg_last_k_NOP  << rel_cur_pose_wrt_last_vel_cmd_NOP << rel_pose_PTG_origin_wrt_sense_NOP;
 		out << ptg_last_curRobotVelLocal; // v17
@@ -138,6 +141,8 @@ void  CLogFileRecord::readFromStream(mrpt::utils::CStream &in,int version)
 	case 17:
 	case 18:
 	case 19:
+	case 20:
+	case 21:
 		{
 			// Version 0 --------------
 			uint32_t  i,n;
@@ -179,6 +184,13 @@ void  CLogFileRecord::readFromStream(mrpt::utils::CStream &in,int version)
 					in.ReadAsAndCastTo<float,double>(infoPerPTG[i].desiredSpeed);
 					in.ReadAsAndCastTo<float,double>(infoPerPTG[i].evaluation);
 				}
+				if (version >= 21) {
+					in >> infoPerPTG[i].evaluation_org >> infoPerPTG[i].evaluation_priority;
+				}
+				else {
+					infoPerPTG[i].evaluation_org = infoPerPTG[i].evaluation;
+					infoPerPTG[i].evaluation_priority = 1.0;
+				}
 
 				in >> infoPerPTG[i].HLFR;
 
@@ -200,7 +212,15 @@ void  CLogFileRecord::readFromStream(mrpt::utils::CStream &in,int version)
 				}
 			}
 
-			in >> nSelectedPTG >> WS_Obstacles >> robotOdometryPose;
+			in >> nSelectedPTG >> WS_Obstacles;
+			if (version >= 20) {
+				in >> WS_Obstacles_original; // v20
+			}
+			else {
+				WS_Obstacles_original = WS_Obstacles;
+			}
+
+			in >> robotOdometryPose;
 
 			if (version>=8)
 				in >> WS_target_relative;

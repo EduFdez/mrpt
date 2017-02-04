@@ -29,9 +29,11 @@ using namespace std;
 CReactiveNavigationSystem::CReactiveNavigationSystem(
 	CRobot2NavInterface   &react_iterf_impl,
 	bool					enableConsoleOutput,
-	bool					enableLogToFile)
+	bool					enableLogToFile,
+	const std::string &logFileDirectory
+)
 	:
-	CAbstractPTGBasedReactive(react_iterf_impl,enableConsoleOutput,enableLogToFile),
+	CAbstractPTGBasedReactive(react_iterf_impl,enableConsoleOutput,enableLogToFile, logFileDirectory),
 	minObstaclesHeight           (-1.0),
 	maxObstaclesHeight           (1e9)
 {
@@ -167,6 +169,13 @@ bool CReactiveNavigationSystem::implementSenseObstacles(mrpt::system::TTimeStamp
 			ret = m_robot.senseObstacles(m_WS_Obstacles, obstacles_timestamp);
 		}
 
+		// Optional filtering of obstacles:
+		m_WS_Obstacles_original = m_WS_Obstacles;
+		if (ret && m_WS_filter.present())
+		{
+			m_WS_filter->filter(&m_WS_Obstacles, obstacles_timestamp, mrpt::poses::CPose3D(mrpt::math::TPose3D(m_curPoseVel.pose)) );
+		}
+
 		return ret;
 		// Note: Clip obstacles by "z" axis coordinates is more efficiently done in STEP3_WSpaceToTPSpace()
 	}
@@ -215,6 +224,7 @@ void CReactiveNavigationSystem::STEP3_WSpaceToTPSpace(const size_t ptg_idx,std::
 void CReactiveNavigationSystem::loggingGetWSObstaclesAndShape(CLogFileRecord &out_log)
 {
 	out_log.WS_Obstacles = m_WS_Obstacles;
+	out_log.WS_Obstacles_original = m_WS_Obstacles_original;
 
 	const size_t nVerts = m_robotShape.size();
 	out_log.robotShape_x.resize(nVerts);
