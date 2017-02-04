@@ -16,21 +16,23 @@ PROJECT(kinect-rig-calib)
 # TARGET:
 # ---------------------------------------------
 # Define the executable target:
-ADD_EXECUTABLE(kinect-rig-calib
-               kinect-rig-calib_main.cpp)
-
-SET(TMP_TARGET_NAME "kinect-rig-calib")
-
+ADD_EXECUTABLE(${PROJECT_NAME}
+                kinect-rig-calib_main.cpp
+                #calib_from_planes3D.h
+                #calib_from_planes3D.cpp
+                #extrinsic_calib_pair_xtion.h
+                #extrinsic_calib_pair_xtion.cpp
+)
 
 
 # Add the required libraries for linking:
-TARGET_LINK_LIBRARIES(${TMP_TARGET_NAME} ${MRPT_LINKER_LIBS})
+TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${MRPT_LINKER_LIBS})
 
 # Dependencies on MRPT libraries:
 #  Just mention the top-level dependency, the rest will be detected automatically, 
 #  and all the needed #include<> dirs added (see the script DeclareAppDependencies.cmake for further details)
-DeclareAppDependencies(${TMP_TARGET_NAME} mrpt-obs mrpt-maps mrpt-pbmap mrpt-gui)
+DeclareAppDependencies(${PROJECT_NAME} mrpt-obs mrpt-maps mrpt-pbmap mrpt-gui)
 
-DeclareAppForInstall(${TMP_TARGET_NAME})
+DeclareAppForInstall(${PROJECT_NAME})
 
 endif(BUILD_mrpt-pbmap) # This project can't be built without mrpt-pbmap
