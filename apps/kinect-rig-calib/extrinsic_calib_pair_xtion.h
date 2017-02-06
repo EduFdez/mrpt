@@ -32,41 +32,50 @@
 
 #pragma once
 
-#include "calib_from_planes3D.h"
-#include <rv/math/poses.h>
-#include <rv/utils/file.h>
+#include <mrpt/system/filesystem.h>
+#include <mrpt/math/CMatrixTemplateNumeric.h>  // For mrpt::math::CMatrixDouble
+#include <Eigen/Dense>
 
-namespace rv
+//#include "calib_from_planes3D.h"
+
+template<typename Scalar> inline Eigen::Matrix<Scalar,3,3> skew(const Eigen::Matrix<Scalar,3,1> &vec)
 {
-  namespace calib
-  {
-    /*! This class contains the functionality to calibrate the extrinsic parameters of a pair of non-overlapping depth cameras.
-     *  This extrinsic calibration is obtained by matching planes that are observed by both sensors at the same time instants.
-     *
-     *  \ingroup calib_group
-     */
-    class CalibratePairRange
+  Eigen::Matrix<Scalar,3,3> skew_matrix = Eigen::Matrix<Scalar,3,3>::Zero();
+  skew_matrix(0,1) = -vec(2);
+  skew_matrix(1,0) = vec(2);
+  skew_matrix(0,2) = vec(1);
+  skew_matrix(2,0) = -vec(1);
+  skew_matrix(1,2) = -vec(0);
+  skew_matrix(2,1) = vec(0);
+  return skew_matrix;
+}
+
+/*! This class contains the functionality to calibrate the extrinsic parameters of a pair of non-overlapping depth cameras.
+ *  This extrinsic calibration is obtained by matching planes that are observed by both sensors at the same time instants.
+ *
+ *  \ingroup calib_group
+ */
+class CalibratePairRange
+{
+public:
+
+    /*! 3D plane correspondences */
+    //PlaneCorresp corresp_;
+
+    /*! The extrinsic matrix estimated by this calibration method */
+    Eigen::Matrix4f Rt_estimated;
+
+    Eigen::Matrix3f rotation;
+
+    Eigen::Vector3f translation;
+
+    /*! The plane correspondences between the pair of Asus sensors */
+    mrpt::math::CMatrixDouble correspondences;
+    mrpt::math::CMatrixDouble correspondences_cov;
+
+    /*! Constructor */
+    CalibratePairRange() //: corresp_(PlaneCorresp(2))
     {
-    public:
-
-        /*! 3D plane correspondences */
-        PlaneCorresp corresp_;
-
-        /*! The extrinsic matrix estimated by this calibration method */
-        Eigen::Matrix4f Rt_estimated;
-
-        Eigen::Matrix3f rotation;
-
-        Eigen::Vector3f translation;
-
-        /*! The plane correspondences between the pair of Asus sensors */
-        mrpt::math::CMatrixDouble correspondences;
-        mrpt::math::CMatrixDouble correspondences_cov;
-
-        /*! Constructor */
-        CalibratePairRange() :
-            corresp_(PlaneCorresp(1))
-        {
 //            std::map<unsigned, std::map<unsigned, mrpt::math::CMatrixDouble> > mm_corresp_;
 
 //            /*! Conditioning numbers used to indicate if there is enough reliable information to calculate the extrinsic calibration */
@@ -74,85 +83,83 @@ namespace rv
 
 //            /*! Rotation covariance matrices from adjacent sensors */
 //            std::vector<Eigen::Matrix3f, Eigen::aligned_allocator<Eigen::Matrix3f> > covariances;
-        }
+    }
 
-        /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-        inline void setInitRt(const std::string Rt_file)
-        {
-            if( !rv::utils::fileExists(Rt_file) )
-                throw std::runtime_error("\nERROR...");
+    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
+    inline void setInitRt(const std::string Rt_file)
+    {
+        if( !mrpt::system::fileExists(Rt_file) )
+            throw std::runtime_error("\nERROR...");
 
-            Rt_estimated.loadFromTextFile(Rt_file);
-        }
+        Rt_estimated.loadFromTextFile(Rt_file);
+    }
 
-        /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-        inline void setInitRt(Eigen::Matrix4f initRt)
-        {
-            Rt_estimated = initRt;
-            //      Rt_estimated = Eigen::Matrix4f::Identity();
-            //      Rt_estimated(1,1) = Rt_estimated(2,2) = cos(45*PI/180);
-            //      Rt_estimated(1,2) = -sin(45*PI/180);
-            //      Rt_estimated(2,1) = -Rt_estimated(1,2);
-        }
+    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
+    inline void setInitRt(Eigen::Matrix4f initRt)
+    {
+        Rt_estimated = initRt;
+        //      Rt_estimated = Eigen::Matrix4f::Identity();
+        //      Rt_estimated(1,1) = Rt_estimated(2,2) = cos(45*PI/180);
+        //      Rt_estimated(1,2) = -sin(45*PI/180);
+        //      Rt_estimated(2,1) = -Rt_estimated(1,2);
+    }
 
-        /*! Calculate the angular error of the plane correspondences.*/
-        float calcCorrespRotError(Eigen::Matrix3f &Rot_);
+    /*! Calculate the angular error of the plane correspondences.*/
+    float calcCorrespRotError(Eigen::Matrix3f &Rot_);
 
-        /*! \overload Calculate the angular error of the plane correspondences.*/
-        inline float calcCorrespRotError(Eigen::Matrix4f &Rt_)
-        {
-            Eigen::Matrix3f R = Rt_.block(0,0,3,3);
-            return calcCorrespRotError(R);
-        }
+    /*! \overload Calculate the angular error of the plane correspondences.*/
+    inline float calcCorrespRotError(Eigen::Matrix4f &Rt_)
+    {
+        Eigen::Matrix3f R = Rt_.block(0,0,3,3);
+        return calcCorrespRotError(R);
+    }
 
-        /*! \overload Calculate the angular error of the plane correspondences.*/
-        inline float calcCorrespRotError()
-        {
-            Eigen::Matrix3f R = Rt_estimated.block(0,0,3,3);
-            return calcCorrespRotError(R);
-        }
+    /*! \overload Calculate the angular error of the plane correspondences.*/
+    inline float calcCorrespRotError()
+    {
+        Eigen::Matrix3f R = Rt_estimated.block(0,0,3,3);
+        return calcCorrespRotError(R);
+    }
 
-        //    float calcCorrespTransError(Eigen::Matrix3f &Rot_)
+    //    float calcCorrespTransError(Eigen::Matrix3f &Rot_)
 
-        /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-        inline Eigen::Vector3f calcScoreRotation(Eigen::Vector3f &n1, Eigen::Vector3f &n2)
-        {
-            Eigen::Vector3f n2_ref1 = Rt_estimated.block(0,0,3,3)*n2;
-            Eigen::Vector3f score = - rv::math::skew(n2_ref1) * n1;
+    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
+    inline Eigen::Vector3f calcScoreRotation(Eigen::Vector3f &n1, Eigen::Vector3f &n2)
+    {
+        Eigen::Vector3f n2_ref1 = Rt_estimated.block(0,0,3,3)*n2;
+        Eigen::Vector3f score = - skew(n2_ref1) * n1;
 
-            return score;
-        }
+        return score;
+    }
 
-        /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-        inline Eigen::Vector3f calcScoreTranslation(Eigen::Vector3f &n1, float &d1, float &d2)
-        {
-            Eigen::Vector3f score = (d1 - d2) * n1;
-            return score;
-        }
+    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
+    inline Eigen::Vector3f calcScoreTranslation(Eigen::Vector3f &n1, float &d1, float &d2)
+    {
+        Eigen::Vector3f score = (d1 - d2) * n1;
+        return score;
+    }
 
-        /*! Calculate the Fisher Information Matrix (FIM) of the rotation estimate. */
-        Eigen::Matrix3f calcFIMRotation();
+    /*! Calculate the Fisher Information Matrix (FIM) of the rotation estimate. */
+    Eigen::Matrix3f calcFIMRotation();
 
-        /*! Calculate the Fisher Information Matrix (FIM) of the translation estimate. */
-        Eigen::Matrix3f calcFIMTranslation();
+    /*! Calculate the Fisher Information Matrix (FIM) of the translation estimate. */
+    Eigen::Matrix3f calcFIMTranslation();
 
-        //    Eigen::Matrix3f calcFisherInfMat(const int weightedLS = 0)
+    //    Eigen::Matrix3f calcFisherInfMat(const int weightedLS = 0)
 
-        /*! Calibrate the relative rotation of the pair. */
-        Eigen::Matrix3f CalibrateRotation(int weightedLS = 0);
+    /*! Calibrate the relative rotation of the pair. */
+    Eigen::Matrix3f CalibrateRotation(int weightedLS = 0);
 
-        /*! \overload Calibrate the relative rotation of the pair (double precision). */
-        Eigen::Matrix3f CalibrateRotationD(int weightedLS = 0);
+    /*! \overload Calibrate the relative rotation of the pair (double precision). */
+    Eigen::Matrix3f CalibrateRotationD(int weightedLS = 0);
 
-        /*! Calibrate the relative rotation of the pair iteratively on a manifold formulation. */
-        Eigen::Matrix3f CalibrateRotationManifold(int weightedLS = 0);
+    /*! Calibrate the relative rotation of the pair iteratively on a manifold formulation. */
+    Eigen::Matrix3f CalibrateRotationManifold(int weightedLS = 0);
 
-        /*! Calibrate the relative translation of the pair. */
-        Eigen::Vector3f CalibrateTranslation(int weightedLS = 0);
+    /*! Calibrate the relative translation of the pair. */
+    Eigen::Vector3f CalibrateTranslation(int weightedLS = 0);
 
-        /*! Calibrate the relative rigid transformation (Rt) of the pair. */
-        void CalibratePair();
+    /*! Calibrate the relative rigid transformation (Rt) of the pair. */
+    void CalibratePair();
 
-    };
-  }
-}
+};

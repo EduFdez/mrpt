@@ -30,14 +30,14 @@
  * Author: Eduardo Fernandez-Moral
  */
 
-#include <rv/calib/extrinsic_calib_pair_xtion.h>
-#include <pcl/console/parse.h>
+#include "extrinsic_calib_pair_xtion.h"
+#include <iostream>
+#include <mrpt/poses/CPose3D.h>
 
 #define VISUALIZE_SENSOR_DATA 0
 #define SHOW_IMAGES 0
 
 using namespace std;
-using namespace rv::calib;
 
 float CalibratePairRange::calcCorrespRotError(Eigen::Matrix3f &Rot_)
 {
@@ -331,7 +331,7 @@ Eigen::Matrix3f CalibratePairRange::CalibrateRotationManifold(int weightedLS)
                 //            Eigen::Vector3f n_i = n_obs_i;
                 Eigen::Vector3f n_ii = Rt_estimated.block(0,0,3,3) * n_obs_ii;
                 //            jacobian_rot_i = rv::math::skew(-n_i);
-                jacobian_rot_ii = rv::math::skew(n_ii);
+                jacobian_rot_ii = skew(n_ii);
                 Eigen::Vector3f rot_error = (n_obs_i - n_ii);
                 accum_error2 += fabs(rot_error.dot(rot_error));
                 av_angle_error += acos(n_obs_i.dot(n_ii));
@@ -512,5 +512,5 @@ void CalibratePairRange::CalibratePair()
     }
     av_rot_error /= correspondences.rows();
     av_trans_error /= correspondences.rows();
-    std::cout << "Errors n.n " << calcCorrespRotError(Rt_estimated) << " av deg " << av_rot_error*180/PI << " av trans " << av_trans_error << std::endl;
+    std::cout << "Errors n.n " << calcCorrespRotError(Rt_estimated) << " av deg " << av_rot_error*180/3.14159f << " av trans " << av_trans_error << std::endl;
 }

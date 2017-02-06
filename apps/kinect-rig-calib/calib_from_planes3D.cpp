@@ -31,10 +31,8 @@
  */
 
 #include "calib_from_planes3D.h"
-//#include <rv/utils/file.h>
 
 using namespace std;
-//using namespace rv::utils;
 
 
 PlaneCorresp::PlaneCorresp(size_t n_sensors) :

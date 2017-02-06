@@ -20,8 +20,9 @@ ADD_EXECUTABLE(${PROJECT_NAME}
                 kinect-rig-calib_main.cpp
                 #calib_from_planes3D.h
                 #calib_from_planes3D.cpp
-                #extrinsic_calib_pair_xtion.h
-                #extrinsic_calib_pair_xtion.cpp
+                extrinsic_calib_pair_xtion.h
+                extrinsic_calib_pair_xtion.cpp
+                DownsampleRGBD.h
 )
 
 
@@ -31,7 +32,7 @@ TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${MRPT_LINKER_LIBS})
 # Dependencies on MRPT libraries:
 #  Just mention the top-level dependency, the rest will be detected automatically, 
 #  and all the needed #include<> dirs added (see the script DeclareAppDependencies.cmake for further details)
-DeclareAppDependencies(${PROJECT_NAME} mrpt-obs mrpt-maps mrpt-pbmap mrpt-gui)
+DeclareAppDependencies(${PROJECT_NAME} mrpt-obs mrpt-vision mrpt-maps mrpt-pbmap mrpt-gui)
 
 DeclareAppForInstall(${PROJECT_NAME})
 
