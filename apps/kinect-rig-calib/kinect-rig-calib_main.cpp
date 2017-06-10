@@ -47,6 +47,7 @@
 //#include <mrpt/opengl/CPlanarLaserScan.h>  // This class lives in the lib [mrpt-maps] and must be included by hand
 //#include <mrpt/math/ransac_applications.h>
 #include <mrpt/vision/chessboard_stereo_camera_calib.h>
+#include <mrpt/vision/CUndistortMap.h>
 #include <mrpt/pbmap/PbMap.h>
 
 #include <opencv2/core/core.hpp>
@@ -86,6 +87,15 @@ using namespace Eigen;
 
 
 typedef pcl::PointXYZRGBA PointT;
+typedef Matrix<float,6,1> line3D;
+
+line3D makeLine3D(const Vector3f &p1, const Vector3f &p2)
+{
+    line3D l;
+    l.block<3,1>(0,0) = p1;
+    l.block<3,1>(3,0) = p2;
+    return l;
+}
 
 // Define some colours to draw bolobs, patches, etc.
 static const unsigned char red [10] = {255,   0,   0, 255, 255,   0, 255, 204,   0, 255};
@@ -471,6 +481,7 @@ pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(cv::Mat & rgb_img, cv::Mat 
     const float fyc = calib.rightCamera.fy();
     const float oxc = calib.rightCamera.cx();
     const float oyc = calib.rightCamera.cy();
+    //cout << "fx " << fx << " fxc " << fxc << endl;
     pcl::PointCloud<PointT>::Ptr pointCloudPtr (new pcl::PointCloud<PointT>());
     pointCloudPtr->height = height;
     pointCloudPtr->width = width;
@@ -561,9 +572,10 @@ pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(cv::Mat & rgb_img, cv::Mat 
     }
 
     pcl::PointCloud<PointT>::Ptr pointCloudPtr2 (new pcl::PointCloud<PointT>());
+//    Eigen::Matrix4f pose_rgb2depth = Eigen::Matrix4f::Identity(); pose_rgb2depth(0,3) = -0.025;
     Eigen::Matrix4f pose_rgb2depth = getPoseEigen(CPose3D(-calib.rightCameraPose));
     pcl::transformPointCloud(*pointCloudPtr, *pointCloudPtr2, pose_rgb2depth);
-    //cout << "pose_rgb2depth \n" << pose_rgb2depth << endl;
+//    cout << "pose_rgb2depth \n" << pose_rgb2depth << endl;
 //        int non_zero = 0;
 //        cv::Mat depthImage(depth_img.rows, depth_img.cols,CV_16UC1,cv::Scalar(0));
     cv::Mat depthImage(rgb_img.rows, rgb_img.cols, CV_32FC1, cv::Scalar(0.0));
@@ -852,18 +864,20 @@ class ExtrinsicRgbdCalibration
 
     // Sensor parameters
     vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f> > Rt_estimated;
-    vector<float> weight_pair;
+    vector<double> weight_pair;
     size_t num_sensors;
     vector<string> sensor_labels;
     vector<mrpt::utils::TStereoCamera> rgbd_intrinsics;
+    vector<double> mxmy; // pixel relation (fx=mx*f; fy=my*f)
     vector<CPose3D> init_poses;
-    vector<float> v_approx_trans;
-    vector<float> v_approx_rot;
+    vector<double> v_approx_trans;
+    vector<double> v_approx_rot;
 
     // Observation parameters
     mrpt::pbmap::PbMap all_planes;
     vector<mrpt::pbmap::PbMap> v_pbmap;
     vector<vector<cv::Vec4i> > v_lines;
+    vector<vector<line3D> > v_lines3D;
     vector<pcl::PointCloud<PointT>::Ptr> cloud;
 //    mrpt::pbmap::PbMap planes_i, planes_j;
 //    pcl::PointCloud<PointT>::Ptr cloud[0], cloud[1];
@@ -952,12 +966,14 @@ class ExtrinsicRgbdCalibration
 
         Rt_estimated = vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f> >(num_sensors, Eigen::Matrix4f::Identity());
         rgbd_intrinsics = vector<mrpt::utils::TStereoCamera>(num_sensors);
+        mxmy.resize(num_sensors);
         init_poses = vector<CPose3D>(num_sensors);
-        v_approx_trans = vector<float>(num_sensors);
-        v_approx_rot = vector<float>(num_sensors);
+        v_approx_trans = vector<double>(num_sensors);
+        v_approx_rot = vector<double>(num_sensors);
         cloud.resize(num_sensors);
         v_pbmap.resize(num_sensors);
         v_lines.resize(num_sensors);
+        v_lines3D.resize(num_sensors);
         for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++) // Load the approximated init_poses of each sensor and the accuracy of such approximation
         {
             //cfg.read_matrix(sensor_labels[sensor_id],"pose",init_poses[sensor_id]); // Matlab's matrix format
@@ -970,12 +986,13 @@ class ExtrinsicRgbdCalibration
                         DEG2RAD( cfg.read_double(sensor_labels[sensor_id],"pose_roll",0,true) ) );
             Rt_estimated[sensor_id] = getPoseEigen(init_poses[sensor_id]);
 
-            v_approx_trans[sensor_id] = cfg.read_float(sensor_labels[sensor_id],"approx_translation",0.f,true);
-            v_approx_rot[sensor_id] = cfg.read_float(sensor_labels[sensor_id],"approx_rotation",0.f,true);
+            v_approx_trans[sensor_id] = cfg.read_double(sensor_labels[sensor_id],"approx_translation",0.f,true);
+            v_approx_rot[sensor_id] = cfg.read_double(sensor_labels[sensor_id],"approx_rotation",0.f,true);
             cout << sensor_labels[sensor_id] << " v_approx_trans " << v_approx_trans[sensor_id] << " v_approx_rot " << v_approx_rot[sensor_id] << "\n" << init_poses[sensor_id] << endl;
             cout << Rt_estimated[sensor_id] << endl;
 
             rgbd_intrinsics[sensor_id].loadFromConfigFile(sensor_labels[sensor_id],cfg);
+            mxmy[sensor_id] = rgbd_intrinsics[sensor_id].rightCamera.intrinsicParams(0,0)/rgbd_intrinsics[sensor_id].rightCamera.intrinsicParams(1,1);
             //            string calib_path = mrpt::system::extractFileDirectory(rawlog_file) + "asus_" + std::to_string(sensor_id+1) + "/calib.ini";
             //            mrpt::utils::CConfigFile calib_RGBD(calib_path);
             //            rgbd_intrinsics[sensor_id].loadFromConfigFile("CAMERA_PARAMS", calib_RGBD);
@@ -1214,6 +1231,13 @@ class ExtrinsicRgbdCalibration
         vector<double> obs_sensor_time(num_sensors);
         vector<cv::Mat> rgb(num_sensors);
         vector<cv::Mat> depth(num_sensors);
+        vector<mrpt::vision::CUndistortMap> undist_rgb(num_sensors);
+        vector<mrpt::vision::CUndistortMap> undist_depth(num_sensors);
+        for(size_t i=0; i < num_sensors; i++)
+        {
+            undist_rgb[i].setFromCamParams(rgbd_intrinsics[i].rightCamera);
+            undist_depth[i].setFromCamParams(rgbd_intrinsics[i].leftCamera);
+        }
 
         // Calibration parameters
         float angle_offset = 20;
@@ -1244,7 +1268,7 @@ class ExtrinsicRgbdCalibration
         //==============================================================================
         size_t n_obs = 0, n_frame_sync = 0;
         CObservationPtr observation;
-        while ( !bExit && n_obs < dataset.size() )
+        while( !bExit && n_obs < dataset.size() )
         {
             observation = dataset.getAsObservation(n_obs);
             ++n_obs;
@@ -1297,16 +1321,23 @@ class ExtrinsicRgbdCalibration
 
             cout << "     use this sync frames \n";
 
+            // Get the rgb and depth images
+            for(size_t i=0; i < num_sensors; i++)
+            {
+                rgb[i] = cv::Mat(obsRGBD[i]->intensityImage.getAs<IplImage>());
+                convertRange_mrpt2cvMat(obsRGBD[i]->rangeImage, depth[i]);
+//                cv::Mat src(obsRGBD[i]->intensityImage.getAs<IplImage>());
+//                undist_rgb[i].undistort(src, rgb[i]);
+//                cv::Mat raw_depth;
+//                convertRange_mrpt2cvMat(obsRGBD[i]->rangeImage, raw_depth);
+//                undist_depth[i].undistort(raw_depth, depth[i]);
+            }
+            int height = rgb[0].cols; // Note that the RGB-D camera is in a vertical configuration
+            int width = rgb[0].rows;
+
             // Display color and depth images
             if(display)
             {
-                for(size_t i=0; i < num_sensors; i++)
-                {
-                    rgb[i] = cv::Mat(obsRGBD[i]->intensityImage.getAs<IplImage>());
-                    convertRange_mrpt2cvMat(obsRGBD[i]->rangeImage, depth[i]);
-                }
-                int height = rgb[0].cols; // Note that the RGB-D camera is in a vertical configuration
-                int width = rgb[0].rows;
                 cv::Mat rgb_concat(height, 2*width+20, CV_8UC3, cv::Scalar(155,100,255));
                 cv::Mat img_transposed, img_rotated;
                 cv::transpose(rgb[0], img_transposed);
@@ -1371,6 +1402,7 @@ class ExtrinsicRgbdCalibration
 //                cout << sensor_id << " number of planes " << n_planes << endl;
 
                 // Extract line segments
+                v_lines3D[sensor_id].clear();
                 lf.segmentLines(rgb[sensor_id], v_lines[sensor_id], min_pixels_line);
                 cout << sensor_id << " lines " << v_lines[sensor_id].size() << endl;
                 auto line = begin(v_lines[sensor_id]);
@@ -1389,32 +1421,30 @@ class ExtrinsicRgbdCalibration
             updateLock.unlock();
             }
 
-            if( v_pbmap[0].vPlanes.size() == 1 && v_pbmap[1].vPlanes.size() == 1)
-            {
-                cv::Mat image_out;
-//                rgb[sensor_id].convertTo(image_out, CV_8UC1, 1.0 / 2);
-                for(auto line = begin(v_lines[sensor_id]); line != end(v_lines[sensor_id]); ++line)
-                {
-                    float gradient = float((*line)[3] - (*line)[1]) / ((*line)[2] - (*line)[0]);
-                    cout << "gradient " << gradient << endl;
-                    cout << "segments " << (*line)[2] << " " << (*line)[3] << " " << (*line)[0] << " " << (*line)[1] << endl;
-//                    float d1 = (v_pbmap[0].vPlanes[0].v3center.dot(v_pbmap[0].vPlanes[0].v3center))/(l.dot(v_pbmap[0].vPlanes[0].v3center));
-//                    Vector3f l1 = d1*l;
-                    rgb[0].convertTo(image_out, CV_8UC1, 1.0 / 2);
-                    cv::line(image_out, cv::Point((*line)[0], (*line)[1]), cv::Point((*line)[2], (*line)[3]), cv::Scalar(255, 0, 255), 1);
-                    cv::imshow("Output image", image_out);
-                    cv::waitKey(0);
-                }
-//                cv::namedWindow("Output image");
-//                cv::imshow("Output image", image_out);
-//                cv::waitKey(0);
-            }
+//            if( v_pbmap[0].vPlanes.size() == 1 && v_pbmap[1].vPlanes.size() == 1)
+//            {
+//                cv::Mat image_lines;
+////                rgb[sensor_id].convertTo(image_lines, CV_8UC1, 1.0 / 2);
+//                for(auto line = begin(v_lines[sensor_id]); line != end(v_lines[sensor_id]); ++line)
+//                {
+//                    double gradient = double((*line)[3] - (*line)[1]) / ((*line)[2] - (*line)[0]);
+//                    cout << "gradient " << gradient << endl;
+//                    cout << "segments " << (*line)[2] << " " << (*line)[3] << " " << (*line)[0] << " " << (*line)[1] << endl;
+////                    float d1 = (v_pbmap[0].vPlanes[0].v3center.dot(v_pbmap[0].vPlanes[0].v3center))/(l.dot(v_pbmap[0].vPlanes[0].v3center));
+////                    Vector3f l1 = d1*l;
+//                    rgb[0].convertTo(image_lines, CV_8UC1, 1.0 / 2);
+//                    cv::line(image_lines, cv::Point((*line)[0], (*line)[1]), cv::Point((*line)[2], (*line)[3]), cv::Scalar(255, 0, 255), 1);
+//                    cv::imshow("Output image", image_lines);
+//                    cv::waitKey(0);
+//                }
+////                cv::namedWindow("Output image");
+////                cv::imshow("Output image", image_lines);
+////                cv::waitKey(0);
+//            }
 
             if(display)
             {
                 // Show registered depth
-                int height = depth[0].cols; // Note that the RGB-D camera is in a vertical configuration
-                int width = depth[0].rows;
                 cv::Mat img_transposed, img_rotated;
                 cv::transpose(depth[0], img_transposed);
                 cv::flip(img_transposed, img_rotated, 0);
@@ -1440,25 +1470,111 @@ class ExtrinsicRgbdCalibration
             //==============================================================================
             cout << "Data association\n";
             plane_corresp.clear();
-            size_t sensor_id1=0;
-            size_t sensor_id2=1;
-//            for(size_t sensor_id1=0; sensor_id1 < num_sensors; sensor_id1++)
+            size_t sensor1=0;
+            size_t sensor2=1;
+            Matrix4f pose_2_1 = Rt_estimated[sensor2].inverse() * Rt_estimated[sensor1];
+//            for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
 //            {
-//    //          matches.mmCorrespondences[sensor_id1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
-//              for(size_t sensor_id2=sensor_id1+1; sensor_id2 < num_sensors; sensor_id2++)
-//    //            if( sensor_id2 - sensor_id1 == 1 || sensor_id2 - sensor_id1 == 7)
+//    //          matches.mmCorrespondences[sensor1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
+//              for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
+//    //            if( sensor2 - sensor1 == 1 || sensor2 - sensor1 == 7)
 //              {
-//    //            cout << " sensor_id1 " << sensor_id1 << " " << v_pbmap_[sensor_id1].vPlanes.size() << " sensor_id2 " << sensor_id2 << " " << v_pbmap_[sensor_id2].vPlanes.size() << endl;
-//    //              matches.mmCorrespondences[sensor_id1][sensor_id2] = mrpt::math::CMatrixDouble(0, 10);
+//    //            cout << " sensor1 " << sensor1 << " " << v_pbmap_[sensor1].vPlanes.size() << " sensor2 " << sensor2 << " " << v_pbmap_[sensor2].vPlanes.size() << endl;
+//    //              matches.mmCorrespondences[sensor1][sensor2] = mrpt::math::CMatrixDouble(0, 10);
 
-                for(size_t i=0; i < v_pbmap[sensor_id1].vPlanes.size(); i++)
+
+            // Find line correspondences (in 2D by assuming a known rotation and zero translation)
+            Vector2f offset2(rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(0,2), rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(1,2));
+            //v_lines3D[sensor1].resize(v_lines[sensor1].size());
+            for(size_t i=0; i < v_lines[sensor1].size(); i++)
+            {
+                //cv::Vec4i &l1 = v_lines[sensor1][i];
+                Vector3f v1( v_lines[sensor1][i][0]-rgbd_intrinsics[sensor1].rightCamera.intrinsicParams(0,2), (v_lines[sensor1][i][1]-rgbd_intrinsics[sensor1].rightCamera.intrinsicParams(1,2))*mxmy[sensor1], rgbd_intrinsics[sensor1].rightCamera.intrinsicParams(0,0));
+                Vector3f v2( v_lines[sensor1][i][2]-rgbd_intrinsics[sensor1].rightCamera.intrinsicParams(0,2), (v_lines[sensor1][i][3]-rgbd_intrinsics[sensor1].rightCamera.intrinsicParams(1,2))*mxmy[sensor1], rgbd_intrinsics[sensor1].rightCamera.intrinsicParams(0,0));
+                Vector3f n1 = v1.cross(v2); n1.normalize();
+                cout << "v1 " << v1.transpose() << " v2 " << v2.transpose() << endl;
+                if( v_pbmap[sensor1].vPlanes.size() == 1 ) // Get the 3D line parameters from the plane intersection
                 {
-                  size_t planesIdx_i = planesSourceIdx[sensor_id1];
-                  for(size_t j=0; j < v_pbmap[sensor_id2].vPlanes.size(); j++)
-                  {
-                    size_t planesIdx_j = planesSourceIdx[sensor_id2];
+                    // Compute the 3D line as the intersection of two planes (http://mathworld.wolfram.com/Plane-PlaneIntersection.html)
+                    Plane &plane = v_pbmap[sensor1].vPlanes[0];
+                    Vector3f p(0, 0, 0);
+                    p(2) = -plane.d / (plane.v3normal(2) - (plane.v3normal(0)*n1(2)/n1(0)));
+                    p(0) = -n1(2)*p(2)/n1(0);
 
-    //                if(sensor_id1 == 0 && sensor_id2 == 2 && i == 0 && j == 0)
+                    MatrixXf m = MatrixXf::Zero(2,3);
+                    m.row(0) = n1;
+                    m.row(1) = plane.v3normal;
+                    FullPivLU<MatrixXf> lu(m);
+                    MatrixXf m_null_space = lu.kernel(); m_null_space.normalize();
+                    Map<Vector3f> l(m_null_space.data(),3);
+//                    v_lines3D[sensor1][i].block<3,1>(0,0) = p + l/2;
+//                    v_lines3D[sensor1][i].block<3,1>(3,0) = p - l/2;
+                    line3D line = makeLine3D(p + l/2, p - l/2);
+                    v_lines3D[sensor1].push_back(line);
+                    cout << "line3D " << v_lines3D[sensor1][i].transpose() << endl;
+                    //cout << "m_null_space \n" << m_null_space << endl;
+                    bFreezeFrame = false;
+//                    cv::waitKey(0);
+                }
+
+                for(size_t j=0; j < v_lines[sensor2].size(); j++)
+                {
+                    Vector3f v1( v_lines[sensor2][i][0]-rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(0,2), (v_lines[sensor2][i][1]-rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(1,2))*mxmy[sensor2], rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(0,0));
+                    Vector3f v2( v_lines[sensor2][i][2]-rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(0,2), (v_lines[sensor2][i][3]-rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(1,2))*mxmy[sensor2], rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(0,0));
+                    Vector3f n2 = v1.cross(v2); n2.normalize();
+                    cout << "n1 " << n1.transpose() << " n2 " << n2.transpose() << endl;
+                    if( fabs((Rt_estimated[sensor1].block<3,3>(0,0)*n1) .dot (Rt_estimated[sensor2].block<3,3>(0,0)*n2)) > 0.99 )
+                    {
+                        Vector3f n1_2 = pose_2_1.block<3,3>(0,0) * n1;
+                        Vector2f p(0, 0); // The 2D point on the image plane at y =width/2
+                        p(0) = -n1_2(2)*rgbd_intrinsics[sensor2].rightCamera.intrinsicParams(0,0) / n1_2(0);
+                        MatrixXd m = MatrixXd::Zero(2,3);
+                        m.row(0) = n1_2.cast<double>();
+                        m(1,2) = 1;
+                        FullPivLU<MatrixXd> lu(m);
+                        MatrixXd m_null_space = lu.kernel();
+                        //cout << "m_null_space \n" << m_null_space << endl;
+                        Vector2f p1(0,-width/2), p2(0,width/2); // The 2D points on the image plane at y=0 and y =width
+                        p1(0) = (p1(1)-p(1))*m_null_space(0)/m_null_space(1) + p(0);
+                        p2(0) = (p2(1)-p(1))*m_null_space(0)/m_null_space(1) + p(0);
+                        p += offset2; p1 += offset2; p2 += offset2;
+                        cout << "p " << p.transpose() << " p1 " << p1.transpose() << " p2 " << p2.transpose() << endl;
+                        if(display)
+                        {
+                            cv::Mat rgb_concat(height, 2*width+20, CV_8UC3, cv::Scalar(255,255,255));
+                            cv::Mat img_transposed, img_rotated;
+                            cv::transpose(rgb[0], img_transposed);
+                            cv::flip(img_transposed, img_rotated, 0);
+                            cv::Mat tmp = rgb_concat(cv::Rect(0, 0, width, height));
+                            img_rotated.copyTo(tmp);
+                            cv::transpose(rgb[1], img_transposed);
+                            cv::flip(img_transposed, img_rotated, 0);
+                            tmp = rgb_concat(cv::Rect(width+20, 0, width, height));
+                            img_rotated.copyTo(tmp);
+                            cv::imshow("rgb", rgb_concat ); cv::moveWindow("rgb", 20,20);
+
+                            cv::Mat image_lines;
+                            rgb_concat.convertTo(image_lines, CV_8UC1, 1.0 / 2);
+                            cv::line(image_lines, cv::Point(v_lines[sensor1][i][1], height-v_lines[sensor1][i][0]), cv::Point(v_lines[sensor1][i][3], height-v_lines[sensor1][i][2]), cv::Scalar(255, 0, 255), 1);
+                            cv::line(image_lines, cv::Point(width+20+v_lines[sensor2][j][1], height-v_lines[sensor2][j][0]), cv::Point(width+20+v_lines[sensor2][j][3], height-v_lines[sensor2][j][2]), cv::Scalar(255, 0, 255), 1);
+                            cv::line(image_lines, cv::Point(width+20+p1(1), height-p1(0)), cv::Point(width+20+p2(1), height-p2(0)), cv::Scalar(0, 150, 0), 1);
+                            cv::circle(image_lines, cv::Point(width+20+p(1), height-p(0)), 3, cv::Scalar(0, 0, 200), 3);
+                            cv::imshow("Line match", image_lines);
+                            cv::waitKey(0);
+                        }
+                    }
+                }
+            }
+
+                // Find plane correspondences
+                for(size_t i=0; i < v_pbmap[sensor1].vPlanes.size(); i++)
+                {
+                  size_t planesIdx_i = planesSourceIdx[sensor1];
+                  for(size_t j=0; j < v_pbmap[sensor2].vPlanes.size(); j++)
+                  {
+                    size_t planesIdx_j = planesSourceIdx[sensor2];
+
+    //                if(sensor1 == 0 && sensor2 == 2 && i == 0 && j == 0)
     //                {
     //                  cout << "Inliers " << all_planes.vPlanes[planesIdx_i+i].inliers.size() << " and " << all_planes.vPlanes[planesIdx_j+j].inliers.size() << endl;
     //                  cout << "elongation " << all_planes.vPlanes[planesIdx_i+i].elongation << " and " << all_planes.vPlanes[planesIdx_j+j].elongation << endl;
@@ -1575,22 +1691,22 @@ class ExtrinsicRgbdCalibration
 
 
 
-//              for(size_t sensor_id1=0; sensor_id1 < num_sensors; sensor_id1++)
+//              for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
 //              {
-//      //          matches.mmCorrespondences[sensor_id1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
-//                for(unsigned sensor_id2=sensor_id1+1; sensor_id2 < num_sensors; sensor_id2++)
+//      //          matches.mmCorrespondences[sensor1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
+//                for(unsigned sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
 //                {
-//      //            cout << " sensor_id1 " << sensor_id1 << " " << v_pbmap[sensor_id1].vPlanes.size() << " sensor_id2 " << sensor_id2 << " " << v_pbmap[sensor_id2].vPlanes.size() << endl;
-//      //              matches.mmCorrespondences[sensor_id1][sensor_id2] = mrpt::math::CMatrixDouble(0, 10);
+//      //            cout << " sensor1 " << sensor1 << " " << v_pbmap[sensor1].vPlanes.size() << " sensor2 " << sensor2 << " " << v_pbmap[sensor2].vPlanes.size() << endl;
+//      //              matches.mmCorrespondences[sensor1][sensor2] = mrpt::math::CMatrixDouble(0, 10);
 
-//                  for(unsigned i=0; i < v_pbmap[sensor_id1].vPlanes.size(); i++)
+//                  for(unsigned i=0; i < v_pbmap[sensor1].vPlanes.size(); i++)
 //                  {
-//                    unsigned planesIdx_i = planesSourceIdx[sensor_id1];
-//                    for(unsigned j=0; j < v_pbmap[sensor_id2].vPlanes.size(); j++)
+//                    unsigned planesIdx_i = planesSourceIdx[sensor1];
+//                    for(unsigned j=0; j < v_pbmap[sensor2].vPlanes.size(); j++)
 //                    {
-//                      unsigned planesIdx_j = planesSourceIdx[sensor_id2];
+//                      unsigned planesIdx_j = planesSourceIdx[sensor2];
 
-//      //                if(sensor_id1 == 0 && sensor_id2 == 2 && i == 0 && j == 0)
+//      //                if(sensor1 == 0 && sensor2 == 2 && i == 0 && j == 0)
 //      //                {
 //      //                  cout << "Inliers " << all_planes.vPlanes[planesIdx_i+i].inliers.size() << " and " << all_planes.vPlanes[planesIdx_j+j].inliers.size() << endl;
 //      //                  cout << "elongation " << all_planes.vPlanes[planesIdx_i+i].elongation << " and " << all_planes.vPlanes[planesIdx_j+j].elongation << endl;
@@ -1637,60 +1753,60 @@ class ExtrinsicRgbdCalibration
 //      //                  cout << "\t   Record corresp " << endl;
 //                          unsigned prevSize = calibrator.correspondences.getRowCount();
 //                          calibrator.correspondences.setSize(prevSize+1, calibrator.correspondences.getColCount());
-//                          calibrator.correspondences(prevSize, 0) = v_pbmap[sensor_id1].vPlanes[i].v3normal[0];
-//                          calibrator.correspondences(prevSize, 1) = v_pbmap[sensor_id1].vPlanes[i].v3normal[1];
-//                          calibrator.correspondences(prevSize, 2) = v_pbmap[sensor_id1].vPlanes[i].v3normal[2];
-//                          calibrator.correspondences(prevSize, 3) = v_pbmap[sensor_id1].vPlanes[i].d;
-//                          calibrator.correspondences(prevSize, 4) = v_pbmap[sensor_id2].vPlanes[j].v3normal[0];
-//                          calibrator.correspondences(prevSize, 5) = v_pbmap[sensor_id2].vPlanes[j].v3normal[1];
-//                          calibrator.correspondences(prevSize, 6) = v_pbmap[sensor_id2].vPlanes[j].v3normal[2];
-//                          calibrator.correspondences(prevSize, 7) = v_pbmap[sensor_id2].vPlanes[j].d;
-//                          calibrator.correspondences(prevSize, 8) = std::min(v_pbmap[sensor_id1].vPlanes[i].inliers.size(), v_pbmap[sensor_id2].vPlanes[j].inliers.size());
+//                          calibrator.correspondences(prevSize, 0) = v_pbmap[sensor1].vPlanes[i].v3normal[0];
+//                          calibrator.correspondences(prevSize, 1) = v_pbmap[sensor1].vPlanes[i].v3normal[1];
+//                          calibrator.correspondences(prevSize, 2) = v_pbmap[sensor1].vPlanes[i].v3normal[2];
+//                          calibrator.correspondences(prevSize, 3) = v_pbmap[sensor1].vPlanes[i].d;
+//                          calibrator.correspondences(prevSize, 4) = v_pbmap[sensor2].vPlanes[j].v3normal[0];
+//                          calibrator.correspondences(prevSize, 5) = v_pbmap[sensor2].vPlanes[j].v3normal[1];
+//                          calibrator.correspondences(prevSize, 6) = v_pbmap[sensor2].vPlanes[j].v3normal[2];
+//                          calibrator.correspondences(prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
+//                          calibrator.correspondences(prevSize, 8) = std::min(v_pbmap[sensor1].vPlanes[i].inliers.size(), v_pbmap[sensor2].vPlanes[j].inliers.size());
 
 //                          // For several sensors (more than 2)
-////                          unsigned prevSize = matches.mmCorrespondences[sensor_id1][sensor_id2].getRowCount();
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2].setSize(prevSize+1, matches.mmCorrespondences[sensor_id1][sensor_id2].getColCount());
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 0) = v_pbmap[sensor_id1].vPlanes[i].v3normal[0];
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 1) = v_pbmap[sensor_id1].vPlanes[i].v3normal[1];
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 2) = v_pbmap[sensor_id1].vPlanes[i].v3normal[2];
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 3) = v_pbmap[sensor_id1].vPlanes[i].d;
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 4) = v_pbmap[sensor_id2].vPlanes[j].v3normal[0];
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 5) = v_pbmap[sensor_id2].vPlanes[j].v3normal[1];
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 6) = v_pbmap[sensor_id2].vPlanes[j].v3normal[2];
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 7) = v_pbmap[sensor_id2].vPlanes[j].d;
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 8) = std::min(v_pbmap[sensor_id1].vPlanes[i].inliers.size(), v_pbmap[sensor_id2].vPlanes[j].inliers.size());
+////                          unsigned prevSize = matches.mmCorrespondences[sensor1][sensor2].getRowCount();
+////                          matches.mmCorrespondences[sensor1][sensor2].setSize(prevSize+1, matches.mmCorrespondences[sensor1][sensor2].getColCount());
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 0) = v_pbmap[sensor1].vPlanes[i].v3normal[0];
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 1) = v_pbmap[sensor1].vPlanes[i].v3normal[1];
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 2) = v_pbmap[sensor1].vPlanes[i].v3normal[2];
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 3) = v_pbmap[sensor1].vPlanes[i].d;
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 4) = v_pbmap[sensor2].vPlanes[j].v3normal[0];
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 5) = v_pbmap[sensor2].vPlanes[j].v3normal[1];
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 6) = v_pbmap[sensor2].vPlanes[j].v3normal[2];
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 8) = std::min(v_pbmap[sensor1].vPlanes[i].inliers.size(), v_pbmap[sensor2].vPlanes[j].inliers.size());
 
 
 ////                          float dist_center1 = 0, dist_center2 = 0;
-////                          for(unsigned k=0; k < v_pbmap[sensor_id1].vPlanes[i].inliers.size(); k++)
-////                            dist_center1 += v_pbmap[sensor_id1].vPlanes[i].inliers[k] / frame360.frameRGBD_[sensor_id1].getPointCloud()->width + v_pbmap[sensor_id1].vPlanes[i].inliers[k] % frame360.frameRGBD_[sensor_id1].getPointCloud()->width;
-////      //                      dist_center1 += (v_pbmap[sensor_id1].vPlanes[i].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[sensor_id1].vPlanes[i].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[sensor_id1].vPlanes[i].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[sensor_id1].vPlanes[i].inliers[k] % frame360.sphereCloud->width);
-////                          dist_center1 /= v_pbmap[sensor_id1].vPlanes[i].inliers.size();
+////                          for(unsigned k=0; k < v_pbmap[sensor1].vPlanes[i].inliers.size(); k++)
+////                            dist_center1 += v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.frameRGBD_[sensor1].getPointCloud()->width + v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.frameRGBD_[sensor1].getPointCloud()->width;
+////      //                      dist_center1 += (v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.sphereCloud->width);
+////                          dist_center1 /= v_pbmap[sensor1].vPlanes[i].inliers.size();
 
-////                          for(unsigned k=0; k < v_pbmap[sensor_id2].vPlanes[j].inliers.size(); k++)
-////                            dist_center2 += v_pbmap[sensor_id2].vPlanes[j].inliers[k] / frame360.frameRGBD_[sensor_id2].getPointCloud()->width + v_pbmap[sensor_id2].vPlanes[j].inliers[k] % frame360.frameRGBD_[sensor_id2].getPointCloud()->width;
-////      //                      dist_center2 += (v_pbmap[sensor_id2].vPlanes[j].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[sensor_id2].vPlanes[j].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[sensor_id2].vPlanes[j].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[sensor_id2].vPlanes[j].inliers[k] % frame360.sphereCloud->width);
-////                          dist_center2 /= v_pbmap[sensor_id2].vPlanes[j].inliers.size();
+////                          for(unsigned k=0; k < v_pbmap[sensor2].vPlanes[j].inliers.size(); k++)
+////                            dist_center2 += v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.frameRGBD_[sensor2].getPointCloud()->width + v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.frameRGBD_[sensor2].getPointCloud()->width;
+////      //                      dist_center2 += (v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.sphereCloud->width);
+////                          dist_center2 /= v_pbmap[sensor2].vPlanes[j].inliers.size();
 
-////                          matches.mmCorrespondences[sensor_id1][sensor_id2](prevSize, 9) = std::max(dist_center1, dist_center2);
-////      //                  cout << "\t Size " << matches.mmCorrespondences[sensor_id1][sensor_id2].getRowCount() << " x " << matches.mmCorrespondences[sensor_id1][sensor_id2].getColCount() << endl;
+////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 9) = std::max(dist_center1, dist_center2);
+////      //                  cout << "\t Size " << matches.mmCorrespondences[sensor1][sensor2].getRowCount() << " x " << matches.mmCorrespondences[sensor1][sensor2].getColCount() << endl;
 
-////                          if( sensor_id2 - sensor_id1 == 1 ) // Calculate conditioning
+////                          if( sensor2 - sensor1 == 1 ) // Calculate conditioning
 ////                          {
 ////      //                      updateConditioning(couple_id, correspondences[couple_id].back());
-////                            matches.covariances[sensor_id1] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
-////                            matches.calcAdjacentConditioning(sensor_id1);
-////      //                    cout << "Update " << sensor_id1 << endl;
+////                            matches.covariances[sensor1] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
+////                            matches.calcAdjacentConditioning(sensor1);
+////      //                    cout << "Update " << sensor1 << endl;
 
 ////        //                    // For visualization
 ////        //                    plane_corresp[couple_id].push_back(pair<mrpt::pbmap::Plane*, mrpt::pbmap::Plane*>(&all_planes.vPlanes[planesIdx_i+i], &all_planes.vPlanes[planes_counter_j+j]));
 ////                          }
-////                          else if(sensor_id2 - sensor_id1 == 7)
+////                          else if(sensor2 - sensor1 == 7)
 ////                          {
 ////      //                      updateConditioning(couple_id, correspondences[couple_id].back());
-////                            matches.covariances[sensor_id2] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
-////                            matches.calcAdjacentConditioning(sensor_id2);
-////      //                    cout << "Update " << sensor_id2 << endl;
+////                            matches.covariances[sensor2] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
+////                            matches.calcAdjacentConditioning(sensor2);
+////      //                    cout << "Update " << sensor2 << endl;
 ////                          }
 
 //      //                    break;
@@ -1827,11 +1943,8 @@ class ExtrinsicRgbdCalibration
                 //              {
                 mrpt::pbmap::Plane &plane_i = all_planes.vPlanes[i];
                 sprintf (name, "normal_%u", static_cast<unsigned>(i));
-                pcl::PointXYZ pt1, pt2; // Begin and end points of normal's arrow for visualization
-                pt1 = pcl::PointXYZ(plane_i.v3center[0], plane_i.v3center[1], plane_i.v3center[2]);
-                pt2 = pcl::PointXYZ(plane_i.v3center[0] + (0.3f * plane_i.v3normal[0]),
-                        plane_i.v3center[1] + (0.3f * plane_i.v3normal[1]),
-                        plane_i.v3center[2] + (0.3f * plane_i.v3normal[2]));
+                pcl::PointXYZ pt1(plane_i.v3center[0], plane_i.v3center[1], plane_i.v3center[2]); // Begin and end points of normal's arrow for visualization
+                pcl::PointXYZ pt2(plane_i.v3center[0] + (0.3f * plane_i.v3normal[0]), plane_i.v3center[1] + (0.3f * plane_i.v3normal[1]), plane_i.v3center[2] + (0.3f * plane_i.v3normal[2]));
                 //            viz.addArrow (pt2, pt1, ared[5], agrn[5], ablu[5], false, name);
                 viz.addArrow (pt2, pt1, ared[i%10], agrn[i%10], ablu[i%10], false, name);
 
@@ -1858,6 +1971,39 @@ class ExtrinsicRgbdCalibration
                 ////                pcl::visualization::PointCloudColorHandlerCustom <PointT> color (plane_i.planePointCloudPtr, red[0], grn[0], blu[0]);
                 ////                viz.addPointCloud (plane_i.planePointCloudPtr, color, name);
                 //              }
+            }
+
+            // Draw lines
+            size_t sensor1 = 0;
+            vector<line3D> &lines = v_lines3D[sensor1];
+            for(size_t i=0; i < lines.size(); i++)
+            {
+                pcl::PointXYZ pt1(lines[i][0], lines[i][1], lines[i][2]);
+                pcl::PointXYZ pt2(lines[i][3], lines[i][4], lines[i][5]);
+                sprintf (name, "line_%lu_%u", sensor1, static_cast<unsigned>(i));
+                //viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], name);
+                viz.removeShape("line");
+                viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], "line");
+
+                size_t p1 = v_lines[sensor1][i][0] + v_lines[sensor1][i][1] * cloud[sensor1]->width;
+                if(cloud[sensor1]->points[p1].z > 0.3f && cloud[sensor1]->points[p1].z < 10.f)
+                {
+                    viz.removeShape("sp1");
+                    viz.addSphere<PointT>(cloud[sensor1]->points[p1], 0.02, ared[i%10], agrn[i%10], ablu[i%10], "sp1");
+//                    pcl::ModelCoefficients circle_coeff;
+//                    circle_coeff.values.resize(3);    // We need 3 values
+//                    circle_coeff.values[0] = x;
+//                    circle_coeff.values[1] = y;
+//                    circle_coeff.values[2] = radius;
+//                    viz.addCircle<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], "line");
+                }
+                size_t p2 = v_lines[sensor1][i][2] + v_lines[sensor1][i][3] * cloud[sensor1]->width;
+                if(cloud[sensor1]->points[p2].z > 0.3f && cloud[sensor1]->points[p2].z < 10.f)
+                {
+                    viz.removeShape("sp2");
+                    viz.addSphere<PointT>(cloud[sensor1]->points[p2], 0.02, ared[i%10], agrn[i%10], ablu[i%10], "sp2");
+                }
+
             }
 
 //            //if(plane_corresp.size() > 0)

@@ -11,7 +11,7 @@
 
 #include <mrpt/utils/TCamera.h>
 #include <mrpt/utils/CImage.h>
-
+#include <opencv2/core/core.hpp>
 #include <mrpt/vision/link_pragmas.h>
 
 namespace mrpt
@@ -52,6 +52,10 @@ namespace mrpt
 			  * Must be called before invoking \a undistort().
 			  */
 			void setFromCamParams(const mrpt::utils::TCamera &params);
+
+            /** Undistort the input image and saves the result in the output one - \a setFromCamParams() must have been set prior to calling this.
+              */
+            void undistort(const cv::Mat &in_img, cv::Mat &out_img) const;
 
 			/** Undistort the input image and saves the result in the output one - \a setFromCamParams() must have been set prior to calling this.
 			  */
