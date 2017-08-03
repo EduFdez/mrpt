@@ -33,6 +33,7 @@
 #include "extrinsic_calib_planes.h"
 #include <iostream>
 #include <mrpt/poses/CPose3D.h>
+//#include <mrpt/math/ransac_applications.h>
 
 #define VISUALIZE_SENSOR_DATA 0
 #define SHOW_IMAGES 0
@@ -174,265 +175,260 @@ void ExtrinsicCalibPlanes::getCorrespondences(const std::vector<pcl::PointCloud<
         cv::waitKey(0);
     }
 
-
     //==============================================================================
     //								Data association
     //==============================================================================    
-    for(size_t i=0; i < v_pbmap[sensor1].vPlanes.size(); i++) // Find plane correspondences
+    for(sensor1=0; sensor1 < num_sensors; sensor1++)
     {
-      size_t planesIdx_i = planesSourceIdx[sensor1];
-      for(size_t j=0; j < v_pbmap[sensor2].vPlanes.size(); j++)
-      {
-        size_t planesIdx_j = planesSourceIdx[sensor2];
+//        matches.mmCorrespondences[sensor_id1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
 
-//                if(sensor1 == 0 && sensor2 == 2 && i == 0 && j == 0)
-//                {
-//                  cout << "Inliers " << all_planes.vPlanes[planesIdx_i+i].inliers.size() << " and " << all_planes.vPlanes[planesIdx_j+j].inliers.size() << endl;
-//                  cout << "elongation " << all_planes.vPlanes[planesIdx_i+i].elongation << " and " << all_planes.vPlanes[planesIdx_j+j].elongation << endl;
-//                  cout << "normal " << all_planes.vPlanes[planesIdx_i+i].v3normal.transpose() << " and " << all_planes.vPlanes[planesIdx_j+j].v3normal.transpose() << endl;
-//                  cout << "d " << all_planes.vPlanes[planesIdx_i+i].d << " and " << all_planes.vPlanes[planesIdx_j+j].d << endl;
-//                  cout << "color " << all_planes.vPlanes[planesIdx_i+i].hasSimilarDominantColor(all_planes.vPlanes[planesIdx_j+j],0.06) << endl;
-//                  cout << "nearby " << all_planes.vPlanes[planesIdx_i+i].isPlaneNearby(all_planes.vPlanes[planesIdx_j+j], 0.5) << endl;
-//                }
-
-//                cout << "  Check planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
-
-        if( all_planes.vPlanes[planesIdx_i+i].inliers.size() > 1000 && all_planes.vPlanes[planesIdx_j+j].inliers.size() > min_inliers &&
-            all_planes.vPlanes[planesIdx_i+i].elongation < 5 && all_planes.vPlanes[planesIdx_j+j].elongation < 5 &&
-            all_planes.vPlanes[planesIdx_i+i].v3normal .dot (all_planes.vPlanes[planesIdx_j+j].v3normal) > 0.99 &&
-            fabs(all_planes.vPlanes[planesIdx_i+i].d - all_planes.vPlanes[planesIdx_j+j].d) < 0.1 )//&&
-            //                    v_pbmap[0].vPlanes[i].hasSimilarDominantColor(v_pbmap[1].vPlanes[j],0.06) &&
-            //                    v_pbmap[0].vPlanes[planes_counter_i+i].isPlaneNearby(v_pbmap[1].vPlanes[planes_counter_j+j], 0.5)
+        for(sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
+//            matches.mmCorrespondences[sensor1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
+            double thres_trans = max(v_approx_trans[sensor_id1], v_approx_trans[sensor_id2]);
+            double thres_rot_cos = 1 - pow(sin(DEG2RAD(max(v_approx_rot[sensor_id1], v_approx_rot[sensor_id2]))),2);
 
-//              mrpt::pbmap::PbMap &planes_i = v_pbmap[0];
-//              mrpt::pbmap::PbMap &planes_j = v_pbmap[1];
+            for(size_t i=0; i < v_pbmap[sensor1].vPlanes.size(); i++) // Find plane correspondences
+            {
+              size_t planesIdx_i = planesSourceIdx[sensor1];
+              for(size_t j=0; j < v_pbmap[sensor2].vPlanes.size(); j++)
+              {
+                size_t planesIdx_j = planesSourceIdx[sensor2];
 
-            if(b_confirm_visually)
-                while(confirmed_corresp == 0)
-                    mrpt::system::sleep(10);
-            if(confirmed_corresp == -1)
-                continue;
+        //                cout << "  Check planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
 
-            cout << "\tAssociate planes " << endl;
-            Eigen::Vector4f pl1, pl2;
-            pl1.head(3) = v_pbmap[0].vPlanes[i].v3normal; pl1[3] = v_pbmap[0].vPlanes[i].d;
-            pl2.head(3) = v_pbmap[1].vPlanes[j].v3normal; pl2[3] = v_pbmap[1].vPlanes[j].d;
-            //              cout << "Corresp " << v_pbmap[0].vPlanes[i].v3normal.transpose() << " vs " << v_pbmap[1].vPlanes[j].v3normal.transpose() << " = " << v_pbmap[1].vPlanes[j].v3normal.transpose() << endl;
-            ////                        float factorDistInliers = std::min(v_pbmap[0].vPlanes[i].inliers.size(), v_pbmap[1].vPlanes[j].inliers.size()) / std::max(v_pbmap[0].vPlanes[i].v3center.norm(), v_pbmap[1].vPlanes[j].v3center.norm());
-            //                        float factorDistInliers = (v_pbmap[0].vPlanes[i].inliers.size() + v_pbmap[1].vPlanes[j].inliers.size()) / (v_pbmap[0].vPlanes[i].v3center.norm() * v_pbmap[1].vPlanes[j].v3center.norm());
-            //                        weight_pair[couple_id] += factorDistInliers;
-            //                        pl1 *= factorDistInliers;
-            //                        pl2 *= factorDistInliers;
-            //                ++weight_pair[couple_id];
+                if( all_planes.vPlanes[planesIdx_i+i].inliers.size() > 1000 && all_planes.vPlanes[planesIdx_j+j].inliers.size() > min_inliers &&
+                    all_planes.vPlanes[planesIdx_i+i].elongation < 5 && all_planes.vPlanes[planesIdx_j+j].elongation < 5 &&
+                    all_planes.vPlanes[planesIdx_i+i].v3normal .dot (all_planes.vPlanes[planesIdx_j+j].v3normal) > thres_rot_cos &&
+                    fabs(all_planes.vPlanes[planesIdx_i+i].d - all_planes.vPlanes[planesIdx_j+j].d) < thres_trans )//&&
+                    // v_pbmap[0].vPlanes[i].hasSimilarDominantColor(v_pbmap[1].vPlanes[j],0.06) &&
+                    // v_pbmap[0].vPlanes[planes_counter_i+i].isPlaneNearby(v_pbmap[1].vPlanes[planes_counter_j+j], 0.5)
+                {
+                    if(b_confirm_visually)
+                    {
+                        plane_candidate[0] = i; plane_candidate[1] = j;
+                        plane_candidate_all[0] = planesIdx_i; plane_candidate_all[1] = planesIdx_j;
+                        confirmed_corresp = 0;
+                        while(confirmed_corresp == 0)
+                            mrpt::system::sleep(10);
+                    }
+                    if(confirmed_corresp == -1)
+                        continue;
 
-            //Add constraints
-            //                  correspondences.push_back(pair<Eigen::Vector4f, Eigen::Vector4f>(pl1, pl2));
-            //                        correspondences[couple_id].push_back(pair<Eigen::Vector4f, Eigen::Vector4f>(pl1/v_pbmap[0].vPlanes[i].v3center.norm(), pl2/v_pbmap[1].vPlanes[j].v3center.norm());
+                    cout << "\tAssociate planes " << endl;
+                    Eigen::Vector4f pl1, pl2;
+                    pl1.head(3) = v_pbmap[0].vPlanes[i].v3normal; pl1[3] = v_pbmap[0].vPlanes[i].d;
+                    pl2.head(3) = v_pbmap[1].vPlanes[j].v3normal; pl2[3] = v_pbmap[1].vPlanes[j].d;
+                    // cout << "Corresp " << v_pbmap[0].vPlanes[i].v3normal.transpose() << " vs " << v_pbmap[1].vPlanes[j].v3normal.transpose() << " = " << v_pbmap[1].vPlanes[j].v3normal.transpose() << endl;
 
-            // Calculate conditioning
-            ++n_plane_corresp;
-            covariance += pl2.head(3) * pl1.head(3).transpose();
-            Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
-            conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
-            cout << "conditioning " << conditioning << endl;
+                    //Add constraints
+                    // correspondences.push_back(pair<Eigen::Vector4f, Eigen::Vector4f>(pl1, pl2));
+                    // correspondences[couple_id].push_back(pair<Eigen::Vector4f, Eigen::Vector4f>(pl1/v_pbmap[0].vPlanes[i].v3center.norm(), pl2/v_pbmap[1].vPlanes[j].v3center.norm());
 
-            size_t prevSize = calib_planes.correspondences.getRowCount();
-            calib_planes.correspondences.setSize(prevSize+1, calib_planes.correspondences.getColCount());
-            calib_planes.correspondences(prevSize, 0) = pl1[0];
-            calib_planes.correspondences(prevSize, 1) = pl1[1];
-            calib_planes.correspondences(prevSize, 2) = pl1[2];
-            calib_planes.correspondences(prevSize, 3) = pl1[3];
-            calib_planes.correspondences(prevSize, 4) = pl2[0];
-            calib_planes.correspondences(prevSize, 5) = pl2[1];
-            calib_planes.correspondences(prevSize, 6) = pl2[2];
-            calib_planes.correspondences(prevSize, 7) = pl2[3];
+                    // Calculate conditioning
+                    ++n_plane_corresp;
+                    covariance += pl2.head(3) * pl1.head(3).transpose();
+                    Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
+                    conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
+                    cout << "conditioning " << conditioning << endl;
 
-            Eigen::Matrix<T,4,4> informationFusion;
-            Eigen::Matrix<T,4,4> tf = Eigen::Matrix<T,4,4>::Identity();
-            tf.block(0,0,3,3) = calib_planes.calib->Rt_estimated.block(0,0,3,3);
-            tf.block(3,0,1,3) = -calib_planes.calib->Rt_estimated.block(0,3,3,1).transpose();
-            informationFusion = v_pbmap[0].vPlanes[i].information;
-            informationFusion += tf * v_pbmap[1].vPlanes[j].information * tf.inverse();
-            Eigen::JacobiSVD<Eigen::Matrix<T,4,4> > svd_cov(informationFusion, Eigen::ComputeFullU | Eigen::ComputeFullV);
-            Eigen::Vector4f minEigenVector = svd_cov.matrixU().block(0,3,4,1);
-            cout << "minEigenVector " << minEigenVector.transpose() << endl;
-            informationFusion -= svd.singularValues().minCoeff() * minEigenVector * minEigenVector.transpose();
-            cout << "informationFusion \n" << informationFusion << "\n minSV " << svd.singularValues().minCoeff() << endl;
+                    size_t prevSize = calib_planes.correspondences.getRowCount();
+                    calib_planes.correspondences.setSize(prevSize+1, calib_planes.correspondences.getColCount());
+                    calib_planes.correspondences(prevSize, 0) = pl1[0];
+                    calib_planes.correspondences(prevSize, 1) = pl1[1];
+                    calib_planes.correspondences(prevSize, 2) = pl1[2];
+                    calib_planes.correspondences(prevSize, 3) = pl1[3];
+                    calib_planes.correspondences(prevSize, 4) = pl2[0];
+                    calib_planes.correspondences(prevSize, 5) = pl2[1];
+                    calib_planes.correspondences(prevSize, 6) = pl2[2];
+                    calib_planes.correspondences(prevSize, 7) = pl2[3];
 
-            calib_planes.correspondences(prevSize, 8) = informationFusion(0,0);
-            calib_planes.correspondences(prevSize, 9) = informationFusion(0,1);
-            calib_planes.correspondences(prevSize, 10) = informationFusion(0,2);
-            calib_planes.correspondences(prevSize, 11) = informationFusion(0,3);
-            calib_planes.correspondences(prevSize, 12) = informationFusion(1,1);
-            calib_planes.correspondences(prevSize, 13) = informationFusion(1,2);
-            calib_planes.correspondences(prevSize, 14) = informationFusion(1,3);
-            calib_planes.correspondences(prevSize, 15) = informationFusion(2,2);
-            calib_planes.correspondences(prevSize, 16) = informationFusion(2,3);
-            calib_planes.correspondences(prevSize, 17) = informationFusion(3,3);
+                    Eigen::Matrix<T,4,4> informationFusion;
+                    Eigen::Matrix<T,4,4> tf = Eigen::Matrix<T,4,4>::Identity();
+                    tf.block(0,0,3,3) = calib_planes.calib->Rt_estimated.block(0,0,3,3);
+                    tf.block(3,0,1,3) = -calib_planes.calib->Rt_estimated.block(0,3,3,1).transpose();
+                    informationFusion = v_pbmap[0].vPlanes[i].information;
+                    informationFusion += tf * v_pbmap[1].vPlanes[j].information * tf.inverse();
+                    Eigen::JacobiSVD<Eigen::Matrix<T,4,4> > svd_cov(informationFusion, Eigen::ComputeFullU | Eigen::ComputeFullV);
+                    Eigen::Vector4f minEigenVector = svd_cov.matrixU().block(0,3,4,1);
+                    cout << "minEigenVector " << minEigenVector.transpose() << endl;
+                    informationFusion -= svd.singularValues().minCoeff() * minEigenVector * minEigenVector.transpose();
+                    cout << "informationFusion \n" << informationFusion << "\n minSV " << svd.singularValues().minCoeff() << endl;
 
-
-            FIMrot += -skew(v_pbmap[1].vPlanes[j].v3normal) * informationFusion.block(0,0,3,3) * skew(v_pbmap[1].vPlanes[j].v3normal);
-            FIMtrans += v_pbmap[0].vPlanes[i].v3normal * v_pbmap[0].vPlanes[i].v3normal.transpose() * informationFusion(3,3);
-
-            Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd_rot(FIMrot, Eigen::ComputeFullU | Eigen::ComputeFullV);
-            Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd_trans(FIMtrans, Eigen::ComputeFullU | Eigen::ComputeFullV);
-            //              float conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
-            conditioningFIM.setSize(prevSize+1, conditioningFIM.getColCount());
-            conditioningFIM(prevSize, 0) = svd_rot.singularValues()[0];
-            conditioningFIM(prevSize, 1) = svd_rot.singularValues()[1];
-            conditioningFIM(prevSize, 2) = svd_rot.singularValues()[2];
-            conditioningFIM(prevSize, 3) = svd_trans.singularValues()[0];
-            conditioningFIM(prevSize, 4) = svd_trans.singularValues()[1];
-            conditioningFIM(prevSize, 5) = svd_trans.singularValues()[2];
-
-//              cout << "normalCovariance " << minEigenVector.transpose() << " covM \n" << svd_cov.matrixU() << endl;
-
-//                calib_planes.correspondences(prevSize, 8) = std::min(v_pbmap[0].vPlanes[i].inliers.size(), v_pbmap[1].vPlanes[j].inliers.size());
-//
-//                float dist_center1 = 0, dist_center2 = 0;
-//                for(size_t k=0; k < v_pbmap[0].vPlanes[i].inliers.size(); k++)
-//                  dist_center1 += v_pbmap[0].vPlanes[i].inliers[k] / frameRGBD_[0].getPointCloud()->width + v_pbmap[0].vPlanes[i].inliers[k] % frameRGBD_[0].getPointCloud()->width;
-////                      dist_center1 += (v_pbmap[0].vPlanes[i].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[0].vPlanes[i].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[0].vPlanes[i].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[0].vPlanes[i].inliers[k] % frame360.sphereCloud->width);
-//                dist_center1 /= v_pbmap[0].vPlanes[i].inliers.size();
-//
-//                for(size_t k=0; k < v_pbmap[1].vPlanes[j].inliers.size(); k++)
-//                  dist_center2 += v_pbmap[1].vPlanes[j].inliers[k] / frameRGBD_[0].getPointCloud()->width + v_pbmap[1].vPlanes[j].inliers[k] % frameRGBD_[0].getPointCloud()->width;
-////                      dist_center2 += (v_pbmap[1].vPlanes[j].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[1].vPlanes[j].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[1].vPlanes[j].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[1].vPlanes[j].inliers[k] % frame360.sphereCloud->width);
-//                dist_center2 /= v_pbmap[1].vPlanes[j].inliers.size();
-//                calib_planes.correspondences(prevSize, 9) = std::max(dist_center1, dist_center2);
+                    calib_planes.correspondences(prevSize, 8) = informationFusion(0,0);
+                    calib_planes.correspondences(prevSize, 9) = informationFusion(0,1);
+                    calib_planes.correspondences(prevSize, 10) = informationFusion(0,2);
+                    calib_planes.correspondences(prevSize, 11) = informationFusion(0,3);
+                    calib_planes.correspondences(prevSize, 12) = informationFusion(1,1);
+                    calib_planes.correspondences(prevSize, 13) = informationFusion(1,2);
+                    calib_planes.correspondences(prevSize, 14) = informationFusion(1,3);
+                    calib_planes.correspondences(prevSize, 15) = informationFusion(2,2);
+                    calib_planes.correspondences(prevSize, 16) = informationFusion(2,3);
+                    calib_planes.correspondences(prevSize, 17) = informationFusion(3,3);
 
 
+                    FIMrot += -skew(v_pbmap[1].vPlanes[j].v3normal) * informationFusion.block(0,0,3,3) * skew(v_pbmap[1].vPlanes[j].v3normal);
+                    FIMtrans += v_pbmap[0].vPlanes[i].v3normal * v_pbmap[0].vPlanes[i].v3normal.transpose() * informationFusion(3,3);
 
-//              for(size_t sensor1=0; sensor1 < calib->num_sensors; sensor1++)
-//              {
-//      //          matches.mmCorrespondences[sensor1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
-//                for(unsigned sensor2=sensor1+1; sensor2 < calib->num_sensors; sensor2++)
-//                {
-//      //            cout << " sensor1 " << sensor1 << " " << v_pbmap[sensor1].vPlanes.size() << " sensor2 " << sensor2 << " " << v_pbmap[sensor2].vPlanes.size() << endl;
-//      //              matches.mmCorrespondences[sensor1][sensor2] = mrpt::math::CMatrixDouble(0, 10);
+                    Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd_rot(FIMrot, Eigen::ComputeFullU | Eigen::ComputeFullV);
+                    Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd_trans(FIMtrans, Eigen::ComputeFullU | Eigen::ComputeFullV);
+                    //              float conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
+                    conditioningFIM.setSize(prevSize+1, conditioningFIM.getColCount());
+                    conditioningFIM(prevSize, 0) = svd_rot.singularValues()[0];
+                    conditioningFIM(prevSize, 1) = svd_rot.singularValues()[1];
+                    conditioningFIM(prevSize, 2) = svd_rot.singularValues()[2];
+                    conditioningFIM(prevSize, 3) = svd_trans.singularValues()[0];
+                    conditioningFIM(prevSize, 4) = svd_trans.singularValues()[1];
+                    conditioningFIM(prevSize, 5) = svd_trans.singularValues()[2];
 
-//                  for(unsigned i=0; i < v_pbmap[sensor1].vPlanes.size(); i++)
-//                  {
-//                    unsigned planesIdx_i = planesSourceIdx[sensor1];
-//                    for(unsigned j=0; j < v_pbmap[sensor2].vPlanes.size(); j++)
-//                    {
-//                      unsigned planesIdx_j = planesSourceIdx[sensor2];
+        //              cout << "normalCovariance " << minEigenVector.transpose() << " covM \n" << svd_cov.matrixU() << endl;
 
-//      //                if(sensor1 == 0 && sensor2 == 2 && i == 0 && j == 0)
-//      //                {
-//      //                  cout << "Inliers " << all_planes.vPlanes[planesIdx_i+i].inliers.size() << " and " << all_planes.vPlanes[planesIdx_j+j].inliers.size() << endl;
-//      //                  cout << "elongation " << all_planes.vPlanes[planesIdx_i+i].elongation << " and " << all_planes.vPlanes[planesIdx_j+j].elongation << endl;
-//      //                  cout << "normal " << all_planes.vPlanes[planesIdx_i+i].v3normal.transpose() << " and " << all_planes.vPlanes[planesIdx_j+j].v3normal.transpose() << endl;
-//      //                  cout << "d " << all_planes.vPlanes[planesIdx_i+i].d << " and " << all_planes.vPlanes[planesIdx_j+j].d << endl;
-//      //                  cout << "color " << all_planes.vPlanes[planesIdx_i+i].hasSimilarDominantColor(all_planes.vPlanes[planesIdx_j+j],0.06) << endl;
-//      //                  cout << "nearby " << all_planes.vPlanes[planesIdx_i+i].isPlaneNearby(all_planes.vPlanes[planesIdx_j+j], 0.5) << endl;
-//      //                }
-
-//      //                cout << "  Check planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
-
-//                      if( all_planes.vPlanes[planesIdx_i+i].inliers.size() > 1000 && all_planes.vPlanes[planesIdx_j+j].inliers.size() > 1000 &&
-//                          all_planes.vPlanes[planesIdx_i+i].elongation < 5 && all_planes.vPlanes[planesIdx_j+j].elongation < 5 &&
-//                          all_planes.vPlanes[planesIdx_i+i].v3normal .dot (all_planes.vPlanes[planesIdx_j+j].v3normal) > 0.99 &&
-//                          fabs(all_planes.vPlanes[planesIdx_i+i].d - all_planes.vPlanes[planesIdx_j+j].d) < 0.2 )//&&
-//      //                    all_planes.vPlanes[planesIdx_i+i].hasSimilarDominantColor(all_planes.vPlanes[planesIdx_j+j],0.06) &&
-//      //                    all_planes.vPlanes[planesIdx_i+i].isPlaneNearby(all_planes.vPlanes[planesIdx_j+j], 0.5) )
-//        //                      matches.inliersUpperFringe(all_planes.vPlanes[planesIdx_i+i], 0.2) > 0.2 &&
-//        //                      matches.inliersLowerFringe(all_planes.vPlanes[planesIdx_j+j], 0.2) > 0.2 ) // Assign correspondence
-//                        {
-//      //                  cout << "\t   Associate planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
-
-//                        #if VISUALIZE_POINT_CLOUD
-//                          // Visualize Control Planes
-//                          { boost::mutex::scoped_lock updateLock(visualizationMutex);
-//                            match1 = planesIdx_i+i;
-//                            match2 = planesIdx_j+j;
-//                            drawMatch = true;
-//                            keyDown = false;
-//                          updateLock.unlock();
-//                          }
-
-//      //                    match1 = planesIdx_i+i;
-//      //                    match2 = planesIdx_j+j;
-//      //                    pcl::visualization::CloudViewer viewer("RGBD360_calib");
-//      //                    viewer.runOnVisualizationThread (boost::bind(&GetControlPlanes::viz_cb, this, _1), "viz_cb");
-//      //                    viewer.registerKeyboardCallback(&GetControlPlanes::keyboardEventOccurred, *this);
-
-//      //                    cout << " keyDown " << keyDown << endl;
-//                          while(!keyDown)
-//                            boost::this_thread::sleep (boost::posix_time::milliseconds (10));
-//                        #endif
-
-//      //                  cout << "\t   Record corresp " << endl;
-//                          unsigned prevSize = calib_planes.correspondences.getRowCount();
-//                          calib_planes.correspondences.setSize(prevSize+1, calib_planes.correspondences.getColCount());
-//                          calib_planes.correspondences(prevSize, 0) = v_pbmap[sensor1].vPlanes[i].v3normal[0];
-//                          calib_planes.correspondences(prevSize, 1) = v_pbmap[sensor1].vPlanes[i].v3normal[1];
-//                          calib_planes.correspondences(prevSize, 2) = v_pbmap[sensor1].vPlanes[i].v3normal[2];
-//                          calib_planes.correspondences(prevSize, 3) = v_pbmap[sensor1].vPlanes[i].d;
-//                          calib_planes.correspondences(prevSize, 4) = v_pbmap[sensor2].vPlanes[j].v3normal[0];
-//                          calib_planes.correspondences(prevSize, 5) = v_pbmap[sensor2].vPlanes[j].v3normal[1];
-//                          calib_planes.correspondences(prevSize, 6) = v_pbmap[sensor2].vPlanes[j].v3normal[2];
-//                          calib_planes.correspondences(prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
-//                          calib_planes.correspondences(prevSize, 8) = std::min(v_pbmap[sensor1].vPlanes[i].inliers.size(), v_pbmap[sensor2].vPlanes[j].inliers.size());
-
-//                          // For several sensors (more than 2)
-////                          unsigned prevSize = matches.mmCorrespondences[sensor1][sensor2].getRowCount();
-////                          matches.mmCorrespondences[sensor1][sensor2].setSize(prevSize+1, matches.mmCorrespondences[sensor1][sensor2].getColCount());
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 0) = v_pbmap[sensor1].vPlanes[i].v3normal[0];
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 1) = v_pbmap[sensor1].vPlanes[i].v3normal[1];
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 2) = v_pbmap[sensor1].vPlanes[i].v3normal[2];
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 3) = v_pbmap[sensor1].vPlanes[i].d;
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 4) = v_pbmap[sensor2].vPlanes[j].v3normal[0];
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 5) = v_pbmap[sensor2].vPlanes[j].v3normal[1];
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 6) = v_pbmap[sensor2].vPlanes[j].v3normal[2];
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 8) = std::min(v_pbmap[sensor1].vPlanes[i].inliers.size(), v_pbmap[sensor2].vPlanes[j].inliers.size());
+        //                calib_planes.correspondences(prevSize, 8) = std::min(v_pbmap[0].vPlanes[i].inliers.size(), v_pbmap[1].vPlanes[j].inliers.size());
+        //
+        //                float dist_center1 = 0, dist_center2 = 0;
+        //                for(size_t k=0; k < v_pbmap[0].vPlanes[i].inliers.size(); k++)
+        //                  dist_center1 += v_pbmap[0].vPlanes[i].inliers[k] / frameRGBD_[0].getPointCloud()->width + v_pbmap[0].vPlanes[i].inliers[k] % frameRGBD_[0].getPointCloud()->width;
+        ////                      dist_center1 += (v_pbmap[0].vPlanes[i].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[0].vPlanes[i].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[0].vPlanes[i].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[0].vPlanes[i].inliers[k] % frame360.sphereCloud->width);
+        //                dist_center1 /= v_pbmap[0].vPlanes[i].inliers.size();
+        //
+        //                for(size_t k=0; k < v_pbmap[1].vPlanes[j].inliers.size(); k++)
+        //                  dist_center2 += v_pbmap[1].vPlanes[j].inliers[k] / frameRGBD_[0].getPointCloud()->width + v_pbmap[1].vPlanes[j].inliers[k] % frameRGBD_[0].getPointCloud()->width;
+        ////                      dist_center2 += (v_pbmap[1].vPlanes[j].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[1].vPlanes[j].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[1].vPlanes[j].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[1].vPlanes[j].inliers[k] % frame360.sphereCloud->width);
+        //                dist_center2 /= v_pbmap[1].vPlanes[j].inliers.size();
+        //                calib_planes.correspondences(prevSize, 9) = std::max(dist_center1, dist_center2);
 
 
-////                          float dist_center1 = 0, dist_center2 = 0;
-////                          for(unsigned k=0; k < v_pbmap[sensor1].vPlanes[i].inliers.size(); k++)
-////                            dist_center1 += v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.frameRGBD_[sensor1].getPointCloud()->width + v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.frameRGBD_[sensor1].getPointCloud()->width;
-////      //                      dist_center1 += (v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.sphereCloud->width);
-////                          dist_center1 /= v_pbmap[sensor1].vPlanes[i].inliers.size();
 
-////                          for(unsigned k=0; k < v_pbmap[sensor2].vPlanes[j].inliers.size(); k++)
-////                            dist_center2 += v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.frameRGBD_[sensor2].getPointCloud()->width + v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.frameRGBD_[sensor2].getPointCloud()->width;
-////      //                      dist_center2 += (v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.sphereCloud->width);
-////                          dist_center2 /= v_pbmap[sensor2].vPlanes[j].inliers.size();
+        //              for(size_t sensor1=0; sensor1 < calib->num_sensors; sensor1++)
+        //              {
+        //      //          matches.mmCorrespondences[sensor1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
+        //                for(unsigned sensor2=sensor1+1; sensor2 < calib->num_sensors; sensor2++)
+        //                {
+        //      //            cout << " sensor1 " << sensor1 << " " << v_pbmap[sensor1].vPlanes.size() << " sensor2 " << sensor2 << " " << v_pbmap[sensor2].vPlanes.size() << endl;
+        //      //              matches.mmCorrespondences[sensor1][sensor2] = mrpt::math::CMatrixDouble(0, 10);
 
-////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 9) = std::max(dist_center1, dist_center2);
-////      //                  cout << "\t Size " << matches.mmCorrespondences[sensor1][sensor2].getRowCount() << " x " << matches.mmCorrespondences[sensor1][sensor2].getColCount() << endl;
+        //                  for(unsigned i=0; i < v_pbmap[sensor1].vPlanes.size(); i++)
+        //                  {
+        //                    unsigned planesIdx_i = planesSourceIdx[sensor1];
+        //                    for(unsigned j=0; j < v_pbmap[sensor2].vPlanes.size(); j++)
+        //                    {
+        //                      unsigned planesIdx_j = planesSourceIdx[sensor2];
 
-////                          if( sensor2 - sensor1 == 1 ) // Calculate conditioning
-////                          {
-////      //                      updateConditioning(couple_id, correspondences[couple_id].back());
-////                            matches.covariances[sensor1] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
-////                            matches.calcAdjacentConditioning(sensor1);
-////      //                    cout << "Update " << sensor1 << endl;
+        //      //                if(sensor1 == 0 && sensor2 == 2 && i == 0 && j == 0)
+        //      //                {
+        //      //                  cout << "Inliers " << all_planes.vPlanes[planesIdx_i+i].inliers.size() << " and " << all_planes.vPlanes[planesIdx_j+j].inliers.size() << endl;
+        //      //                  cout << "elongation " << all_planes.vPlanes[planesIdx_i+i].elongation << " and " << all_planes.vPlanes[planesIdx_j+j].elongation << endl;
+        //      //                  cout << "normal " << all_planes.vPlanes[planesIdx_i+i].v3normal.transpose() << " and " << all_planes.vPlanes[planesIdx_j+j].v3normal.transpose() << endl;
+        //      //                  cout << "d " << all_planes.vPlanes[planesIdx_i+i].d << " and " << all_planes.vPlanes[planesIdx_j+j].d << endl;
+        //      //                  cout << "color " << all_planes.vPlanes[planesIdx_i+i].hasSimilarDominantColor(all_planes.vPlanes[planesIdx_j+j],0.06) << endl;
+        //      //                  cout << "nearby " << all_planes.vPlanes[planesIdx_i+i].isPlaneNearby(all_planes.vPlanes[planesIdx_j+j], 0.5) << endl;
+        //      //                }
 
-////        //                    // For visualization
-////        //                    plane_corresp[couple_id].push_back(pair<mrpt::pbmap::Plane*, mrpt::pbmap::Plane*>(&all_planes.vPlanes[planesIdx_i+i], &all_planes.vPlanes[planes_counter_j+j]));
-////                          }
-////                          else if(sensor2 - sensor1 == 7)
-////                          {
-////      //                      updateConditioning(couple_id, correspondences[couple_id].back());
-////                            matches.covariances[sensor2] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
-////                            matches.calcAdjacentConditioning(sensor2);
-////      //                    cout << "Update " << sensor2 << endl;
-////                          }
+        //      //                cout << "  Check planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
 
-//      //                    break;
-//                        }
-//                    }
-//                  }
-//                }
-//              }
+        //                      if( all_planes.vPlanes[planesIdx_i+i].inliers.size() > 1000 && all_planes.vPlanes[planesIdx_j+j].inliers.size() > 1000 &&
+        //                          all_planes.vPlanes[planesIdx_i+i].elongation < 5 && all_planes.vPlanes[planesIdx_j+j].elongation < 5 &&
+        //                          all_planes.vPlanes[planesIdx_i+i].v3normal .dot (all_planes.vPlanes[planesIdx_j+j].v3normal) > 0.99 &&
+        //                          fabs(all_planes.vPlanes[planesIdx_i+i].d - all_planes.vPlanes[planesIdx_j+j].d) < 0.2 )//&&
+        //      //                    all_planes.vPlanes[planesIdx_i+i].hasSimilarDominantColor(all_planes.vPlanes[planesIdx_j+j],0.06) &&
+        //      //                    all_planes.vPlanes[planesIdx_i+i].isPlaneNearby(all_planes.vPlanes[planesIdx_j+j], 0.5) )
+        //        //                      matches.inliersUpperFringe(all_planes.vPlanes[planesIdx_i+i], 0.2) > 0.2 &&
+        //        //                      matches.inliersLowerFringe(all_planes.vPlanes[planesIdx_j+j], 0.2) > 0.2 ) // Assign correspondence
+        //                        {
+        //      //                  cout << "\t   Associate planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
+
+        //                        #if VISUALIZE_POINT_CLOUD
+        //                          // Visualize Control Planes
+        //                          { boost::mutex::scoped_lock updateLock(visualizationMutex);
+        //                            match1 = planesIdx_i+i;
+        //                            match2 = planesIdx_j+j;
+        //                            drawMatch = true;
+        //                            keyDown = false;
+        //                          updateLock.unlock();
+        //                          }
+
+        //      //                    match1 = planesIdx_i+i;
+        //      //                    match2 = planesIdx_j+j;
+        //      //                    pcl::visualization::CloudViewer viewer("RGBD360_calib");
+        //      //                    viewer.runOnVisualizationThread (boost::bind(&GetControlPlanes::viz_cb, this, _1), "viz_cb");
+        //      //                    viewer.registerKeyboardCallback(&GetControlPlanes::keyboardEventOccurred, *this);
+
+        //      //                    cout << " keyDown " << keyDown << endl;
+        //                          while(!keyDown)
+        //                            boost::this_thread::sleep (boost::posix_time::milliseconds (10));
+        //                        #endif
+
+        //      //                  cout << "\t   Record corresp " << endl;
+        //                          unsigned prevSize = calib_planes.correspondences.getRowCount();
+        //                          calib_planes.correspondences.setSize(prevSize+1, calib_planes.correspondences.getColCount());
+        //                          calib_planes.correspondences(prevSize, 0) = v_pbmap[sensor1].vPlanes[i].v3normal[0];
+        //                          calib_planes.correspondences(prevSize, 1) = v_pbmap[sensor1].vPlanes[i].v3normal[1];
+        //                          calib_planes.correspondences(prevSize, 2) = v_pbmap[sensor1].vPlanes[i].v3normal[2];
+        //                          calib_planes.correspondences(prevSize, 3) = v_pbmap[sensor1].vPlanes[i].d;
+        //                          calib_planes.correspondences(prevSize, 4) = v_pbmap[sensor2].vPlanes[j].v3normal[0];
+        //                          calib_planes.correspondences(prevSize, 5) = v_pbmap[sensor2].vPlanes[j].v3normal[1];
+        //                          calib_planes.correspondences(prevSize, 6) = v_pbmap[sensor2].vPlanes[j].v3normal[2];
+        //                          calib_planes.correspondences(prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
+        //                          calib_planes.correspondences(prevSize, 8) = std::min(v_pbmap[sensor1].vPlanes[i].inliers.size(), v_pbmap[sensor2].vPlanes[j].inliers.size());
+
+        //                          // For several sensors (more than 2)
+        ////                          unsigned prevSize = matches.mmCorrespondences[sensor1][sensor2].getRowCount();
+        ////                          matches.mmCorrespondences[sensor1][sensor2].setSize(prevSize+1, matches.mmCorrespondences[sensor1][sensor2].getColCount());
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 0) = v_pbmap[sensor1].vPlanes[i].v3normal[0];
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 1) = v_pbmap[sensor1].vPlanes[i].v3normal[1];
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 2) = v_pbmap[sensor1].vPlanes[i].v3normal[2];
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 3) = v_pbmap[sensor1].vPlanes[i].d;
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 4) = v_pbmap[sensor2].vPlanes[j].v3normal[0];
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 5) = v_pbmap[sensor2].vPlanes[j].v3normal[1];
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 6) = v_pbmap[sensor2].vPlanes[j].v3normal[2];
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 8) = std::min(v_pbmap[sensor1].vPlanes[i].inliers.size(), v_pbmap[sensor2].vPlanes[j].inliers.size());
+
+
+        ////                          float dist_center1 = 0, dist_center2 = 0;
+        ////                          for(unsigned k=0; k < v_pbmap[sensor1].vPlanes[i].inliers.size(); k++)
+        ////                            dist_center1 += v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.frameRGBD_[sensor1].getPointCloud()->width + v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.frameRGBD_[sensor1].getPointCloud()->width;
+        ////      //                      dist_center1 += (v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[sensor1].vPlanes[i].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[sensor1].vPlanes[i].inliers[k] % frame360.sphereCloud->width);
+        ////                          dist_center1 /= v_pbmap[sensor1].vPlanes[i].inliers.size();
+
+        ////                          for(unsigned k=0; k < v_pbmap[sensor2].vPlanes[j].inliers.size(); k++)
+        ////                            dist_center2 += v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.frameRGBD_[sensor2].getPointCloud()->width + v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.frameRGBD_[sensor2].getPointCloud()->width;
+        ////      //                      dist_center2 += (v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.sphereCloud->width)*(v_pbmap[sensor2].vPlanes[j].inliers[k] / frame360.sphereCloud->width) + (v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.sphereCloud->width)+(v_pbmap[sensor2].vPlanes[j].inliers[k] % frame360.sphereCloud->width);
+        ////                          dist_center2 /= v_pbmap[sensor2].vPlanes[j].inliers.size();
+
+        ////                          matches.mmCorrespondences[sensor1][sensor2](prevSize, 9) = std::max(dist_center1, dist_center2);
+        ////      //                  cout << "\t Size " << matches.mmCorrespondences[sensor1][sensor2].getRowCount() << " x " << matches.mmCorrespondences[sensor1][sensor2].getColCount() << endl;
+
+        ////                          if( sensor2 - sensor1 == 1 ) // Calculate conditioning
+        ////                          {
+        ////      //                      updateConditioning(couple_id, correspondences[couple_id].back());
+        ////                            matches.covariances[sensor1] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
+        ////                            matches.calcAdjacentConditioning(sensor1);
+        ////      //                    cout << "Update " << sensor1 << endl;
+
+        ////        //                    // For visualization
+        ////        //                    plane_corresp[couple_id].push_back(pair<mrpt::pbmap::Plane*, mrpt::pbmap::Plane*>(&all_planes.vPlanes[planesIdx_i+i], &all_planes.vPlanes[planes_counter_j+j]));
+        ////                          }
+        ////                          else if(sensor2 - sensor1 == 7)
+        ////                          {
+        ////      //                      updateConditioning(couple_id, correspondences[couple_id].back());
+        ////                            matches.covariances[sensor2] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
+        ////                            matches.calcAdjacentConditioning(sensor2);
+        ////      //                    cout << "Update " << sensor2 << endl;
+        ////                          }
+
+        //      //                    break;
+        //                        }
+        //                    }
+        //                  }
+        //                }
+        //              }
+                }
+              }
+            }
         }
-      }
     }
 }
-
 
 
 double ExtrinsicCalibPlanes::calcCorrespRotError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt)

@@ -61,6 +61,10 @@ private:
 //    mrpt::math::TLine3D line3D_match2;
     std::vector< std::vector<mrpt::math::TLine3D> > v_lines3D;
 
+    /*! Indices of the candidate correspondences */
+    size_t line_candidate[2];
+    map<unsigned, unsigned> line_corresp;
+
 public:
 
 //    /*! The current extrinsic calibration parameters */
@@ -70,7 +74,7 @@ public:
 //    }
 
     /*! The current extrinsic calibration parameters */
-    ExtrinsicCalib<T> * calib;
+//    ExtrinsicCalib<T> * calib;
 
     /*! The plane correspondences between the different sensors */
     LineCorresp<T> lines;

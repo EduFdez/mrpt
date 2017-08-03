@@ -47,6 +47,11 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib<T>
     using ExtrinsicCalib<T>::num_sensors;
     using ExtrinsicCalib<T>::Rt_estimated;
 
+    /*! Indices of the candidate correspondences */
+    size_t plane_candidate[2];
+    size_t plane_candidate_all[2];
+    map<unsigned, unsigned> plane_corresp;
+
   public:
 
 //    /*! The current extrinsic calibration parameters */

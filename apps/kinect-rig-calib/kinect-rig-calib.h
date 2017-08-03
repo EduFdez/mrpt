@@ -23,21 +23,15 @@
 #include "extrinsic_calib_lines.h"
 
 #include <numeric>
-//#include <mrpt/math/CMatrixFixedNumeric.h>
-//#include <mrpt/utils/CArray.h>
 #include <mrpt/obs/CRawlog.h>
 #include <mrpt/obs/CObservation3DRangeScan.h>
 #include <mrpt/maps/CColouredPointsMap.h>
 #include <mrpt/poses/CPose3D.h>
 #include <mrpt/utils/TStereoCamera.h>
 #include <mrpt/utils/CConfigFile.h>
-//#include <mrpt/utils/CFileGZInputStream.h>
-////#include <mrpt/utils/CFileGZOutputStream.h>
 #include <mrpt/system/os.h>
 //#include <mrpt/system/threads.h>
 #include <mrpt/system/filesystem.h>
-//#include <mrpt/opengl/CPlanarLaserScan.h> // This class lives in the lib [mrpt-maps] and must be included by hand
-//#include <mrpt/math/ransac_applications.h>
 #include <mrpt/vision/chessboard_stereo_camera_calib.h>
 #include <mrpt/vision/CUndistortMap.h>
 
@@ -45,6 +39,8 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/core/eigen.hpp>
 
+#include <pcl/visualization/cloud_viewer.h>
+#include <pcl/visualization/pcl_visualizer.h>
 #include <boost/thread/mutex.hpp>
 
 #include <omp.h>
@@ -61,6 +57,21 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
     using ExtrinsicCalib<T>::num_sensors;
     using ExtrinsicCalib<T>::Rt_estimated;
 
+    /*! Visualization elements */
+    pcl::visualization::CloudViewer viewer;
+
+    bool b_confirm_visually;
+    bool b_exit;
+    bool b_viz_init;
+    bool b_freeze;
+
+    void viz_cb (pcl::visualization::PCLVisualizer& viz);
+
+    void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event, void* viewer_void);
+
+    /*! Indices of the pair of sensors being evaluated */
+    size_t sensor1, sensor2;
+
   public:
 
     boost::mutex visualizationMutex;
@@ -75,13 +86,10 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
 //    ExtrinsicCalibLines<T> calib_lines;
 
     // Sensor parameters
-    std::vector<double> weight_pair;
     std::vector<std::string> sensor_labels;
     std::vector<mrpt::utils::TStereoCamera> rgbd_intrinsics;
     std::vector<double> mxmy; // pixel relation (fx=mx*f; fy=my*f)
     std::vector<mrpt::poses::CPose3D> init_poses;
-    std::vector<double> v_approx_trans;
-    std::vector<double> v_approx_rot;
     double max_diff_sync;
 
     // Observation parameters
@@ -101,9 +109,17 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
     bool verbose;
 
     KinectRigCalib() :
+        viewer("kinect-rig-calib"),
+        b_confirm_visually(false),
+        b_exit(false),
+        b_viz_init(false),
+        b_freeze(false),
         s_type(PLANES_AND_LINES),
         max_diff_sync(0.005)
     {
+        // Initialize visualizer
+        viewer.runOnVisualizationThread (boost::bind(&KinectRigCalib_display::viz_cb, this, _1), "viz_cb");
+        viewer.registerKeyboardCallback ( &KinectRigCalib_display::keyboardEventOccurred, *this );
     }
 
     /*! Load a config which indicates the system to calibrate: input rawlog dataset, initial poses with uncertainty, plus other parameters. */

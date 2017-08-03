@@ -57,6 +57,12 @@ class ExtrinsicCalib
     /*! Rotation covariance matrices from adjacent sensors */
     std::vector<Eigen::Matrix<T,3,3>, Eigen::aligned_allocator<Eigen::Matrix<T,3,3> > > covariances;
 
+    /*! This meassure represents the confidence region for the initial poses for the translation (e.g. like the largest eigenvalue of the covariance matrix) */
+    std::vector<double> v_approx_trans;
+
+    /*! This meassure represents the confidence region for the initial poses for the rotation (e.g. like the largest eigenvalue of the covariance matrix) */
+    std::vector<double> v_approx_rot;
+
     /*! Planes extracted from the current observation */
     std::vector<mrpt::pbmap::PbMap> v_pbmap;
 

@@ -21,10 +21,9 @@ ADD_EXECUTABLE(${PROJECT_NAME}
                 kinect-rig-calib.h
                 kinect-rig-calib.cpp
                 kinect-rig-calib_misc.h
-                kinect-rig-calib_display.h
-                kinect-rig-calib_display.cpp
                 extrinsic_calib.h
                 feat_corresp.h
+                feat_corresp.cpp
                 extrinsic_calib_lines.h
                 extrinsic_calib_lines.cpp
                 line_corresp.h
