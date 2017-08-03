@@ -18,10 +18,21 @@ PROJECT(kinect-rig-calib)
 # Define the executable target:
 ADD_EXECUTABLE(${PROJECT_NAME}
                 kinect-rig-calib_main.cpp
-                #calib_from_planes3D.h
-                #calib_from_planes3D.cpp
-                extrinsic_calib_pair_xtion.h
-                extrinsic_calib_pair_xtion.cpp
+                kinect-rig-calib.h
+                kinect-rig-calib.cpp
+                kinect-rig-calib_misc.h
+                kinect-rig-calib_display.h
+                kinect-rig-calib_display.cpp
+                extrinsic_calib.h
+                feat_corresp.h
+                extrinsic_calib_lines.h
+                extrinsic_calib_lines.cpp
+                line_corresp.h
+                line_corresp.cpp
+                extrinsic_calib_planes.h
+                extrinsic_calib_planes.cpp
+                plane_corresp.h
+                plane_corresp.cpp
                 DownsampleRGBD.h
 )
 

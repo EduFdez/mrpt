@@ -14,10 +14,13 @@
 #include "pbmap-precomp.h"  // Precompiled headers
 
 #include <mrpt/pbmap.h>
-
 #include <mrpt/utils/CStream.h>
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/features/integral_image_normal.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/fast_bilateral.h>
 
 using namespace std;
 using namespace mrpt::utils;
@@ -97,6 +100,195 @@ void  PbMap::readFromStream(mrpt::utils::CStream &in, int version)
     default:
         MRPT_THROW_UNKNOWN_SERIALIZATION_VERSION(version)
     };
+}
+
+pcl::PointCloud<pcl::Normal>::Ptr PbMap::computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor)
+{
+    //ImgRGBD_3D::fastBilateralFilter(cloud, cloud);
+
+    pcl::IntegralImageNormalEstimation<PointT, pcl::Normal> ne;
+    ne.setNormalEstimationMethod(ne.COVARIANCE_MATRIX);
+    //ne.setNormalEstimationMethod(ne.SIMPLE_3D_GRADIENT);
+    //ne.setNormalEstimationMethod(ne.AVERAGE_DEPTH_CHANGE);
+    //ne.setNormalEstimationMethod(ne.AVERAGE_3D_GRADIENT);
+    ne.setMaxDepthChangeFactor(depth_thres); // For VGA: 0.02f, 10.0f
+    ne.setNormalSmoothingSize(smooth_factor);
+    ne.setDepthDependentSmoothing(true);
+
+    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud(new pcl::PointCloud<pcl::Normal>);
+    ne.setInputCloud(cloud);
+    ne.compute(*normal_cloud);
+    return normal_cloud;
+}
+
+size_t PbMap::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
+                    vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions, std::vector<pcl::ModelCoefficients> & model_coefficients, std::vector<pcl::PointIndices> & inliers,
+                    const float dist_threshold, const float angle_threshold, const size_t min_inliers)
+{
+    pcl::PointCloud<PointT>::Ptr cloud_filtered = cloud;
+//    ImgRGBD_3D::fastBilateralFilter(cloud, cloud_filtered, 30, 0.5);
+//    computeImgNormal(cloud_filtered);
+    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud = computeImgNormal(cloud_filtered, 0.02f, 10.0f);
+
+    pcl::OrganizedMultiPlaneSegmentation<PointT, pcl::Normal, pcl::Label> mps;
+    mps.setMinInliers(min_inliers);
+    mps.setAngularThreshold(angle_threshold); // (0.017453 * 2.0) // 3 degrees
+    mps.setDistanceThreshold(dist_threshold); //2cm
+    mps.setInputNormals(normal_cloud);
+    mps.setInputCloud(cloud_filtered);
+
+//    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
+//    std::vector<pcl::ModelCoefficients> model_coefficients;
+//    std::vector<pcl::PointIndices> inliers;
+    pcl::PointCloud<pcl::Label>::Ptr labels (new pcl::PointCloud<pcl::Label>);
+    std::vector<pcl::PointIndices> label_indices;
+    std::vector<pcl::PointIndices> boundary_indices;
+    mps.segmentAndRefine(regions, model_coefficients, inliers, labels, label_indices, boundary_indices);
+    size_t n_regions = regions.size();
+
+    return n_regions;
+}
+
+/*! This function segments planes from the point cloud */
+void PbMap::pbMapFromPCloud(pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pbmap::PbMap & pbmap,
+                            const float dist_threshold, const float angle_threshold, const size_t min_inliers, const float max_curvature_plane)
+{
+    // Downsample and filter point cloud
+    //      DownsampleRGBD downsampler(2);
+//      pcl::PointCloud<pcl::PointXYZRGBA>::Ptr downsampledCloud = downsampler.downsamplePointCloud(point_cloud);
+//      cloudImg.setPointCloud(downsampler.downsamplePointCloud(point_cloud));
+    pcl::FastBilateralFilter<pcl::PointXYZRGBA> filter;
+    filter.setSigmaS (10.0);
+    filter.setSigmaR (0.05);
+    filter.setInputCloud(point_cloud);
+    filter.filter(*point_cloud);
+
+    // Segment planes
+    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
+    std::vector<pcl::ModelCoefficients> model_coefficients;
+    std::vector<pcl::PointIndices> inliers;
+    size_t n_planes = segmentPlanes(point_cloud, regions, model_coefficients, inliers, dist_threshold, angle_threshold, min_inliers);
+    cout << " number of planes " << n_planes << " cloud size " << point_cloud->size() << "\n";
+
+    pbmap.vPlanes.clear();
+
+    // Create a vector with the planes detected in this keyframe, and calculate their parameters (normal, center, pointclouds, etc.)
+    cout << "cloud_size " << point_cloud->size() << "\n";
+    for (size_t i = 0; i < regions.size (); i++)
+    {
+        mrpt::pbmap::Plane plane;
+
+        plane.v3center = regions[i].getCentroid();
+        plane.v3normal = Eigen::Vector3f(model_coefficients[i].values[0], model_coefficients[i].values[1], model_coefficients[i].values[2]);
+        if( plane.v3normal.dot(plane.v3center) > 0)
+            plane.v3normal = -plane.v3normal;
+
+        plane.curvature = regions[i].getCurvature ();
+        //    cout << i << " getCurvature\n";
+
+//        if(plane.curvature > max_curvature_plane)
+//          continue;
+
+        // Extract the planar inliers from the input cloud
+        pcl::ExtractIndices<pcl::PointXYZRGBA> extract;
+        extract.setInputCloud ( point_cloud );
+        extract.setIndices ( boost::make_shared<const pcl::PointIndices> (inliers[i]) );
+        extract.setNegative (false);
+        extract.filter (*plane.planePointCloudPtr);    // Write the planar point cloud
+        plane.inliers = inliers[i].indices;
+
+        Eigen::Matrix3f cov_normal = Eigen::Matrix3f::Zero();
+        Eigen::Vector3f cov_nd = Eigen::Vector3f::Zero();
+        Eigen::Vector3f gravity_center = Eigen::Vector3f::Zero();
+        for(size_t j=0; j < inliers[i].indices.size(); j++)
+        {
+            Eigen::Vector3f pt; pt << plane.planePointCloudPtr->points[j].x, plane.planePointCloudPtr->points[j].y, plane.planePointCloudPtr->points[j].z;
+            gravity_center += pt;
+        }
+        cov_nd = gravity_center;
+        gravity_center /= plane.planePointCloudPtr->size();
+        //      cout << "gravity_center " << gravity_center.transpose() << "   " << plane.v3center.transpose() << endl;
+        //        Eigen::Matrix3f M = Eigen::Matrix3f::Zero();
+        for(size_t j=0; j < inliers[i].indices.size(); j++)
+        {
+            Eigen::Vector3f pt; pt << plane.planePointCloudPtr->points[j].x, plane.planePointCloudPtr->points[j].y, plane.planePointCloudPtr->points[j].z;
+            cov_normal += -pt*pt.transpose();// + (plane.v3normal.dot(pt-gravity_center))*(plane.v3normal.dot(pt))*Eigen::Matrix3f::Identity();
+//          Eigen::Vector3f pt_rg = (pt-gravity_center);
+//          M += pt_rg * pt_rg.transpose();
+        }
+//            Eigen::JacobiSVD<Eigen::Matrix3f> svdM(M, Eigen::ComputeFullU | Eigen::ComputeFullV);
+//            cout << "normalV " << plane.v3normal.transpose() << " covM \n" << svdM.matrixU() << endl;
+
+        Eigen::Matrix4f fim;//, covariance;
+        fim.block(0,0,3,3) = cov_normal;
+        fim.block(0,3,3,1) = cov_nd;
+        fim.block(3,0,1,3) = cov_nd.transpose();
+        fim(3,3) = -plane.planePointCloudPtr->size();
+        //fim *= 1 / SIGMA2;
+        Eigen::JacobiSVD<Eigen::Matrix4f> svd(fim, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        //svd.pinv(plane.information);
+        plane.information = pseudoinverse(fim);
+        //        std::cout << "covariance \n" << plane.information << std::endl;
+        plane.information = -fim;
+        //
+        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr contourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>);
+        contourPtr->points = regions[i].getContour();
+//            std::vector<size_t> indices_hull;
+
+//            cout << "Extract contour\n";
+        if(contourPtr->size() != 0)
+        {
+            //      cout << "Extract contour2 " << contourPtr->size() << "\n";
+            plane.calcConvexHull(contourPtr);
+        }
+        else
+        {
+            //        assert(false);
+            std::cout << "HULL 000\n" << plane.planePointCloudPtr->size() << std::endl;
+            static pcl::VoxelGrid<pcl::PointXYZRGBA> plane_grid;
+            plane_grid.setLeafSize(0.05,0.05,0.05);
+            plane_grid.setInputCloud (plane.planePointCloudPtr);
+            plane_grid.filter (*contourPtr);
+            plane.calcConvexHull(contourPtr);
+        }
+
+        //        plane.calcConvexHull(contourPtr);
+        //      cout << "calcConvexHull\n";
+        plane.computeMassCenterAndArea();
+        //    cout << "Extract convexHull\n";
+        // Discard small planes
+
+        plane.d = -plane.v3normal .dot( plane.v3center );
+
+        //        // Discard narrow planes
+        //        plane.calcElongationAndPpalDir();
+        //        if(plane.elongation > max_elongation_plane)
+        //          continue;
+
+        bool isSamePlane = false;
+        if(plane.curvature < max_curvature_plane)
+            for (size_t j = 0; j < pbmap.vPlanes.size(); j++)
+                if( pbmap.vPlanes[j].curvature < max_curvature_plane && pbmap.vPlanes[j].isSamePlane(plane, 0.99, 0.05, 0.2) ) // The planes are merged if they are the same
+                {
+                    //            cout << "Merge local region\n";
+                    isSamePlane = true;
+                    //            double time_start = pcl::getTime();
+                    pbmap.vPlanes[j].mergePlane2(plane);
+                    //            double time_end = pcl::getTime();
+                    //          std::cout << " mergePlane2 took " << double (time_start - time_end) << std::endl;
+
+                    break;
+                }
+        if(!isSamePlane)
+        {
+            //          cout << "New plane\n";
+            //          plane.calcMainColor();
+            plane.id = pbmap.vPlanes.size();
+            pbmap.vPlanes.push_back(plane);
+        }
+    }
+    //double extractPlanes_end = pcl::getTime();
+    //std::cout << "PlaneFeatures::pbMapFromPCloud in " << (extractPlanes_end - extractPlanes_start)*1000 << " ms\n";
 }
 
 void PbMap::savePbMap(string filePath)

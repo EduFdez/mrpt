@@ -27,11 +27,13 @@
 #include <pcl/segmentation/organized_connected_component_segmentation.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/fast_bilateral.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/time.h>
 #include <mrpt/synch/CCriticalSection.h>
 #include <mrpt/utils/CConfigFile.h>
 #include <mrpt/pbmap/PbMapMaker.h>
+#include <mrpt/pbmap/colors.h>
 
 #include <iostream>
 
@@ -170,6 +172,54 @@ PbMapMaker::~PbMapMaker()
     stop_pbMapMaker();
 
     cout << " .. PbMapMaker has died." << endl;
+}
+
+
+pcl::PointCloud<pcl::Normal>::Ptr PbMapMaker::computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor)
+{
+    //ImgRGBD_3D::fastBilateralFilter(cloud, cloud);
+
+    pcl::IntegralImageNormalEstimation<PointT, pcl::Normal> ne;
+    ne.setNormalEstimationMethod(ne.COVARIANCE_MATRIX);
+    //ne.setNormalEstimationMethod(ne.SIMPLE_3D_GRADIENT);
+    //ne.setNormalEstimationMethod(ne.AVERAGE_DEPTH_CHANGE);
+    //ne.setNormalEstimationMethod(ne.AVERAGE_3D_GRADIENT);
+    ne.setMaxDepthChangeFactor(depth_thres); // For VGA: 0.02f, 10.0f
+    ne.setNormalSmoothingSize(smooth_factor);
+    ne.setDepthDependentSmoothing(true);
+
+    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud(new pcl::PointCloud<pcl::Normal>);
+    ne.setInputCloud(cloud);
+    ne.compute(*normal_cloud);
+    return normal_cloud;
+}
+
+size_t PbMapMaker::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
+                                vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions, std::vector<pcl::ModelCoefficients> & model_coefficients, std::vector<pcl::PointIndices> & inliers,
+                                const float dist_threshold, const float angle_threshold, const size_t min_inliers)
+{
+    pcl::PointCloud<PointT>::Ptr cloud_filtered = cloud;
+//    ImgRGBD_3D::fastBilateralFilter(cloud, cloud_filtered, 30, 0.5);
+//    computeImgNormal(cloud_filtered);
+    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud = computeImgNormal(cloud_filtered, 0.02f, 10.0f);
+
+    pcl::OrganizedMultiPlaneSegmentation<PointT, pcl::Normal, pcl::Label> mps;
+    mps.setMinInliers(min_inliers);
+    mps.setAngularThreshold(angle_threshold); // (0.017453 * 2.0) // 3 degrees
+    mps.setDistanceThreshold(dist_threshold); //2cm
+    mps.setInputNormals(normal_cloud);
+    mps.setInputCloud(cloud_filtered);
+
+//    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
+//    std::vector<pcl::ModelCoefficients> model_coefficients;
+//    std::vector<pcl::PointIndices> inliers;
+    pcl::PointCloud<pcl::Label>::Ptr labels (new pcl::PointCloud<pcl::Label>);
+    std::vector<pcl::PointIndices> label_indices;
+    std::vector<pcl::PointIndices> boundary_indices;
+    mps.segmentAndRefine(regions, model_coefficients, inliers, labels, label_indices, boundary_indices);
+    size_t n_regions = regions.size();
+
+    return n_regions;
 }
 
 
@@ -965,16 +1015,6 @@ void PbMapMaker::mergePlanes(Plane &updatePlane, Plane &discardPlane)
     updatePlane.areaVoxels= updatePlane.planePointCloudPtr->size() * 0.0025;
 
 }
-
-// Color = (red[i], grn[i], blu[i])
-// The color order is: red, green, blue, yellow, pink, turquoise, orange, purple, dark green, beige
-unsigned char red [10] = {255,   0,   0, 255, 255,   0, 255, 204,   0, 255};
-unsigned char grn [10] = {  0, 255,   0, 255,   0, 255, 160,  51, 128, 222};
-unsigned char blu [10] = {  0,   0, 255,   0, 255, 255, 0  , 204,   0, 173};
-
-double ared [10] = {1.0,   0,   0, 1.0, 1.0,   0, 1.0, 0.8,   0, 1.0};
-double agrn [10] = {  0, 1.0,   0, 1.0,   0, 1.0, 0.6, 0.2, 0.5, 0.9};
-double ablu [10] = {  0,   0, 1.0,   0, 1.0, 1.0,   0, 0.8,   0, 0.7};
 
 void PbMapMaker::viz_cb (pcl::visualization::PCLVisualizer& viz)
 {

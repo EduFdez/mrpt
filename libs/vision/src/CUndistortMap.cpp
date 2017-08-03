@@ -68,12 +68,15 @@ void CUndistortMap::undistort(const cv::Mat &in_img, cv::Mat &out_img) const
         THROW_EXCEPTION("Error: setFromCamParams() must be called prior to undistort().")
 
 #if MRPT_HAS_OPENCV && MRPT_OPENCV_VERSION_NUM>=0x200
-    CvMat mapx = cvMat(m_camera_params.nrows,m_camera_params.ncols,  CV_16SC2, const_cast<int16_t*>(&m_dat_mapx[0]) );  // Wrappers on the data as a CvMat's.
-    CvMat mapy = cvMat(m_camera_params.nrows,m_camera_params.ncols,  CV_16UC1, const_cast<uint16_t*>(&m_dat_mapy[0]) );
-    CvMat in = in_img;
-    CvMat *out = cvCreateMat(m_camera_params.nrows,m_camera_params.ncols, in_img.type());
-    cvRemap(&in, out, &mapx, &mapy);	//cv::remap(src, dst_part, map1_part, map2_part, INTER_LINEAR, BORDER_CONSTANT );
-    out_img = cv::cvarrToMat(out,false);
+//    CvMat mapx(m_camera_params.nrows,m_camera_params.ncols,  CV_16SC2, const_cast<int16_t*>(&m_dat_mapx[0]) );  // Wrappers on the data as a CvMat's.
+//    CvMat mapy = cvMat(m_camera_params.nrows,m_camera_params.ncols,  CV_16UC1, const_cast<uint16_t*>(&m_dat_mapy[0]) );
+//    CvMat in = in_img;
+//    CvMat *out = cvCreateMat(m_camera_params.nrows,m_camera_params.ncols, in_img.type());
+//    cvRemap(&in, out, &mapx, &mapy);	//cv::remap(src, dst_part, map1_part, map2_part, INTER_LINEAR, BORDER_CONSTANT );
+//    out_img = cv::cvarrToMat(out,false);
+    cv::Mat mapx(m_camera_params.nrows, m_camera_params.ncols, CV_16SC2, const_cast<int16_t*>(&m_dat_mapx[0]) );
+    cv::Mat mapy(m_camera_params.nrows, m_camera_params.ncols, CV_16UC1, const_cast<uint16_t*>(&m_dat_mapy[0]) );
+    cv::remap(in_img, out_img, mapx, mapy, cv::INTER_LINEAR, cv::BORDER_CONSTANT );
 #endif
     MRPT_END
 }

@@ -32,49 +32,54 @@
 
 #pragma once
 
+#include "extrinsic_calib.h"
+#include "line_corresp.h"
 #include <mrpt/system/filesystem.h>
+#include <mrpt/math/lightweight_geom_data.h>
 #include <mrpt/math/CMatrixTemplateNumeric.h>  // For mrpt::math::CMatrixDouble
+#include <mrpt/vision/chessboard_stereo_camera_calib.h>
+#include <opencv2/core/core.hpp>
 #include <Eigen/Dense>
 
-//#include "calib_from_planes3D.h"
-
-template<typename Scalar> inline Eigen::Matrix<Scalar,3,3> skew(const Eigen::Matrix<Scalar,3,1> &vec)
-{
-  Eigen::Matrix<Scalar,3,3> skew_matrix = Eigen::Matrix<Scalar,3,3>::Zero();
-  skew_matrix(0,1) = -vec(2);
-  skew_matrix(1,0) = vec(2);
-  skew_matrix(0,2) = vec(1);
-  skew_matrix(2,0) = -vec(1);
-  skew_matrix(1,2) = -vec(0);
-  skew_matrix(2,1) = vec(0);
-  return skew_matrix;
-}
-
 /*! This class contains the functionality to calibrate the extrinsic parameters of a pair of non-overlapping depth cameras.
- *  This extrinsic calibration is obtained by matching planes that are observed by both sensors at the same time instants.
+ *  This extrinsic calibration is obtained by matching lines that are observed by both sensors at the same time instants.
  *
  *  \ingroup calib_group
  */
-class CalibratePairRange
+template<typename T>
+class ExtrinsicCalibLines : public virtual ExtrinsicCalib<T>
 {
+private:
+
+    using ExtrinsicCalib<T>::num_sensors;
+    using ExtrinsicCalib<T>::Rt_estimated;
+    size_t min_pixels_line;
+    std::vector<std::vector<cv::Vec4i> > v_lines;
+    cv::Vec4i line_match1;
+    cv::Vec4i line_match2;
+//    mrpt::math::TLine3D line3D_match1;
+//    mrpt::math::TLine3D line3D_match2;
+    std::vector< std::vector<mrpt::math::TLine3D> > v_lines3D;
+
 public:
 
-    /*! 3D plane correspondences */
-    //PlaneCorresp corresp_;
+//    /*! The current extrinsic calibration parameters */
+//    mrpt::math::TLine3D makeTLine3D(const Eigen::Vector3f & p1, const Eigen::Vector3f & p2)
+//    {
+//        mrpt::math::TLine3D line;
+//    }
 
-    /*! The extrinsic matrix estimated by this calibration method */
-    Eigen::Matrix4f Rt_estimated;
+    /*! The current extrinsic calibration parameters */
+    ExtrinsicCalib<T> * calib;
 
-    Eigen::Matrix3f rotation;
+    /*! The plane correspondences between the different sensors */
+    LineCorresp<T> lines;
 
-    Eigen::Vector3f translation;
-
-    /*! The plane correspondences between the pair of Asus sensors */
-    mrpt::math::CMatrixDouble correspondences;
-    mrpt::math::CMatrixDouble correspondences_cov;
+    /*! The coordinates of the optical center of the rgb cameras */
+    std::vector<float> cx, cy;
 
     /*! Constructor */
-    CalibratePairRange() //: corresp_(PlaneCorresp(2))
+    ExtrinsicCalibLines(const ExtrinsicCalib<T> * cal, std::vector<mrpt::utils::TStereoCamera> intrinsics) : calib(cal), min_pixels_line(120)
     {
 //            std::map<unsigned, std::map<unsigned, mrpt::math::CMatrixDouble> > mm_corresp_;
 
@@ -85,24 +90,8 @@ public:
 //            std::vector<Eigen::Matrix3f, Eigen::aligned_allocator<Eigen::Matrix3f> > covariances;
     }
 
-    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-    inline void setInitRt(const std::string Rt_file)
-    {
-        if( !mrpt::system::fileExists(Rt_file) )
-            throw std::runtime_error("\nERROR...");
-
-        Rt_estimated.loadFromTextFile(Rt_file);
-    }
-
-    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-    inline void setInitRt(Eigen::Matrix4f initRt)
-    {
-        Rt_estimated = initRt;
-        //      Rt_estimated = Eigen::Matrix4f::Identity();
-        //      Rt_estimated(1,1) = Rt_estimated(2,2) = cos(45*PI/180);
-        //      Rt_estimated(1,2) = -sin(45*PI/180);
-        //      Rt_estimated(2,1) = -Rt_estimated(1,2);
-    }
+    /*! Extract line correspondences between the different sensors.*/
+    void getCorrespondences(const std::vector<cv::Mat> & rgb);
 
     /*! Calculate the angular error of the plane correspondences.*/
     float calcCorrespRotError(Eigen::Matrix3f &Rot_);
@@ -161,5 +150,11 @@ public:
 
     /*! Calibrate the relative rigid transformation (Rt) of the pair. */
     void CalibratePair();
+
+    /*! Print the number of correspondences and the conditioning number to the standard output */
+    void printConditioning();
+
+    /*! Calculate adjacent conditioning (information between a pair of adjacent sensors) */
+    void calcAdjacentConditioning(unsigned couple_id);
 
 };

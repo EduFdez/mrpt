@@ -92,9 +92,9 @@ Eigen::Matrix3d  mrpt::vision::pnp::so3::quatrot(Eigen::Vector3d  Vec)
 //<---------------------- Function to calcualte rotation error------------------------->//
 void mrpt::vision::pnp::so3::err_calc(Eigen::Matrix3d & R, int flag, Eigen::VectorXd & err, Eigen::Vector3d & Vec, Eigen::Vector3d & rgm)
 {
-	gam=Eigen::VectorXd ::Zero(2*n);
+    gam=Eigen::VectorXd::Zero(2*n);
 	
-	N = Eigen::MatrixXd ::Zero(3,3);
+    N = Eigen::MatrixXd::Zero(3,3);
 
 	for (k = 0; k < n; k++)
 	{
