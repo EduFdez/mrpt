@@ -106,7 +106,7 @@ void KinectRigCalib_display::viz_cb (pcl::visualization::PCLVisualizer& viz)
             viz.removeShape("line");
             viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], "line");
 
-//                size_t p1 = v_lines[sensor1][i][0] + v_lines[sensor1][i][1] * cloud[sensor1]->width;
+//                size_t p1 = v_segments2D[sensor1][i][0] + v_segments2D[sensor1][i][1] * cloud[sensor1]->width;
             size_t p1 = krc.line_match1[0] + krc.line_match1[1] * krc.cloud[sensor1]->width;
             if(krc.cloud[sensor1]->points[p1].z > 0.3f && krc.cloud[sensor1]->points[p1].z < 10.f)
             {
@@ -119,7 +119,7 @@ void KinectRigCalib_display::viz_cb (pcl::visualization::PCLVisualizer& viz)
 //                    circle_coeff.values[2] = radius;
 //                    viz.addCircle<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], "line");
             }
-//                size_t p2 = v_lines[sensor1][i][2] + v_lines[sensor1][i][3] * cloud[sensor1]->width;
+//                size_t p2 = v_segments2D[sensor1][i][2] + v_segments2D[sensor1][i][3] * cloud[sensor1]->width;
             size_t p2 = krc.line_match1[2] + krc.line_match1[3] * krc.cloud[sensor1]->width;
             if(krc.cloud[sensor1]->points[p2].z > 0.3f && krc.cloud[sensor1]->points[p2].z < 10.f)
             {

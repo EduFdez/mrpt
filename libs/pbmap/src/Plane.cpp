@@ -422,6 +422,27 @@ void Plane::computeParamsConvexHull()
     //    cout << "computeParams profiling " << (start_end - start_time)*1e6 << " us\n";
 }
 
+bool Plane::isInHull(const int index, const int im_width)
+{
+    cout << " Plane::isInHull " << index << " im_width " << im_width << std::endl;
+
+    Eigen::Vector2i normalLine; // This vector points inward the hull
+    Eigen::Vector2i r(index%im_width, index/im_width);
+    array<int,2> p1, p2 = {polygon_indices[0]%im_width, polygon_indices[0]/im_width};
+    for(size_t i=1; i < polygon_indices.size(); i++)
+    {
+        p1 = p2;
+        p2 = {polygon_indices[i]%im_width, polygon_indices[i]/im_width};
+        normalLine[0] = p1[0] - p2[0];
+        normalLine[1] = p2[1] - p1[0];
+        r[0] = r[0] - p2[0];
+        r[1] = r[1] - p2[1];
+        if( (r .dot( normalLine) ) < 0)
+            return false;
+    }
+    return true;
+}
+
 // The point cloud of the plane must be filled before using this function
 void Plane::getPlaneNrgb()
 {
@@ -707,9 +728,8 @@ float cross(const mPointHull &O, const mPointHull &A, const mPointHull &B)
     return (A.x - O.x) * (B.y - O.y) - (A.y - O.y) * (B.x - O.x);
 }
 
-///**!
-// * Calculate the plane's convex hull with the monotone chain algorithm.
-//*/
+
+// Calculate the plane's convex hull with the monotone chain algorithm.
 //void Plane::calcConvexHull(pcl::PointCloud<PointT>::Ptr &pointCloud)
 //{
 //  // Find axis with largest normal component and project onto perpendicular plane

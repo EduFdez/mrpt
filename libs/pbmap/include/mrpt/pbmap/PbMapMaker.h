@@ -77,16 +77,6 @@ namespace pbmap {
         /*!PCL viewer. It runs in a different thread.*/
         pcl::visualization::CloudViewer cloudViewer;
 
-        /*!Static function to compute a normal image from an organized point cloud.*/
-        static pcl::PointCloud<pcl::Normal>::Ptr computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor);
-
-        /*!Static function to segment planes from an organized point cloud.*/
-        static size_t segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
-                                    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions,
-                                    std::vector<pcl::ModelCoefficients> & model_coefficients,
-                                    std::vector<pcl::PointIndices> & inliers,
-                                    const float dist_threshold = 0.02, const float angle_threshold = 0.05f, const size_t min_inliers = 2e4);
-
     private:
 
         /*!Find planar patches in the input organised point cloud "pointCloudPtr_arg", and update the PbMap with them (it update previous planes and

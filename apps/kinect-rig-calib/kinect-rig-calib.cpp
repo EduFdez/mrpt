@@ -19,8 +19,9 @@
 #include "kinect-rig-calib.h"
 #include "kinect-rig-calib_misc.h"
 #include "kinect-rig-calib_display.h"
-#include <mrpt/pbmap/PbMapMaker.h>
+#include <mrpt/pbmap/PbMap.h>
 #include <mrpt/pbmap/colors.h>
+#include <mrpt/pbmap/DisplayCloudPbMap.h>
 #include <mrpt/obs/CRawlog.h>
 #include <mrpt/obs/CObservation3DRangeScan.h>
 #include <boost/thread/mutex.hpp>
@@ -80,7 +81,6 @@ void KinectRigCalib::loadConfiguration(const string & config_file)
     num_sensors = sensor_labels.size();
     Rt_estimated = vector<Eigen::Matrix<T,4,4> , Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > >(num_sensors, Eigen::Matrix<T,4,4>::Identity());
     rgbd_intrinsics = vector<mrpt::utils::TStereoCamera>(num_sensors);
-    mxmy.resize(num_sensors);
     init_poses = vector<CPose3D>(num_sensors);
     v_approx_trans = vector<double>(num_sensors);
     v_approx_rot = vector<double>(num_sensors);
@@ -89,11 +89,13 @@ void KinectRigCalib::loadConfiguration(const string & config_file)
     depth_reg.resize(num_sensors); // Depth image registered to RGB pose
     cloud.resize(num_sensors);
     v_pbmap.resize(num_sensors);
-//    v_lines.resize(num_sensors);
-//    v_lines3D.resize(num_sensors);
-
-//    std::fill(conditioning, conditioning+8, 9999.9);
-//    std::fill(covariances, covariances+8, Eigen::Matrix<T,3,3>::Zero());
+    if(s_type == LINES || s_type == PLANES_AND_LINES)
+    {
+        v_segments2D.resize(num_sensors);
+        v_segments3D.resize(num_sensors);
+        v_line_has3D.resize(num_sensors);
+        v_lines3D.resize(num_sensors);
+    }
 
     for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++) // Load the approximated init_poses of each sensor and the accuracy of such approximation
     {
@@ -109,14 +111,21 @@ void KinectRigCalib::loadConfiguration(const string & config_file)
                                 DEG2RAD( cfg.read_double(sensor_labels[sensor_id],"pose_pitch",0,true) ),
                                 DEG2RAD( cfg.read_double(sensor_labels[sensor_id],"pose_roll",0,true) ) );
         Rt_estimated[sensor_id] = init_poses[sensor_id].getHomogeneousMatrixVal();
-
         v_approx_trans[sensor_id] = cfg.read_double(sensor_labels[sensor_id],"approx_translation",0.f,true);
         v_approx_rot[sensor_id] = cfg.read_double(sensor_labels[sensor_id],"approx_rotation",0.f,true);
+
+        mm_conditioning[sensor_id] = std::map<size_t, double>;
+        mm_covariance[sensor_id] = std::map<size_t, Eigen::Matrix<T,3,3> >;
+        for(size_t sensor2=sensor_id+1; sensor2 < num_sensors; sensor2++)
+        {
+            mm_conditioning[sensor_id][sensor2] = 0.0;
+            mm_covariance[sensor_id][sensor2] = Eigen::Matrix<T,3,3>::Zero();
+        }
+
         cout << sensor_labels[sensor_id] << " v_approx_trans " << v_approx_trans[sensor_id] << " v_approx_rot " << v_approx_rot[sensor_id] << "\n" << init_poses[sensor_id] << endl;
         cout << Rt_estimated[sensor_id] << endl;
 
         rgbd_intrinsics[sensor_id].loadFromConfigFile(sensor_labels[sensor_id],cfg);
-        mxmy[sensor_id] = rgbd_intrinsics[sensor_id].rightCamera.intrinsicParams(0,0)/rgbd_intrinsics[sensor_id].rightCamera.intrinsicParams(1,1);
 //        string calib_path = mrpt::system::extractFileDirectory(rawlog_file) + "asus_" + std::to_string(sensor_id+1) + "/ini";
 //        mrpt::utils::CConfigFile calib_RGBD(calib_path);
 //        rgbd_intrinsics[sensor_id].loadFromConfigFile("CAMERA_PARAMS", calib_RGBD);
@@ -134,49 +143,21 @@ void KinectRigCalib::getCorrespondences()
         ExtrinsicCalibPlanes<T>::getCorrespondences(cloud);
 //    calib_planes.getCorrespondences(cloud);
     if(s_type == PLANES_AND_LINES || s_type == LINES)
-        ExtrinsicCalibLines<T>::getCorrespondences(rgb);
-//    calib_lines.getCorrespondences();
+        ExtrinsicCalibLines<T>::getCorrespondences(rgb, cloud);
+//    getCorrespondences();
 }
 
-void KinectRigCalib::calibrate()
+void KinectRigCalib::calibrate(const bool save_corresp)
 {
     if(s_type == PLANES_AND_LINES || s_type == PLANES)
     {
-        //          calib_planes.calcFisherInfMat();
-        calib_planes.CalibrateRotationManifold(1);
-        calib_planes.CalibrateTranslation(1);
-        //          calib_planes.CalibrateRotation();
+        ExtrinsicCalibPlanes::Calibrate();
 
-        //          if(conditioning < 100 & n_plane_corresp > 3)
-        //            calib_planes.CalibratePair();
-
-        //          if(conditioning < 50 & n_plane_corresp > 30)
-        //            bDoCalibration = true;
-
-        //cout << "run9\n";
-
-        //          while(v3D.b_confirm_visually == true)
-        //            boost::this_thread::sleep (boost::posix_time::milliseconds(10));
-
-
-        // Trim outliers
-        //trimOutliersRANSAC(calib_planes.correspondences, conditioningFIM);
-
-        float threshold_conditioning = 800.0;
-        if(conditioning < threshold_conditioning)
+        if( save_corresp )
         {
-            cout << "\tSave CorrespMat\n";
-            calib_planes.correspondences.saveToTextFile( mrpt::format("%s/correspondences.txt", output_dir.c_str()) );
-            conditioningFIM.saveToTextFile( mrpt::format("%s/conditioningFIM.txt", output_dir.c_str()) );
-
-            calib_planes.CalibratePair();
-
-            calib_planes.CalibrateRotationD();
-
-            calib_planes.setInitRt(initOffset);
-            calib_planes.CalibrateRotationManifold();
-            calib_planes.Rt_estimated.block(0,3,3,1) = calib_planes.CalibrateTranslation();
-            cout << "Rt_estimated \n" << calib_planes.Rt_estimated << endl;
+            cout << "\tSave Plane Correspondences\n";
+            planes.saveCorrespondences( output_dir.c_str(), "planes" );
+            //    conditioningFIM.saveToTextFile( mrpt::format("%s/conditioningFIM.txt", output_dir.c_str()) );
         }
     }
     if(s_type == PLANES_AND_LINES || s_type == LINES)
@@ -203,8 +184,6 @@ void KinectRigCalib::run()
     vector<mrpt::obs::CObservation3DRangeScanPtr> obsRGBD(num_sensors);  // The RGBD observation
     vector<bool> obs_sensor(num_sensors,false);
     vector<double> obs_sensor_time(num_sensors);
-//    std::vector<pcl::PointCloud<PointT>::Ptr> cloud(num_sensors);
-    calib_lines.v_lines.resize(num_sensors);
     vector<mrpt::vision::CUndistortMap> undist_rgb(num_sensors);
     vector<mrpt::vision::CUndistortMap> undist_depth(num_sensors);
     for(size_t i=0; i < num_sensors; i++)
@@ -223,12 +202,12 @@ void KinectRigCalib::run()
     cout << "initOffset\n" << initOffset << endl;
 
     // Get the plane and line correspondences
-    calib_planes = ExtrinsicCalibPlanes<T>(num_sensors);
-    calib_lines = ExtrinsicCalibLines<T>(num_sensors);
+//    calib_planes = ExtrinsicCalibPlanes<T>(num_sensors);
+//    calib_lines = ExtrinsicCalibLines<T>(num_sensors);
 
-    CMatrixDouble conditioningFIM(0,6);
-    Eigen::Matrix<T,3,3> FIMrot = Eigen::Matrix<T,3,3>::Zero();
-    Eigen::Matrix<T,3,3> FIMtrans = Eigen::Matrix<T,3,3>::Zero();
+//    CMatrixDouble conditioningFIM(0,6);
+//    Eigen::Matrix<T,3,3> FIMrot = Eigen::Matrix<T,3,3>::Zero();
+//    Eigen::Matrix<T,3,3> FIMtrans = Eigen::Matrix<T,3,3>::Zero();
 
 //    KinectRigCalib calib;
 //    KinectRigCalib_display v3D(calib);
@@ -289,17 +268,21 @@ void KinectRigCalib::run()
 
 
         // Get the rgb and depth images, and the point clouds
-        for(size_t i=0; i < num_sensors; i++)
+        for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
         {
-//            rgb[i] = cv::Mat(obsRGBD[i]->intensityImage.getAs<IplImage>());
-//            convertRange_mrpt2cvMat(obsRGBD[i]->rangeImage, depth[i]);
+//            rgb[sensor_id] = cv::Mat(obsRGBD[sensor_id]->intensityImage.getAs<IplImage>());
+//            convertRange_mrpt2cvMat(obsRGBD[sensor_id]->rangeImage, depth[sensor_id]);
             // With image rectification (to reduce radial distortion)
-            cv::Mat src(obsRGBD[i]->intensityImage.getAs<IplImage>());
-            undist_rgb[i].undistort(src, rgb[i]);
+            cv::Mat src(obsRGBD[sensor_id]->intensityImage.getAs<IplImage>());
+            undist_rgb[sensor_id].undistort(src, rgb[sensor_id]);
             cv::Mat raw_depth;
-            convertRange_mrpt2cvMat(obsRGBD[i]->rangeImage, raw_depth);
-            undist_depth[i].undistort(raw_depth, depth[i]);
-            cloud[i] = getPointCloudRegistered(rgb[i], depth[i], rgbd_intrinsics[i], depth_reg[i]);
+            convertRange_mrpt2cvMat(obsRGBD[sensor_id]->rangeImage, raw_depth);
+            undist_depth[sensor_id].undistort(raw_depth, depth[sensor_id]);
+            cloud[sensor_id] = getPointCloudRegistered(rgb[sensor_id], depth[sensor_id], rgbd_intrinsics[sensor_id], depth_reg[sensor_id]);
+//            pcl::visualization::CloudViewer viewer ("Simple Cloud Viewer");
+//            viewer.showCloud(cloud[sensor_id]);
+//            while (!viewer.wasStopped ())
+//                boost::this_thread::sleep (boost::posix_time::milliseconds (10));
         }
         int height = rgb[0].cols; // Note that the RGB-D camera is in a vertical configuration
         int width = rgb[0].rows;
@@ -340,6 +323,16 @@ void KinectRigCalib::run()
             cv::waitKey(0);
         }
 
+        //						Segment local planes
+        //==================================================================
+        // #pragma omp parallel num_threads(num_sensors)
+        for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
+        {
+            PbMap::pbMapFromPCloud(cloud[sensor_id], v_pbmap[sensor_id]);
+            DisplayCloudPbMap::displayAndPause(cloud[sensor_id], v_pbmap[sensor_id]);
+            PbMap::displayImagePbMap(cloud[sensor_id], rgb[sensor_id], v_pbmap[sensor_id]);
+        }
+
         //==============================================================================
         //								Get Correspondences
         //==============================================================================
@@ -354,7 +347,8 @@ void KinectRigCalib::run()
     }
 
     //========================== Perform calibration ===============================
-    calibrate();
+    bool save_corresp = true;
+    calibrate(save_corresp);
 }
 
 
@@ -369,7 +363,7 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
         //viz.setCameraPosition(0,0,-5,0,-0.707107,0.707107,1,0,0);
         b_viz_init = true;
     }
-    if( b_freeze || cloud.empty() || !cloud[0] || cloud[0]->empty())
+    if( b_freeze || cloud.empty() || !cloud[0] || cloud[0]->empty() )
     {
         boost::this_thread::sleep (boost::posix_time::milliseconds (10));
         return;
@@ -403,22 +397,44 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
                 viz.updatePointCloudPose(sensor_labels[sensor_id], Rt);
             }
 
+        // Draw match candidates
         if(b_confirm_visually)
         {
             // Draw a pair of candidate planes to match
             for(size_t i=0; i < 2; i++)
             {
-    //            mrpt::pbmap::Plane &plane_i = v_pbmap[sensor1].vPlanes[plane_candidate[i]];
+    //            mrpt::pbmap::Plane &plane_i = v_pbmap[sensor_pair[i]].vPlanes[plane_candidate[i]];
                 mrpt::pbmap::Plane &plane_i = all_planes.vPlanes[plane_candidate_all[i]];
-                sprintf (name, "mnormal_%u", static_cast<unsigned>(i));
+                sprintf (name, "m_normal_%u", static_cast<unsigned>(i));
                 pcl::PointXYZ pt1(plane_i.v3center[0], plane_i.v3center[1], plane_i.v3center[2]); // Begin and end points of normal's arrow for visualization
                 pcl::PointXYZ pt2(plane_i.v3center[0] + (0.3f * plane_i.v3normal[0]), plane_i.v3center[1] + (0.3f * plane_i.v3normal[1]), plane_i.v3center[2] + (0.3f * plane_i.v3normal[2]));
                 viz.addArrow (pt2, pt1, ared[i%10], agrn[i%10], ablu[i%10], false, name);
-                sprintf (name, "mplane_contour_%02d", int (sensor1));
+                sprintf (name, "m_plane_contour_%02d", int (sensor_pair[i]));
                 viz.addPolygon<PointT> (plane_i.polygonContourPtr, red[0], grn[0], blu[0], name);
-                sprintf (name, "minliers_%02d", int (sensor1));
+                sprintf (name, "m_inliers_%02d", int (sensor_pair[i]));
                 pcl::visualization::PointCloudColorHandlerCustom <PointT> color (plane_i.planePointCloudPtr, red[0], grn[0], blu[0]);
                 viz.addPointCloud (plane_i.planePointCloudPtr, color, name);
+            }
+
+            // Draw a pair of candidate lines to match
+            for(size_t i=0; i < 2; i++)
+            {
+//                if(v_line_has3D[sensor_pair[i]][line_candidate[i]])
+                {
+                    vector<mrpt::math::TLine3D> & seg3D = v_segments3D[sensor_pair[i]][line_candidate[i]];
+
+                    pcl::PointXYZ pt1(seg3D[0], seg3D[1], seg3D[2]);
+                    pcl::PointXYZ pt2(seg3D[3], seg3D[4], seg3D[5]);
+                    sprintf (name, "m_line_%lu_%u", sensor_pair[i], static_cast<unsigned>(i));
+                    viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], name);
+    //                viz.removeShape("line");
+    //                viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], "line");
+
+                    viz.removeShape("pt1");
+                    viz.addSphere<PointT>(pt1, 0.02, ared[i%10], agrn[i%10], ablu[i%10], "sp1");
+                    viz.removeShape("pt2");
+                    viz.addSphere<PointT>(pt2, 0.02, ared[i%10], agrn[i%10], ablu[i%10], "sp2");
+                }
             }
         }
 
@@ -461,18 +477,17 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
         }
 
         // Draw lines
-        size_t sensor1 = 0;
-        vector<mrpt::math::TLine3D> &lines = v_lines3D[sensor1];
+        vector<mrpt::math::TLine3D> &seg3D = v_segments3D[sensor1];
         for(size_t i=0; i < lines.size(); i++)
         {
-            pcl::PointXYZ pt1(lines[i][0], lines[i][1], lines[i][2]);
-            pcl::PointXYZ pt2(lines[i][3], lines[i][4], lines[i][5]);
+            pcl::PointXYZ pt1(seg3D[0], seg3D[1], seg3D[2]);
+            pcl::PointXYZ pt2(seg3D[3], seg3D[4], seg3D[5]);
             sprintf (name, "line_%lu_%u", sensor1, static_cast<unsigned>(i));
             //viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], name);
             viz.removeShape("line");
             viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], "line");
 
-//                size_t p1 = v_lines[sensor1][i][0] + v_lines[sensor1][i][1] * cloud[sensor1]->width;
+//                size_t p1 = v_segments2D[sensor1][i][0] + v_segments2D[sensor1][i][1] * cloud[sensor1]->width;
             size_t p1 = line_match1[0] + line_match1[1] * cloud[sensor1]->width;
             if(cloud[sensor1]->points[p1].z > 0.3f && cloud[sensor1]->points[p1].z < 10.f)
             {
@@ -485,7 +500,7 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
 //                    circle_coeff.values[2] = radius;
 //                    viz.addCircle<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], "line");
             }
-//                size_t p2 = v_lines[sensor1][i][2] + v_lines[sensor1][i][3] * cloud[sensor1]->width;
+//                size_t p2 = v_segments2D[sensor1][i][2] + v_segments2D[sensor1][i][3] * cloud[sensor1]->width;
             size_t p2 = line_match1[2] + line_match1[3] * cloud[sensor1]->width;
             if(cloud[sensor1]->points[p2].z > 0.3f && cloud[sensor1]->points[p2].z < 10.f)
             {

@@ -46,11 +46,14 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib<T>
   private:
     using ExtrinsicCalib<T>::num_sensors;
     using ExtrinsicCalib<T>::Rt_estimated;
+    using ExtrinsicCalib<T>::mm_conditioning;
+    using ExtrinsicCalib<T>::mm_covariance;
+//    using ExtrinsicCalib<T>::calcConditioningPair(const size_t, const size_t);
 
     /*! Indices of the candidate correspondences */
-    size_t plane_candidate[2];
-    size_t plane_candidate_all[2];
-    map<unsigned, unsigned> plane_corresp;
+    std::array<size_t,2> plane_candidate;
+    std::array<size_t,2> plane_candidate_all;
+    std::map<unsigned, unsigned> plane_corresp;
 
   public:
 
@@ -60,17 +63,11 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib<T>
     /*! The plane correspondences between the different sensors */
     PlaneCorresp<T> planes;
 
-    /*! The plane correspondences between the different sensors */
-    std::map<size_t, std::map<size_t, mrpt::math::CMatrixDouble> > mm_corresp;
-
     /*! Whether to visually check or not every proposed correspondence */
     bool b_confirm_visually;
 
     /*! Return value of visual confirmation */
     int confirmed_corresp; // {0: waiting for confirmation, 1: confirmation true, -1: confirmation false (do not use this corresp)}
-
-    /*! Number of plane correspondences */
-    size_t n_plane_corresp;
 
     /*! Constructor */
     ExtrinsicCalibPlanes() : b_confirm_visually(false)
@@ -85,21 +82,23 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib<T>
     void getCorrespondences(const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
 
     /*! Calculate the angular error of the plane correspondences.*/
-    double calcCorrespRotError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt);
+    double calcRotationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,3,3> & Rot1, const Eigen::Matrix<T,3,3> & Rot2, bool average_deg = false);
 
-    /*! \overload Calculate the angular error of the plane correspondences.*/
-    inline double calcCorrespRotError() { return calcCorrespRotError(Rt_estimated); }
-
-    //    float calcCorrespTransError(Eigen::Matrix<T,3,3> &Rot_)
-
-    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-    inline Eigen::Matrix<T,3,1> calcScoreRotation(Eigen::Matrix<T,3,1> &n1, Eigen::Matrix<T,3,1> &n2)
+    /*! Calculate the angular error of the plane correspondences.*/
+    inline double calcRotationErrorPair(const size_t sensor1, const size_t sensor2, bool average_deg = false)
     {
-        Eigen::Matrix<T,3,1> n2_ref1 = Rt_estimated.block(0,0,3,3)*n2;
-        Eigen::Matrix<T,3,1> score = - skew(n2_ref1) * n1;
-
-        return score;
+        return calcRotationErrorPair( planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0) );
     }
+
+    /*! Calculate the angular error of the plane correspondences.*/
+    double calcRotationError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt, bool average_deg = false);
+
+//    /*! \overload Calculate the angular error of the plane correspondences.*/
+//    inline double calcRotationError() { return calcRotationError(Rt_estimated); }
+
+    double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool average_m = false);
+
+    double calcTranslationError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt, bool average_m = false);
 
     /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
     inline Eigen::Matrix<T,3,1> calcScoreTranslation(Eigen::Matrix<T,3,1> &n1, float &d1, float &d2)
@@ -109,31 +108,25 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib<T>
     }
 
     /*! Calculate the Fisher Information Matrix (FIM) of the rotation estimate. */
-    Eigen::Matrix<T,3,3> calcFIMRotation(const mrpt::math::CMatrixDouble & correspondences);
+    Eigen::Matrix<T,3,3> calcRotationFIM(const mrpt::math::CMatrixDouble & correspondences);
 
     /*! Calculate the Fisher Information Matrix (FIM) of the translation estimate. */
-    Eigen::Matrix<T,3,3> calcFIMTranslation();
+    Eigen::Matrix<T,3,3> calcTranslationFIM();
 
     //    Eigen::Matrix<T,3,3> calcFisherInfMat(const int weightedLS = 0)
 
-    /*! Calibrate the relative rotation of the pair. */
-    Eigen::Matrix<T,3,3> CalibrateRotation(int weightedLS = 0);
+    /*! Calibrate the relative rotation between the pair of sensors. Closed form solution. */
+    Eigen::Matrix<T,3,3> CalibrateRotationPair(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);
 
-    /*! \overload Calibrate the relative rotation of the pair (double precision). */
-    Eigen::Matrix<T,3,3> CalibrateRotationD(int weightedLS = 0);
+    /*! Calibrate the relative translation between the pair of sensors. Closed form solution (linear LS). */
+    Eigen::Matrix<T,3,1> CalibrateTranslationPair(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);
 
-    /*! Calibrate the relative rotation of the pair iteratively on a manifold formulation. */
-    Eigen::Matrix<T,3,3> CalibrateRotationManifold(int weightedLS = 0);
+    /*! Get the rotation of each sensor in a multisensor setup. The first sensor (sensor_id=0) is taken as reference. */
+    void CalibrateRotationManifold(const bool weight_uncertainty = false);
 
-    /*! Calibrate the relative translation of the pair. */
-    Eigen::Matrix<T,3,1> CalibrateTranslation(int weightedLS = 0);
+    /*! Get the rotation of each sensor in a multisensor setup. The first sensor (sensor_id=0) is taken as reference. */
+    void CalibrateTranslation(const bool weight_uncertainty = false);
 
     /*! Calibrate the relative rigid transformation (Rt) of the pair. */
     void Calibrate();
-
-    /*! Print the number of correspondences and the conditioning number to the standard output */
-    void printConditioning();
-
-    /*! Calculate adjacent conditioning (information between a pair of adjacent sensors) */
-    void calcAdjacentConditioning(unsigned couple_id);
 };

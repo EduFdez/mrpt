@@ -16,6 +16,8 @@
  *  These are analogous to the control points used to create panoramic images with a regular camera) from a sequence of RGBD360 observations.
  *  These permit to find the extrinsic calibration between RGB-D sensors like Asus XPL.
  *
+ *  Each plane correspondence is stored as a new row in mm_corresp, with 8 columns (4 paramenters for each plane {n,d} in that order).
+ *
  *  \ingroup calib_group
  */
 class PlaneCorresp : public FeatCorresp

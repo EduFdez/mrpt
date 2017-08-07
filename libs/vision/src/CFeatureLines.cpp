@@ -72,7 +72,6 @@ void CFeatureLines::extractLines_CannyHough( const cv::Mat & canny_image,
                                              std::vector<cv::Vec4i> & segments,
                                              unsigned int threshold )
 {
-
     // Some variables to change the coordinate system from polar to cartesian
     double rho, theta;
     double cosTheta, sinTheta;

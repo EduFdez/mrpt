@@ -25,6 +25,7 @@
 #include <mrpt/pbmap/Miscellaneous.h>  // For typedef PointT;
 #include <pcl/segmentation/organized_multi_plane_segmentation.h>
 //#include <boost/thread/thread.hpp>
+#include <opencv2/core/core.hpp>
 
 namespace mrpt {
     namespace pbmap {
@@ -65,18 +66,23 @@ namespace mrpt {
             pcl::PointCloud<pcl::PointXYZRGBA>::Ptr outEdgeCloudPtr;
             unsigned background, foreground, groundplane;
 
-            /*!Compute the image of surface normal vectors from a range image (point cloud). */
+            /*!Static function to compute a normal image from an organized point cloud.*/
             static pcl::PointCloud<pcl::Normal>::Ptr computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor);
 
-            /*!This function segments 3D planar regions from the point cloud */
+            /*!Static function to segment planes from an organized point cloud.*/
             static size_t segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
-                                        std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions, std::vector<pcl::ModelCoefficients> & model_coefficients, std::vector<pcl::PointIndices> & inliers,
-                                        const float dist_threshold = 0.02f, const float angle_threshold = 0.05f, const size_t min_inliers = 2e4); // Plane segmentation parameters
+                                        std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions,
+                                        std::vector<pcl::ModelCoefficients> & model_coefficients,
+                                        std::vector<pcl::PointIndices> & inliers,
+                                        std::vector<pcl::PointIndices> & boundary_indices,
+                                        const float dist_threshold = 0.02, const float angle_threshold = 0.05f, const size_t min_inliers = 2e4);
 
             /*!This function extracts a PbMap from the given point cloud */
-            static void pbMapFromPCloud(pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pbmap::PbMap & pbmap,
+            static void pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pbmap::PbMap & pbmap,
                                         const float dist_threshold = 0.02f, const float angle_threshold = 0.05f, const size_t min_inliers = 2e4, const float max_curvature_plane = 0.0013f);
 
+            /*!This function displays the PbMap extracted from an organized point_cloud (corresponding to the rgb image) */
+            static void displayImagePbMap(const pcl::PointCloud<PointT>::Ptr & point_cloud, const cv::Mat & rgb, const PbMap & pbmap);
 
             /*!Save PbMap in the given filePath*/
             void savePbMap(std::string filePath);

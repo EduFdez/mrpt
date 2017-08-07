@@ -1,5 +1,5 @@
 
-# This library is especial: it *really* needs PCL, so don't even declare it if we don't have PCL:
+# This library is special: it *really* needs PCL, so don't even declare it if we don't have PCL:
 IF(CMAKE_MRPT_HAS_PCL)
 
 	#---------------------------------------------

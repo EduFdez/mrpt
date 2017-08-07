@@ -30,15 +30,16 @@ class FeatCorresp
     std::map<size_t, std::map<size_t, mrpt::math::CMatrixDouble> > mm_corresp;
 
     /*! Constructor */
-    FeatCorresp(size_t sensors = 2);
+    FeatCorresp(size_t sensors = 2) : n_sensors(sensors) {}
+
     /*! Destructor */
     virtual ~FeatCorresp(){};
 
     /*! Load the plane correspondences between the different Asus sensors from file */
-    void saveCorrespondences(const std::string & dir);
+    void saveCorrespondences(const std::string & dir, const std::string name = "");
 
     /*! Load the plane correspondences between the different Asus sensors from file */
-    void loadCorrespondences(const std::string dir);
+    void loadCorrespondences(const std::string dir, const std::string name = "");
 
     /*! Load the plane correspondences between a pair of Asus sensors from file */
     mrpt::math::CMatrixDouble loadCorrespondencesPair(const std::string file);

@@ -11,15 +11,13 @@
 
 using namespace std;
 
-LineCorresp::LineCorresp(size_t sensors) :
-    n_sensors(sensors)
+LineCorresp::LineCorresp(size_t sensors) : FeatCorresp(sensors)
 {
-    std::cout << "LineCorresp... n_sensors_ " << n_sensors_ << std::endl;
-    for(unsigned sensor_id1=0; sensor_id1 < n_sensors_; sensor_id1++)
+    std::cout << "LineCorresp... n_sensors " << n_sensors << std::endl;
+    for(size_t sensor1=0; sensor1 < n_sensors; sensor1++)
     {
-        mm_corresp[sensor_id1] = std::map<unsigned, mrpt::math::CMatrixDouble>();
-        for(unsigned sensor_id2=sensor_id1+1; sensor_id2 < n_sensors_; sensor_id2++)
-            mm_corresp[sensor_id1][sensor_id2] = mrpt::math::CMatrixDouble(0, 10);
+        mm_corresp[sensor1] = std::map<size_t, mrpt::math::CMatrixDouble>();
+        for(size_t sensor2=sensor1+1; sensor2 < n_sensors; sensor2++)
+            mm_corresp[sensor1][sensor2] = mrpt::math::CMatrixDouble(0, 10);
     }
-
 }

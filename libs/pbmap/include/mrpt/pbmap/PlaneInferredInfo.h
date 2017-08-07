@@ -21,7 +21,6 @@
 #include <mrpt/utils/utils_defs.h>
 
 #include <mrpt/pbmap/PbMap.h>
-#include <mrpt/pbmap/Plane.h>
 
 namespace mrpt {
 namespace pbmap {

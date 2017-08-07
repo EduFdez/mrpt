@@ -56,6 +56,8 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
 {
     using ExtrinsicCalib<T>::num_sensors;
     using ExtrinsicCalib<T>::Rt_estimated;
+    using ExtrinsicCalib<T>::mm_conditioning;
+    using ExtrinsicCalib<T>::mm_covariance;
 
     /*! Visualization elements */
     pcl::visualization::CloudViewer viewer;
@@ -68,9 +70,6 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
     void viz_cb (pcl::visualization::PCLVisualizer& viz);
 
     void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event, void* viewer_void);
-
-    /*! Indices of the pair of sensors being evaluated */
-    size_t sensor1, sensor2;
 
   public:
 
@@ -88,7 +87,6 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
     // Sensor parameters
     std::vector<std::string> sensor_labels;
     std::vector<mrpt::utils::TStereoCamera> rgbd_intrinsics;
-    std::vector<double> mxmy; // pixel relation (fx=mx*f; fy=my*f)
     std::vector<mrpt::poses::CPose3D> init_poses;
     double max_diff_sync;
 
@@ -125,34 +123,11 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
     /*! Load a config which indicates the system to calibrate: input rawlog dataset, initial poses with uncertainty, plus other parameters. */
     void loadConfiguration(const std::string & config_file);
 
-    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-    inline void setInitRt(const std::string Rt_file, const size_t sensor_id = 1)
-    {
-        if( !mrpt::system::fileExists(Rt_file) || sensor_id >= calib.Rt_estimated.size() )
-            throw std::runtime_error("\nERROR...");
-
-        calib.Rt_estimated[sensor_id].loadFromTextFile(Rt_file);
-    }
-
-    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-    inline void setInitRt(Eigen::Matrix<T,4,4> initRt, const size_t sensor_id = 1)
-    {
-        if( sensor_id >= calib.Rt_estimated.size() )
-            throw std::runtime_error("\nERROR...");
-
-        calib.Rt_estimated[sensor_id] = initRt;
-    }
-
-//    void trimOutliersRANSAC(mrpt::math::CMatrixDouble &matched_planes, mrpt::math::CMatrixDouble &FIM_values);
-
-    /*! Load a config which indicates the system to calibrate: input rawlog dataset, initial poses with uncertainty, plus other parameters. */
-    void loadConfiguration(const std::string & config_file);
-
     /*! Extract plane and/or line correspondences to estimate the calibration. */
     void getCorrespondences();
 
     /*! Perform the calibration from plane and/or line correspondences. */
-    void calibrate();
+    void calibrate(const bool save_corresp = true);
 
     /*! This function encapsulates the main functionality of the calibration process:
      *  parse the dataset to find geometric correspondences between the sensors, and estimate the calibration */

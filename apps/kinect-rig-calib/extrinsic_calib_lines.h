@@ -53,17 +53,19 @@ private:
 
     using ExtrinsicCalib<T>::num_sensors;
     using ExtrinsicCalib<T>::Rt_estimated;
+
     size_t min_pixels_line;
-    std::vector<std::vector<cv::Vec4i> > v_lines;
+    std::vector< std::vector<cv::Vec4i> > v_segments2D;
     cv::Vec4i line_match1;
     cv::Vec4i line_match2;
-//    mrpt::math::TLine3D line3D_match1;
-//    mrpt::math::TLine3D line3D_match2;
+    std::vector< std::vector<Eigen::Vector3f> > v_segment_n; // The normal vector to the plane containing the 2D line segment and the optical center
     std::vector< std::vector<mrpt::math::TLine3D> > v_lines3D;
+    std::vector< std::vector<Eigen::Matrix<T,6,1> > > v_segments3D;
+    std::vector< std::vector<bool> > v_line_has3D;
 
     /*! Indices of the candidate correspondences */
-    size_t line_candidate[2];
-    map<unsigned, unsigned> line_corresp;
+    std::array<size_t,2> line_candidate;
+//    std::map<unsigned, unsigned> line_corresp;
 
 public:
 
@@ -94,49 +96,31 @@ public:
 //            std::vector<Eigen::Matrix3f, Eigen::aligned_allocator<Eigen::Matrix3f> > covariances;
     }
 
+    /*! Extract 3D lines from 2D segments in a RGB-D image.*/
+    static void getSegments3D(const TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const vector<cv::Vec4i> & segments2D,
+                              const std::vector<Eigen::Vector3f> & segments_n, vector<Matrix<T,6,1> > & segments3D, vector<bool> & line_has3D);
+
     /*! Extract line correspondences between the different sensors.*/
-    void getCorrespondences(const std::vector<cv::Mat> & rgb);
+    void getCorrespondences(const std::vector<cv::Mat> & rgb, const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
 
     /*! Calculate the angular error of the plane correspondences.*/
-    float calcCorrespRotError(Eigen::Matrix3f &Rot_);
+    float calcRotationError(Eigen::Matrix3f &Rot_);
 
     /*! \overload Calculate the angular error of the plane correspondences.*/
-    inline float calcCorrespRotError(Eigen::Matrix4f &Rt_)
+    inline float calcRotationError(Eigen::Matrix4f &Rt_)
     {
         Eigen::Matrix3f R = Rt_.block(0,0,3,3);
-        return calcCorrespRotError(R);
+        return calcRotationError(R);
     }
 
     /*! \overload Calculate the angular error of the plane correspondences.*/
-    inline float calcCorrespRotError()
+    inline float calcRotationError()
     {
         Eigen::Matrix3f R = Rt_estimated.block(0,0,3,3);
-        return calcCorrespRotError(R);
+        return calcRotationError(R);
     }
 
     //    float calcCorrespTransError(Eigen::Matrix3f &Rot_)
-
-    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-    inline Eigen::Vector3f calcScoreRotation(Eigen::Vector3f &n1, Eigen::Vector3f &n2)
-    {
-        Eigen::Vector3f n2_ref1 = Rt_estimated.block(0,0,3,3)*n2;
-        Eigen::Vector3f score = - skew(n2_ref1) * n1;
-
-        return score;
-    }
-
-    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
-    inline Eigen::Vector3f calcScoreTranslation(Eigen::Vector3f &n1, float &d1, float &d2)
-    {
-        Eigen::Vector3f score = (d1 - d2) * n1;
-        return score;
-    }
-
-    /*! Calculate the Fisher Information Matrix (FIM) of the rotation estimate. */
-    Eigen::Matrix3f calcFIMRotation();
-
-    /*! Calculate the Fisher Information Matrix (FIM) of the translation estimate. */
-    Eigen::Matrix3f calcFIMTranslation();
 
     //    Eigen::Matrix3f calcFisherInfMat(const int weightedLS = 0)
 
@@ -154,11 +138,5 @@ public:
 
     /*! Calibrate the relative rigid transformation (Rt) of the pair. */
     void CalibratePair();
-
-    /*! Print the number of correspondences and the conditioning number to the standard output */
-    void printConditioning();
-
-    /*! Calculate adjacent conditioning (information between a pair of adjacent sensors) */
-    void calcAdjacentConditioning(unsigned couple_id);
 
 };

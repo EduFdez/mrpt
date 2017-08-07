@@ -13,14 +13,17 @@
  */
 #include "pbmap-precomp.h"  // Precompiled headers
 
-#include <mrpt/pbmap.h>
-#include <mrpt/utils/CStream.h>
+#include <mrpt/pbmap/PbMap.h>
+#include <mrpt/pbmap/colors.h>
+#include <mrpt/utils/CFileGZInputStream.h>
+#include <mrpt/utils/CFileGZOutputStream.h>
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/features/integral_image_normal.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/fast_bilateral.h>
+#include <opencv2/highgui/highgui.hpp>
 
 using namespace std;
 using namespace mrpt::utils;
@@ -122,8 +125,11 @@ pcl::PointCloud<pcl::Normal>::Ptr PbMap::computeImgNormal(const pcl::PointCloud<
 }
 
 size_t PbMap::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
-                    vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions, std::vector<pcl::ModelCoefficients> & model_coefficients, std::vector<pcl::PointIndices> & inliers,
-                    const float dist_threshold, const float angle_threshold, const size_t min_inliers)
+                            vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions,
+                            std::vector<pcl::ModelCoefficients> & model_coefficients,
+                            std::vector<pcl::PointIndices> & inliers,
+                            std::vector<pcl::PointIndices> & boundary_indices,
+                            const float dist_threshold, const float angle_threshold, const size_t min_inliers)
 {
     pcl::PointCloud<PointT>::Ptr cloud_filtered = cloud;
 //    ImgRGBD_3D::fastBilateralFilter(cloud, cloud_filtered, 30, 0.5);
@@ -142,7 +148,7 @@ size_t PbMap::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
 //    std::vector<pcl::PointIndices> inliers;
     pcl::PointCloud<pcl::Label>::Ptr labels (new pcl::PointCloud<pcl::Label>);
     std::vector<pcl::PointIndices> label_indices;
-    std::vector<pcl::PointIndices> boundary_indices;
+//    std::vector<pcl::PointIndices> boundary_indices;
     mps.segmentAndRefine(regions, model_coefficients, inliers, labels, label_indices, boundary_indices);
     size_t n_regions = regions.size();
 
@@ -150,30 +156,31 @@ size_t PbMap::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
 }
 
 /*! This function segments planes from the point cloud */
-void PbMap::pbMapFromPCloud(pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pbmap::PbMap & pbmap,
+void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pbmap::PbMap & pbmap,
                             const float dist_threshold, const float angle_threshold, const size_t min_inliers, const float max_curvature_plane)
 {
     // Downsample and filter point cloud
     //      DownsampleRGBD downsampler(2);
 //      pcl::PointCloud<pcl::PointXYZRGBA>::Ptr downsampledCloud = downsampler.downsamplePointCloud(point_cloud);
 //      cloudImg.setPointCloud(downsampler.downsamplePointCloud(point_cloud));
+    pcl::PointCloud<PointT>::Ptr cloud_filtered(new pcl::PointCloud<PointT>);
     pcl::FastBilateralFilter<pcl::PointXYZRGBA> filter;
     filter.setSigmaS (10.0);
     filter.setSigmaR (0.05);
     filter.setInputCloud(point_cloud);
-    filter.filter(*point_cloud);
+    filter.filter(*cloud_filtered);
 
     // Segment planes
     std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
     std::vector<pcl::ModelCoefficients> model_coefficients;
     std::vector<pcl::PointIndices> inliers;
-    size_t n_planes = segmentPlanes(point_cloud, regions, model_coefficients, inliers, dist_threshold, angle_threshold, min_inliers);
+    std::vector<pcl::PointIndices> boundary_indices;
+    size_t n_planes = segmentPlanes(cloud_filtered, regions, model_coefficients, inliers, boundary_indices, dist_threshold, angle_threshold, min_inliers);
     cout << " number of planes " << n_planes << " cloud size " << point_cloud->size() << "\n";
-
-    pbmap.vPlanes.clear();
 
     // Create a vector with the planes detected in this keyframe, and calculate their parameters (normal, center, pointclouds, etc.)
     cout << "cloud_size " << point_cloud->size() << "\n";
+    pbmap.vPlanes.clear();
     for (size_t i = 0; i < regions.size (); i++)
     {
         mrpt::pbmap::Plane plane;
@@ -233,13 +240,14 @@ void PbMap::pbMapFromPCloud(pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pb
         //
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr contourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>);
         contourPtr->points = regions[i].getContour();
-//            std::vector<size_t> indices_hull;
+        cout << "PbMap::pbMapFromPCloud regions[i].getContour() size " << contourPtr->points.size() << " vs " << boundary_indices[i].indices.size() << endl;
+        std::vector<int> indices_hull;
 
 //            cout << "Extract contour\n";
         if(contourPtr->size() != 0)
         {
             //      cout << "Extract contour2 " << contourPtr->size() << "\n";
-            plane.calcConvexHull(contourPtr);
+            plane.calcConvexHull(contourPtr, indices_hull);
         }
         else
         {
@@ -249,8 +257,12 @@ void PbMap::pbMapFromPCloud(pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pb
             plane_grid.setLeafSize(0.05,0.05,0.05);
             plane_grid.setInputCloud (plane.planePointCloudPtr);
             plane_grid.filter (*contourPtr);
-            plane.calcConvexHull(contourPtr);
+            plane.calcConvexHull(contourPtr, indices_hull);
         }
+        plane.polygon_indices.resize(indices_hull.size());
+        for (size_t j = 0; j < indices_hull.size (); j++)
+            plane.polygon_indices[j] = boundary_indices[i].indices[indices_hull[j]];
+
 
         //        plane.calcConvexHull(contourPtr);
         //      cout << "calcConvexHull\n";
@@ -287,8 +299,51 @@ void PbMap::pbMapFromPCloud(pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pb
             pbmap.vPlanes.push_back(plane);
         }
     }
+
     //double extractPlanes_end = pcl::getTime();
     //std::cout << "PlaneFeatures::pbMapFromPCloud in " << (extractPlanes_end - extractPlanes_start)*1000 << " ms\n";
+}
+
+void PbMap::displayImagePbMap(const pcl::PointCloud<PointT>::Ptr & point_cloud, const cv::Mat & rgb, const PbMap & pbmap)
+{
+    cout << " PbMap::displayImagePbMap... " << point_cloud->width << " pbmap " << pbmap.vPlanes.size() << std::endl;
+
+    if(pbmap.vPlanes.empty())
+    {
+        cout << "PbMap::displayImagePbMap: pbmap is empty -> do not display\n\n";
+        return;
+    }
+
+    cv::Mat img_regions = rgb.clone();
+    if( rgb.empty() )
+        img_regions = cv::Mat(point_cloud->height, point_cloud->width, CV_8UC3, cv::Scalar(0,0,0));
+    else
+        cv::imshow( "rgb", rgb );
+
+    // Color the planar regions
+    cv::Vec3b * pixel = reinterpret_cast<cv::Vec3b*>(img_regions.data);
+    for(size_t i=0; i < pbmap.vPlanes.size(); i++)
+    {
+        const cv::Vec3b color = cv::Vec3b(blu[i%10], grn[i%10], red[i%10]);
+        for(size_t j=0; j < pbmap.vPlanes[i].inliers.size(); j++)
+            pixel[pbmap.vPlanes[i].inliers[j]] = color;
+
+        // Draw the polygonal contour of the planar regions
+        cout << i << " polygon_indices ";
+        for (auto& k: pbmap.vPlanes[i].polygon_indices)
+            cout << k << " ";
+        for(size_t j=0; j < pbmap.vPlanes[i].polygon_indices.size()-1; j++)
+        {
+            int x1 = pbmap.vPlanes[i].polygon_indices[j] % img_regions.cols;
+            int y1 = pbmap.vPlanes[i].polygon_indices[j] / img_regions.cols;
+            int x2 = pbmap.vPlanes[i].polygon_indices[j+1] % img_regions.cols;
+            int y2 = pbmap.vPlanes[i].polygon_indices[j+1] / img_regions.cols;
+            cv::line(img_regions, cv::Point(x1,y1), cv::Point(x2,y2), cv::Scalar(color[0],color[1],color[2]), 2);
+        }
+    }
+
+    cv::imshow( "displayRegions", img_regions );
+    cv::waitKey(0);
 }
 
 void PbMap::savePbMap(string filePath)

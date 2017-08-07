@@ -71,16 +71,14 @@ namespace pbmap {
 
         void forcePtsLayOnPlane(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & inliers);
 
-        /**!
-         * Calculate the plane's convex hull with the monotone chain algorithm.
-        */
-        //    void calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud );
+        /** \brief Calculate the plane's convex hull with the monotone chain algorithm (https://en.wikibooks.org/wiki/Algorithm_Implementation/Geometry/Convex_hull/Monotone_chain).
+          * \param[in] pointCloud of the segmented plane (or its contour region)
+          * \param[out] indices of the polygon vertex in pointCloud          */
         void calcConvexHull(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr &pointCloud, std::vector<int> &indices = DEFAULT_VECTOR );
 
         /** \brief Compute the convex hull of the planar patch and the plane parameters (centroid, elongation,...)
-          * \param[in] pointCloud plane segmentation
-          * \param[out] indices the plane normal
-          */
+          * \param[in] pointCloud of the segmented plane (or its contour region)
+          * \param[out] indices of the polygon vertex in pointCloud          */
         void calcConvexHullandParams(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr & pointCloud, std::vector<int> &indices = DEFAULT_VECTOR );
 
         /** \brief Compute the area of a 2D planar polygon patch - using a given normal   */
@@ -138,9 +136,7 @@ namespace pbmap {
         std::string label_object;
         std::string label_context;
 
-        /**!
-         *  Geometric description
-        */
+        /**! Geometric description */ // Plane equation: n*p+d =  0
         Eigen::Vector3f v3center;
         Eigen::Vector3f v3normal;
         float d;
@@ -155,9 +151,7 @@ namespace pbmap {
         bool bFromStructure;
         unsigned nFramesAreaIsStable;
 
-        /**!
-         *  Radiometric description
-        */
+        /**! Radiometric description */
         Eigen::Vector3f v3colorNrgb;
         float dominantIntensity;
         bool bDominantColor;
@@ -173,14 +167,14 @@ namespace pbmap {
         std::vector<float> prog_intensity;
         std::vector<std::vector<float> > prog_hist_H;
 
-        /**!
-         *  Convex Hull
-        */
+        /**!  Convex Hull */
         //    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr contourPtr;
         std::vector<int32_t> inliers;
+        std::vector<int32_t> polygon_indices;
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr polygonContourPtr;
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr outerPolygonPtr; // This is going to be deprecated
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr planePointCloudPtr; // This is going to be deprecated
+        bool isInHull(const int index, const int im_width);
 
         /*!
          * Calculate plane's main color using "MeanShift" method

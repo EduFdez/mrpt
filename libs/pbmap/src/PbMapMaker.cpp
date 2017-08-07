@@ -175,54 +175,6 @@ PbMapMaker::~PbMapMaker()
 }
 
 
-pcl::PointCloud<pcl::Normal>::Ptr PbMapMaker::computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor)
-{
-    //ImgRGBD_3D::fastBilateralFilter(cloud, cloud);
-
-    pcl::IntegralImageNormalEstimation<PointT, pcl::Normal> ne;
-    ne.setNormalEstimationMethod(ne.COVARIANCE_MATRIX);
-    //ne.setNormalEstimationMethod(ne.SIMPLE_3D_GRADIENT);
-    //ne.setNormalEstimationMethod(ne.AVERAGE_DEPTH_CHANGE);
-    //ne.setNormalEstimationMethod(ne.AVERAGE_3D_GRADIENT);
-    ne.setMaxDepthChangeFactor(depth_thres); // For VGA: 0.02f, 10.0f
-    ne.setNormalSmoothingSize(smooth_factor);
-    ne.setDepthDependentSmoothing(true);
-
-    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud(new pcl::PointCloud<pcl::Normal>);
-    ne.setInputCloud(cloud);
-    ne.compute(*normal_cloud);
-    return normal_cloud;
-}
-
-size_t PbMapMaker::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
-                                vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > & regions, std::vector<pcl::ModelCoefficients> & model_coefficients, std::vector<pcl::PointIndices> & inliers,
-                                const float dist_threshold, const float angle_threshold, const size_t min_inliers)
-{
-    pcl::PointCloud<PointT>::Ptr cloud_filtered = cloud;
-//    ImgRGBD_3D::fastBilateralFilter(cloud, cloud_filtered, 30, 0.5);
-//    computeImgNormal(cloud_filtered);
-    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud = computeImgNormal(cloud_filtered, 0.02f, 10.0f);
-
-    pcl::OrganizedMultiPlaneSegmentation<PointT, pcl::Normal, pcl::Label> mps;
-    mps.setMinInliers(min_inliers);
-    mps.setAngularThreshold(angle_threshold); // (0.017453 * 2.0) // 3 degrees
-    mps.setDistanceThreshold(dist_threshold); //2cm
-    mps.setInputNormals(normal_cloud);
-    mps.setInputCloud(cloud_filtered);
-
-//    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
-//    std::vector<pcl::ModelCoefficients> model_coefficients;
-//    std::vector<pcl::PointIndices> inliers;
-    pcl::PointCloud<pcl::Label>::Ptr labels (new pcl::PointCloud<pcl::Label>);
-    std::vector<pcl::PointIndices> label_indices;
-    std::vector<pcl::PointIndices> boundary_indices;
-    mps.segmentAndRefine(regions, model_coefficients, inliers, labels, label_indices, boundary_indices);
-    size_t n_regions = regions.size();
-
-    return n_regions;
-}
-
-
 void PbMapMaker::serializePbMap(string path)
 {
     boost::mutex::scoped_lock updateLock(mtx_pbmap_busy);
