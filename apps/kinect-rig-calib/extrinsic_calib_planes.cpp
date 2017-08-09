@@ -233,35 +233,24 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
                         //                        #endif
 
                         cout << "\tAssociate planes " << endl;
-                        Vector4f pl1, pl2;
-                        pl1.head(3) = v_pbmap[0].vPlanes[i].v3normal; pl1[3] = v_pbmap[0].vPlanes[i].d;
-                        pl2.head(3) = v_pbmap[1].vPlanes[j].v3normal; pl2[3] = v_pbmap[1].vPlanes[j].d;
-                        // cout << "Corresp " << v_pbmap[0].vPlanes[i].v3normal.transpose() << " vs " << v_pbmap[1].vPlanes[j].v3normal.transpose() << " = " << v_pbmap[1].vPlanes[j].v3normal.transpose() << endl;
+                        // cout << "Corresp " << v_pbmap[sensor1].vPlanes[i].v3normal.transpose() << " vs " << v_pbmap[sensor2].vPlanes[j].v3normal.transpose() << " = " << v_pbmap[1].vPlanes[j].v3normal.transpose() << endl;
 
                         // Calculate conditioning
-                        mm_covariance[sensor1][sensor2] += pl2.head(3) * pl1.head(3).transpose();
+                        mm_covariance[sensor1][sensor2] += v_pbmap[sensor2].vPlanes[j].v3normal * v_pbmap[sensor1].vPlanes[i].v3normal.transpose();
                         calcConditioningPair(sensor1, sensor2);
                         cout << "    conditioning " << sensor1 << "-" << sensor2 << " : " << mm_conditioning[sensor1][sensor2] << "\n";
 
                         // Store the parameters of the matched planes
                         size_t prevSize = planes.mm_corresp[sensor1][sensor2].getRowCount();
                         planes.mm_corresp[sensor1][sensor2].setSize(prevSize+1, planes.mm_corresp[sensor1][sensor2].getColCount());
-                        planes.mm_corresp[sensor1][sensor2](prevSize, 0) = pl1[0];
-                        planes.mm_corresp[sensor1][sensor2](prevSize, 1) = pl1[1];
-                        planes.mm_corresp[sensor1][sensor2](prevSize, 2) = pl1[2];
-                        planes.mm_corresp[sensor1][sensor2](prevSize, 3) = pl1[3];
-                        planes.mm_corresp[sensor1][sensor2](prevSize, 4) = pl2[0];
-                        planes.mm_corresp[sensor1][sensor2](prevSize, 5) = pl2[1];
-                        planes.mm_corresp[sensor1][sensor2](prevSize, 6) = pl2[2];
-                        planes.mm_corresp[sensor1][sensor2](prevSize, 7) = pl2[3];
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 0) = v_pbmap[sensor1].vPlanes[i].v3normal[0];
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 1) = v_pbmap[sensor1].vPlanes[i].v3normal[1];
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 2) = v_pbmap[sensor1].vPlanes[i].v3normal[2];
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 3) = v_pbmap[sensor1].vPlanes[i].d;
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 4) = v_pbmap[sensor2].vPlanes[j].v3normal[0];
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 5) = v_pbmap[sensor2].vPlanes[j].v3normal[1];
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 6) = v_pbmap[sensor2].vPlanes[j].v3normal[2];
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
+                        planes.mm_corresp[sensor1][sensor2](prevSize, 0) = v_pbmap[sensor1].vPlanes[i].v3normal[0];
+                        planes.mm_corresp[sensor1][sensor2](prevSize, 1) = v_pbmap[sensor1].vPlanes[i].v3normal[1];
+                        planes.mm_corresp[sensor1][sensor2](prevSize, 2) = v_pbmap[sensor1].vPlanes[i].v3normal[2];
+                        planes.mm_corresp[sensor1][sensor2](prevSize, 3) = v_pbmap[sensor1].vPlanes[i].d;
+                        planes.mm_corresp[sensor1][sensor2](prevSize, 4) = v_pbmap[sensor2].vPlanes[j].v3normal[0];
+                        planes.mm_corresp[sensor1][sensor2](prevSize, 5) = v_pbmap[sensor2].vPlanes[j].v3normal[1];
+                        planes.mm_corresp[sensor1][sensor2](prevSize, 6) = v_pbmap[sensor2].vPlanes[j].v3normal[2];
+                        planes.mm_corresp[sensor1][sensor2](prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
 
                         // Store the uncertainty information about the matched planes
                         //                    Matrix<T,4,4> informationFusion;
@@ -313,7 +302,7 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
     }
 }
 
-double ExtrinsicCalibPlanes::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot1, const Matrix<T,3,3> & Rot2, bool average_deg)
+double ExtrinsicCalibPlanes::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot1, const Matrix<T,3,3> & Rot2, bool in_deg)
 {
     double accum_error2 = 0.0;
     double accum_error_deg = 0.0;
@@ -328,12 +317,12 @@ double ExtrinsicCalibPlanes::calcRotationErrorPair(const CMatrixDouble & corresp
         accum_error_deg += RAD2DEG(acos((Rot1*n1).dot(Rot2*n2)));
     }
 
-    if(average_deg)
+    if(in_deg)
         return accum_error_deg;
     return accum_error2;
 }
 
-double ExtrinsicCalibPlanes::calcRotationError(const vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > & Rt, bool average_deg)
+double ExtrinsicCalibPlanes::calcRotationError(const vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > & Rt, bool in_deg)
 {
     if( Rt.size() != num_sensors )
         throw runtime_error("ERROR ExtrinsicCalibPlanes::calcRotationError -> Rt.size() != num_sensors \n\n");
@@ -344,7 +333,7 @@ double ExtrinsicCalibPlanes::calcRotationError(const vector<Matrix<T,4,4>, align
     for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
         for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
-            accum_error2 += calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt[sensor1].block<3,3>(0,0), Rt[sensor2].block<3,3>(0,0), average_deg);
+            accum_error2 += calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt[sensor1].block<3,3>(0,0), Rt[sensor2].block<3,3>(0,0), in_deg);
             num_corresp += planes.mm_corresp[sensor1][sensor2].rows();
         }
 
@@ -353,7 +342,7 @@ double ExtrinsicCalibPlanes::calcRotationError(const vector<Matrix<T,4,4>, align
     return accum_error2;
 }
 
-double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool average_m)
+double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool in_meters)
 {
     T accum_error2 = 0.0;
     T accum_error_m = 0.0;
@@ -369,12 +358,12 @@ double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondence
     }
     cout << "calcTranslationErrorPair " << accum_error2 << " AvError deg " << accum_error_m / correspondences.rows() << endl;
 
-    if(average_m)
+    if(in_meters)
         return accum_error_m;
     return accum_error2;
 }
 
-double ExtrinsicCalibPlanes::calcTranslationError(const vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > & Rt, bool average_m)
+double ExtrinsicCalibPlanes::calcTranslationError(const vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > & Rt, bool in_meters)
 {
     if( Rt.size() != num_sensors )
         throw runtime_error("ERROR ExtrinsicCalibPlanes::calcTranslationError -> Rt.size() != num_sensors \n\n");
@@ -384,12 +373,12 @@ double ExtrinsicCalibPlanes::calcTranslationError(const vector<Matrix<T,4,4>, al
     for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
         for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
-            error += calcTranslationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt[sensor1], Rt[sensor2], average_m);
+            error += calcTranslationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt[sensor1], Rt[sensor2], in_meters);
             num_corresp += planes.mm_corresp[sensor1][sensor2].rows();
         }
 
     //cout << "AvError deg " << accum_error2 / num_corresp << endl;
-    if(average_m)
+    if(in_meters)
         return error / num_corresp;
     return error;
 }
@@ -621,7 +610,7 @@ void ExtrinsicCalibPlanes::CalibrateRotationManifold(const bool weight_uncertain
                     Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
                     Matrix<T,3,1> n_1 = Rt_estimated[sensor1].block(0,0,3,3) * n1;
                     Matrix<T,3,1> n_2 = Rt_estimated[sensor2].block(0,0,3,3) * n2;
-                    Matrix<T,3,3> jacobian_rot_1 = skew(-n_1); // Jacobians of the relative rotation
+                    Matrix<T,3,3> jacobian_rot_1 = skew(-n_1);
                     Matrix<T,3,3> jacobian_rot_2 = skew(n_2);
                     Matrix<T,3,1> rot_error = (n1 - n_2);
                     accum_error2 += rot_error.dot(rot_error);
@@ -645,17 +634,17 @@ void ExtrinsicCalibPlanes::CalibrateRotationManifold(const bool weight_uncertain
                     {
                         if(sensor1 != 0) // The pose of the first camera is fixed
                         {
-                            Hessian_.block(3*(sensor1-1), 3*(sensor1-1), 3, 3) += jacobian_rot_1.transpose() * jacobian_rot_1;
+                            Hessian.block(3*(sensor1-1), 3*(sensor1-1), 3, 3) += jacobian_rot_1.transpose() * jacobian_rot_1;
                             gradient.block(3*(sensor1-1),0,3,1) += jacobian_rot_1.transpose() * rot_error;
                             // Cross term
-                            Hessian_.block(3*(sensor1-1), 3*(sensor2-1), 3, 3) += jacobian_rot_1.transpose() * jacobian_rot_2;
+                            Hessian.block(3*(sensor1-1), 3*(sensor2-1), 3, 3) += jacobian_rot_1.transpose() * jacobian_rot_2;
                         }
                         Hessian.block(3*(sensor2-1), 3*(sensor2-1), 3, 3) += jacobian_rot_2.transpose() * jacobian_rot_2;
                         gradient.block(3*(sensor2-1),0,3,1) += jacobian_rot_2.transpose() * rot_error;
                     }
                 }
                 if(sensor1 != 0) // Fill the lower left triangle with the corresponding cross terms
-                    Hessian.block(3*(sensor2-1), 3*(sensor1-1), 3, 3) = Hessian_.block(3*(sensor1-1), (sensor2-1), 3, 3).transpose();
+                    Hessian.block(3*(sensor2-1), 3*(sensor1-1), 3, 3) = Hessian.block(3*(sensor1-1), (sensor2-1), 3, 3).transpose();
             }
         }
         av_angle_error /= numPlaneCorresp;

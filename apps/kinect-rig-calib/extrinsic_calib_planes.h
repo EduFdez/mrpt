@@ -82,23 +82,23 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib<T>
     void getCorrespondences(const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
 
     /*! Calculate the angular error of the plane correspondences.*/
-    double calcRotationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,3,3> & Rot1, const Eigen::Matrix<T,3,3> & Rot2, bool average_deg = false);
+    double calcRotationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,3,3> & Rot1, const Eigen::Matrix<T,3,3> & Rot2, bool in_deg = false);
 
     /*! Calculate the angular error of the plane correspondences.*/
-    inline double calcRotationErrorPair(const size_t sensor1, const size_t sensor2, bool average_deg = false)
+    inline double calcRotationErrorPair(const size_t sensor1, const size_t sensor2, bool in_deg = false)
     {
         return calcRotationErrorPair( planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0) );
     }
 
     /*! Calculate the angular error of the plane correspondences.*/
-    double calcRotationError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt, bool average_deg = false);
+    double calcRotationError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt, bool in_deg = false);
 
 //    /*! \overload Calculate the angular error of the plane correspondences.*/
 //    inline double calcRotationError() { return calcRotationError(Rt_estimated); }
 
-    double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool average_m = false);
+    double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool in_meters = false);
 
-    double calcTranslationError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt, bool average_m = false);
+    double calcTranslationError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt, bool in_meters = false);
 
     /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
     inline Eigen::Matrix<T,3,1> calcScoreTranslation(Eigen::Matrix<T,3,1> &n1, float &d1, float &d2)

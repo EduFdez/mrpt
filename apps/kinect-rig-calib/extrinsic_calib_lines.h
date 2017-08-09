@@ -103,40 +103,50 @@ public:
     /*! Extract line correspondences between the different sensors.*/
     void getCorrespondences(const std::vector<cv::Mat> & rgb, const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
 
+    /*! Extract plane correspondences between the different sensors.*/
+    void getCorrespondences(const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
+
     /*! Calculate the angular error of the plane correspondences.*/
-    float calcRotationError(Eigen::Matrix3f &Rot_);
+    double calcRotationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,3,3> & Rot1, const Eigen::Matrix<T,3,3> & Rot2, bool in_deg = false);
 
-    /*! \overload Calculate the angular error of the plane correspondences.*/
-    inline float calcRotationError(Eigen::Matrix4f &Rt_)
+    /*! Calculate the angular error of the plane correspondences.*/
+    inline double calcRotationErrorPair(const size_t sensor1, const size_t sensor2, bool in_deg = false)
     {
-        Eigen::Matrix3f R = Rt_.block(0,0,3,3);
-        return calcRotationError(R);
+        return calcRotationErrorPair( planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0) );
     }
 
-    /*! \overload Calculate the angular error of the plane correspondences.*/
-    inline float calcRotationError()
+    /*! Calculate the angular error of the plane correspondences.*/
+    double calcRotationError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt, bool in_deg = false);
+
+    double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool in_meters = false);
+
+    double calcTranslationError(const std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > & Rt, bool in_meters = false);
+
+    /*! Load an initial estimation of Rt between the pair of Asus sensors from file */
+    inline Eigen::Matrix<T,3,1> calcScoreTranslation(Eigen::Matrix<T,3,1> &n1, float &d1, float &d2)
     {
-        Eigen::Matrix3f R = Rt_estimated.block(0,0,3,3);
-        return calcRotationError(R);
+        Eigen::Matrix<T,3,1> score = (d1 - d2) * n1;
+        return score;
     }
 
-    //    float calcCorrespTransError(Eigen::Matrix3f &Rot_)
+    /*! Calculate the Fisher Information Matrix (FIM) of the rotation estimate. */
+    Eigen::Matrix<T,3,3> calcRotationFIM(const mrpt::math::CMatrixDouble & correspondences);
 
-    //    Eigen::Matrix3f calcFisherInfMat(const int weightedLS = 0)
+    /*! Calculate the Fisher Information Matrix (FIM) of the translation estimate. */
+    Eigen::Matrix<T,3,3> calcTranslationFIM();
 
-    /*! Calibrate the relative rotation of the pair. */
-    Eigen::Matrix3f CalibrateRotation(int weightedLS = 0);
+    /*! Calibrate the relative rotation between the pair of sensors. Closed form solution. */
+    Eigen::Matrix<T,3,3> CalibrateRotationPair(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);
 
-    /*! \overload Calibrate the relative rotation of the pair (double precision). */
-    Eigen::Matrix3f CalibrateRotationD(int weightedLS = 0);
+    /*! Calibrate the relative translation between the pair of sensors. Closed form solution (linear LS). */
+    Eigen::Matrix<T,3,1> CalibrateTranslationPair(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);
 
-    /*! Calibrate the relative rotation of the pair iteratively on a manifold formulation. */
-    Eigen::Matrix3f CalibrateRotationManifold(int weightedLS = 0);
+    /*! Get the rotation of each sensor in a multisensor setup. The first sensor (sensor_id=0) is taken as reference. */
+    void CalibrateRotationManifold(const bool weight_uncertainty = false);
 
-    /*! Calibrate the relative translation of the pair. */
-    Eigen::Vector3f CalibrateTranslation(int weightedLS = 0);
+    /*! Get the rotation of each sensor in a multisensor setup. The first sensor (sensor_id=0) is taken as reference. */
+    void CalibrateTranslation(const bool weight_uncertainty = false);
 
     /*! Calibrate the relative rigid transformation (Rt) of the pair. */
-    void CalibratePair();
-
+    void Calibrate();
 };

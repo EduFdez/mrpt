@@ -159,7 +159,7 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
             mrpt::pbmap::Plane & plane = pbmap.vPlanes[j];
             if( plane.isInHull(i1) && plane.isInHull(i2) )
             {
-//                // Compute the 3D line as the intersection of two planes (http://mathworld.wolfram.com/Plane-PlaneIntersection.html). Another option is (http://mathworld.wolfram.com/Line-PlaneIntersection.html)
+//                // Compute the 3D line as the intersection of two lines (http://mathworld.wolfram.com/Plane-PlaneIntersection.html). Another option is (http://mathworld.wolfram.com/Line-PlaneIntersection.html)
 //                Vector3f p(0, 0, 0);
 //                p(2) = -plane.d / (plane.v3normal(2) - (plane.v3normal(0)*n1(2)/n1(0)));
 //                p(0) = -n1(2)*p(2)/n1(0);
@@ -237,13 +237,37 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
     //									Data association
     //==============================================================================
     cout << "Data association\n";
-    line_corresp.clear();
+    line_corresp.clear();   
     for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
     {
         lines.mm_corresp[sensor1] = map<unsigned, mrpt::math::CMatrixDouble>();
         for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
             sensor_pair = {sensor1, sensor2};
+//            cv::Mat rgb_concat;
+//            if(b_confirm_visually) // This visualization is specialized for the rgbd360 sensor rig
+//            {
+//                cv::Mat rgb_concat(max(), 2*width+20, CV_8UC3, cv::Scalar(255,255,255));
+//                cv::Mat img_transposed, img_rotated;
+//                cv::transpose(rgb[sensor1], img_transposed);
+//                cv::flip(img_transposed, img_rotated, 0);
+//                cv::Mat tmp = rgb_concat(cv::Rect(0, 0, width, height));
+//                img_rotated.copyTo(tmp);
+//                cv::transpose(rgb[sensor2], img_transposed);
+//                cv::flip(img_transposed, img_rotated, 0);
+//                tmp = rgb_concat(cv::Rect(width+20, 0, width, height));
+//                img_rotated.copyTo(tmp);
+
+//                cv::Mat image_lines;
+//                rgb_concat.convertTo(image_lines, CV_8UC1, 1.0 / 2);
+//                cv::line(image_lines, cv::Point(v_segments2D[sensor1][i][1], height-v_segments2D[sensor1][i][0]), cv::Point(v_segments2D[sensor1][i][3], height-v_segments2D[sensor1][i][2]), cv::Scalar(255, 0, 255), 1);
+//                cv::line(image_lines, cv::Point(width+20+v_segments2D[sensor2][j][1], height-v_segments2D[sensor2][j][0]), cv::Point(width+20+v_segments2D[sensor2][j][3], height-v_segments2D[sensor2][j][2]), cv::Scalar(255, 0, 255), 1);
+//                cv::line(image_lines, cv::Point(width+20+p1(1), height-p1(0)), cv::Point(width+20+p2(1), height-p2(0)), cv::Scalar(0, 150, 0), 1);
+//                cv::circle(image_lines, cv::Point(width+20+p(1), height-p(0)), 3, cv::Scalar(0, 0, 200), 3);
+//                cv::imshow("Line match", image_lines);
+//                cv::waitKey(0);
+//            }
+
             Matrix<T,4,4> pose_rel = Rt_estimated[sensor1].inverse() * Rt_estimated[sensor2];
             double thres_rot_cos = 1 - pow(sin(DEG2RAD(max(v_approx_rot[sensor_id1], v_approx_rot[sensor_id2]))),2);
 
@@ -256,51 +280,562 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
             {
                 //cv::Vec4i &l1 = v_segments2D[sensor1][i];
 //                line_match1 = v_segments2D[sensor1][i];
+                if(b_confirm_visually)
+                {
+                    cv::Mat img_line1;
+                    rgb[sensor1].copyTo(img_line1);
+                    cv::line(img_line1, cv::Point(v_segments2D[sensor1][i][0], height-v_segments2D[sensor1][i][1]), cv::Point(v_segments2D[sensor1][i][2], height-v_segments2D[sensor1][i][3]), cv::Scalar(255, 0, 255), 1);
+                    cv::circle(img_line1, cv::Point(v_segments2D[sensor1][i][0], height-v_segments2D[sensor1][i][1]), 3, cv::Scalar(0, 0, 200), 3);
+                    cv::imshow("img_line1", img_line1);
+                }
 
                 for(size_t j=0; j < v_segments2D[sensor2].size(); j++)
                 {
-                    cout << "n1 " << n1.transpose() << " n2 " << n2.transpose() << " dot " << fabs((Rt_estimated[sensor1].block<3,3>(0,0)*n1) .dot (Rt_estimated[sensor2].block<3,3>(0,0)*n2)) << endl;
+//                    // 3D constraint (when the 3D line parameters are observable)
+//                    if( v_line_has3D[sensor1][i] &&v_line_has3D[sensor2][j] )
+//                    {
+//                        Matrix<T,3,1> v1 = v_segments3D[sensor1][i].block<3,1>(3,0) - v_segments3D[sensor1][i].block<3,1>(0,0); v1.normalize();
+//                        Matrix<T,3,1> v2 = v_segments3D[sensor2][j].block<3,1>(3,0) - v_segments3D[sensor2][j].block<3,1>(0,0); v2.normalize();
+//                        if( fabs((Rt_estimated[sensor1].block<3,3>(0,0)*v1) .dot (Rt_estimated[sensor2].block<3,3>(0,0)*v2)) > thres_rot_cos )
+
+                    // 2D constraint (under the hypothesis of zero translation, valid when the optical centers are closeby wrt the observed scene)
                     if( fabs((Rt_estimated[sensor1].block<3,3>(0,0)*v_segment_n[sensor1][i]) .dot (Rt_estimated[sensor2].block<3,3>(0,0)*v_segment_n[sensor2][j])) > thres_rot_cos )
                     {
-                        revisar y anadir vidualizacion 2D
-                        if(b_confirm_visually)
+                        if(b_confirm_visually) // TODO: Add optional 3D visualization
                         {
-                            line_candidate = {i,j};
-//                            plane_candidate_all[0] = planesIdx_i; plane_candidate_all[1] = planesIdx_j;
-                            confirmed_corresp = 0;
-                            while(confirmed_corresp == 0)
-                                mrpt::system::sleep(10);
-                        }
-                        if(confirmed_corresp == -1)
-                            continue;
+//                            // Interactive 3D visualization
+//                            line_candidate = {i,j};
+//                            confirmed_corresp = 0;
+//                            while(confirmed_corresp == 0)
+//                                mrpt::system::sleep(10);
+                            cv::Mat img_line2;
+                            rgb[sensor2].copyTo(img_line2);
+                            cv::line(img_line2, cv::Point(v_segments2D[sensor1][i][0], height-v_segments2D[sensor1][i][1]), cv::Point(v_segments2D[sensor1][i][2], height-v_segments2D[sensor1][i][3]), cv::Scalar(255, 0, 255), 1);
+                            cv::circle(img_line2, cv::Point(v_segments2D[sensor1][i][0], height-v_segments2D[sensor1][i][1]), 3, cv::Scalar(0, 0, 200), 3);
+                            cv::imshow("img_line2", img_line2);
+                            char key = cv::waitKey(0);
+                            if( key != 'k' && key != 'K' )
+                                continue;
 
-                        if(display)
-                        {
-                            cv::Mat rgb_concat(height, 2*width+20, CV_8UC3, cv::Scalar(255,255,255));
-                            cv::Mat img_transposed, img_rotated;
-                            cv::transpose(rgb[0], img_transposed);
-                            cv::flip(img_transposed, img_rotated, 0);
-                            cv::Mat tmp = rgb_concat(cv::Rect(0, 0, width, height));
-                            img_rotated.copyTo(tmp);
-                            cv::transpose(rgb[1], img_transposed);
-                            cv::flip(img_transposed, img_rotated, 0);
-                            tmp = rgb_concat(cv::Rect(width+20, 0, width, height));
-                            img_rotated.copyTo(tmp);
-                            cv::imshow("rgb", rgb_concat ); cv::moveWindow("rgb", 20,20);
+                            // Store the parameters of the matched lines
+                            size_t prevSize = lines.mm_corresp[sensor1][sensor2].getRowCount();
+                            lines.mm_corresp[sensor1][sensor2].setSize(prevSize+1, lines.mm_corresp[sensor1][sensor2].getColCount());
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 0) = v_segment_n[sensor1][i][0];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 1) = v_segment_n[sensor1][i][1];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 2) = v_segment_n[sensor1][i][2];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 3) = v_segments3D[sensor1][i][0];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 4) = v_segments3D[sensor1][i][1];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 5) = v_segments3D[sensor1][i][2];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 6) = v_segments3D[sensor1][i][3];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 7) = v_segments3D[sensor1][i][4];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 8) = v_segments3D[sensor1][i][5];
 
-                            cv::Mat image_lines;
-                            rgb_concat.convertTo(image_lines, CV_8UC1, 1.0 / 2);
-                            cv::line(image_lines, cv::Point(v_segments2D[sensor1][i][1], height-v_segments2D[sensor1][i][0]), cv::Point(v_segments2D[sensor1][i][3], height-v_segments2D[sensor1][i][2]), cv::Scalar(255, 0, 255), 1);
-                            cv::line(image_lines, cv::Point(width+20+v_segments2D[sensor2][j][1], height-v_segments2D[sensor2][j][0]), cv::Point(width+20+v_segments2D[sensor2][j][3], height-v_segments2D[sensor2][j][2]), cv::Scalar(255, 0, 255), 1);
-                            cv::line(image_lines, cv::Point(width+20+p1(1), height-p1(0)), cv::Point(width+20+p2(1), height-p2(0)), cv::Scalar(0, 150, 0), 1);
-                            cv::circle(image_lines, cv::Point(width+20+p(1), height-p(0)), 3, cv::Scalar(0, 0, 200), 3);
-                            cv::imshow("Line match", image_lines);
-                            cv::waitKey(0);
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 9) = v_segment_n[sensor2][j][0];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 10) = v_segment_n[sensor2][j][1];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 11) = v_segment_n[sensor2][j][2];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 12) = v_segments3D[sensor2][j][0];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 13) = v_segments3D[sensor2][j][1];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 14) = v_segments3D[sensor2][j][2];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 15) = v_segments3D[sensor2][j][3];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 16) = v_segments3D[sensor2][j][4];
+                            lines.mm_corresp[sensor1][sensor2](prevSize, 17) = v_segments3D[sensor2][j][5];
                         }
                     }
                 }
             }
         }
     }
+}
 
+
+double ExtrinsicCalibLines::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot1, const Matrix<T,3,3> & Rot2, bool in_deg)
+{
+    double accum_error2 = 0.0;
+    double accum_error_deg = 0.0;
+    for(size_t i=0; i < correspondences.rows(); i++)
+    {
+//        T weight = 1.0;
+        {
+            Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
+            Matrix<T,3,1> v2; v2 << correspondences(i,15)-correspondences(i,12), correspondences(i,16)-correspondences(i,13), correspondences(i,17)-correspondences(i,14);
+            v2.normalize();
+            double rot_error = (Rot1*n1).dot(Rot2*v2);
+            accum_error2 += rot_error*rot_error; // weight *
+            accum_error_deg += RAD2DEG(acos(rot_error));
+        }
+        {
+            Matrix<T,3,1> v1; v1 << correspondences(i,8)-correspondences(i,5), correspondences(i,7)-correspondences(i,4), correspondences(i,6)-correspondences(i,3);
+            Matrix<T,3,1> n2; n2 << correspondences(i,9), correspondences(i,10), correspondences(i,11);
+            v1.normalize();
+            double rot_error = (Rot1*v1).dot(Rot2*n2);
+            accum_error2 += rot_error*rot_error; // weight *
+            accum_error_deg += RAD2DEG(acos(rot_error));
+        }
+    }
+
+    if(in_deg)
+        return accum_error_deg;
+    return accum_error2;
+}
+
+double ExtrinsicCalibLines::calcRotationError(const vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > & Rt, bool in_deg)
+{
+    if( Rt.size() != num_sensors )
+        throw runtime_error("ERROR ExtrinsicCalibLines::calcRotationError -> Rt.size() != num_sensors \n\n");
+
+    double accum_error2 = 0.0;
+//    double accum_error_deg = 0.0;
+    size_t num_corresp = 0;
+    for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
+        for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
+        {
+            accum_error2 += calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Rt[sensor1].block<3,3>(0,0), Rt[sensor2].block<3,3>(0,0), in_deg);
+            num_corresp += lines.mm_corresp[sensor1][sensor2].rows();
+        }
+
+    //cout << "AvError deg " << accum_error2 / num_corresp << endl;
+    //return accum_error2 / num_corresp;
+    return accum_error2;
+}
+
+double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool in_meters)
+{
+    T accum_error2 = 0.0;
+    T accum_error_m = 0.0;
+    Eigen::Matrix<T,4,4> Rt_1_2 = Rt_estimated[sensor1].inverse() * Rt_estimated[sensor2];
+    Eigen::Matrix<T,4,4> Rt_2_1 = Rt_1_2.inverse();
+    for(size_t i=0; i < correspondences.rows(); i++)
+    {
+        {
+            Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
+            Matrix<T,3,1> p2; p2 << correspondences(i,15)+correspondences(i,12), correspondences(i,16)+correspondences(i,13), correspondences(i,17)+correspondences(i,14); p2 /= 2;
+            Matrix<T,3,1> p2_r1 = Rt_1_2.block<3,3>(0,0)*p2 + Rt_1_2.block<3,1>(0,3);
+            p2_r1.normalize();
+            double trans_error = n1.dot(p2_r1);
+            accum_error2 += trans_error.dot(trans_error); // weight *
+            accum_error_m += fabs(trans_error);
+        }
+        {
+            Matrix<T,3,1> p1; p1 << correspondences(i,8)+correspondences(i,5), correspondences(i,7)+correspondences(i,4), correspondences(i,6)+correspondences(i,3); p1 /= 2;
+            Matrix<T,3,1> n2; n2 << correspondences(i,9), correspondences(i,10), correspondences(i,11);
+            Matrix<T,3,1> p1_r2 = Rt_2_1.block<3,3>(0,0)*p1 + Rt_2_1.block<3,1>(0,3);
+            p1_r2.normalize();
+            double trans_error = n2.dot(p1_r2);
+            accum_error2 += trans_error.dot(trans_error); // weight *
+            accum_error_m += fabs(trans_error);
+        }
+    }
+    cout << "calcTranslationErrorPair " << accum_error2 << " AvError deg " << accum_error_m / correspondences.rows() << endl;
+
+    if(in_meters)
+        return accum_error_m;
+    return accum_error2;
+}
+
+double ExtrinsicCalibLines::calcTranslationError(const vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > & Rt, bool in_meters)
+{
+    if( Rt.size() != num_sensors )
+        throw runtime_error("ERROR ExtrinsicCalibLines::calcTranslationError -> Rt.size() != num_sensors \n\n");
+
+    double error = 0.0;
+    size_t num_corresp = 0;
+    for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
+        for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
+        {
+            error += calcTranslationErrorPair(lines.mm_corresp[sensor1][sensor2], Rt[sensor1], Rt[sensor2], in_meters);
+            num_corresp += lines.mm_corresp[sensor1][sensor2].rows();
+        }
+
+    //cout << "AvError deg " << accum_error2 / num_corresp << endl;
+    if(in_meters)
+        return error / num_corresp;
+    return error;
+}
+
+
+//Matrix<T,3,3> ExtrinsicCalibLines::CalibrateRotationPair(const size_t sensor1, const size_t sensor2, const bool weight_uncertainty)
+//{
+//    // Calibration system
+//    mm_covariance[sensor1][sensor2] = Matrix<T,3,3>::Zero();
+////    Matrix<T,3,3> cov = Matrix<T,3,3>::Zero();
+//    // Matrix<T,3,3> FIM_rot = Matrix<T,3,3>::Zero();
+
+//    T accum_error2 = 0;
+//    CMatrixDouble & correspondences = lines.mm_corresp[sensor1][sensor2];
+//    for(size_t i=0; i < correspondences.rows(); i++)
+//    {
+//        //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
+//        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
+//        Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
+//        Matrix<T,3,1> n_1 = Rt_estimated[sensor1].block(0,0,3,3) * n1;
+//        Matrix<T,3,1> n_2 = Rt_estimated[sensor2].block(0,0,3,3) * n2;
+//        Matrix<T,3,1> rot_error = (n_1 - n_2);
+//        accum_error2 += rot_error.dot(rot_error);
+
+////        if(weight_uncertainty && correspondences.cols() == 10)
+////        {
+////            T weight = (correspondences(i,8) / (correspondences(i,3) * correspondences(i,9)));// / correspondences.rows();
+////            mm_covariance[sensor1][sensor2] += weight * n2 * n1.transpose();
+////        }
+////        else
+//            mm_covariance[sensor1][sensor2] += n2 * n1.transpose();
+//    }
+
+//    // Calculate calibration Rt
+//    //      cout << "Solve system\n";
+//    calcConditioningPair(sensor1, sensor2);
+//    cout << "conditioning " << mm_conditioning[sensor1][sensor2] << endl;
+//    if(mm_conditioning[sensor1][sensor2] < threshold_conditioning )
+//    {
+//        cout << "Bad conditioning " << mm_conditioning[sensor1][sensor2] << " < " << threshold_conditioning << endl;
+//        return Matrix<T,3,3>::Identity();
+//    }
+
+//    JacobiSVD<Matrix<T,3,3> > svd(mm_covariance[sensor1][sensor2], ComputeFullU | ComputeFullV);
+//    Matrix<T,3,3> rotation = svd.matrixV() * svd.matrixU().transpose();
+//    double det = rotation.determinant();
+//    if(det != 1)
+//    {
+//        Matrix<T,3,3> aux;
+//        aux << 1, 0, 0, 0, 1, 0, 0, 0, det;
+//        rotation = svd.matrixV() * aux * svd.matrixU().transpose();
+//    }
+//    cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation) << endl;
+//    cout << "average error: "
+//              << calcRotErrorPair_deg(lines.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1]<3,3>(0,0), Rt_estimated[sensor2]<3,3>(0,0)) << " vs "
+//              << calcRotErrorPair_deg(lines.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation) << " degrees\n";
+
+//    return rotation;
+//}
+
+
+//Eigen::Matrix<T,3,1> ExtrinsicCalibLines::CalibrateTranslationPair(const size_t sensor1, const size_t sensor2, const bool weight_uncertainty)
+//{
+//    // Calibration system
+//    Matrix<T,3,3> Hessian = Matrix<T,3,3>::Zero();
+//    Matrix<T,3,1> gradient = Matrix<T,3,1>::Zero();
+//    Matrix<T,3,1> translation = Rt_estimated[sensor1].block(0,0,3,3).transpose() * (Rt_estimated[sensor2].block(0,3,3,1) - Rt_estimated[sensor1].block(0,3,3,1));
+
+//    T accum_error2 = 0;
+//    CMatrixDouble & correspondences = lines.mm_corresp[sensor1][sensor2];
+//    for(size_t i=0; i < correspondences.rows(); i++)
+//    {
+//        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
+////        Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
+//        T trans_error = (correspondences(i,7) - correspondences(i,3));
+////        T trans_error = correspondences(i,3) - correspondences(i,7) + n1.dot(translation);
+//        accum_error2 += trans_error * trans_error;
+
+////        if(weightedLS == 1 && correspondences.cols() == 18)
+////        {
+////            // The weight takes into account the number of inliers of the patch, the distance of the patch's center to the image center and the distance of the plane to the sensor
+////            //          T weight = (correspondences(i,8) / (correspondences(i,3) * correspondences(i,9)));// / correspondences.rows();
+////            T weight = correspondences(i,17);
+////            Hessian += weight * (n1 * n1.transpose() );
+////            gradient += weight * (n1 * trans_error);
+////        }
+////        else
+//        {
+//            Hessian += (n1 * n1.transpose() );
+//            gradient += (n1 * trans_error);
+//        }
+//    }
+
+//    //      cout << "Hessian \n" << Hessian << "\n HessianInv \n" << Hessian.inverse() << endl;
+//    //      calcFisherInfMat();
+//    JacobiSVD<Matrix<T,3,3> > svd(Hessian, ComputeFullU | ComputeFullV);
+//    T conditioning = svd.singularValues().minCoeff() / svd.singularValues().maxCoeff();
+//    cout << "conditioning " << conditioning << " FIM translation " << svd.singularValues().transpose() << endl;
+//    if(conditioning < threshold_conditioning)
+//        return translation;
+
+//    translation = Hessian.inverse() * gradient;
+
+//    return translation;
+//}
+
+/*! Get the rotation of each sensor in a multisensor setup. The first sensor (sensor_id=0) is taken as reference. */
+//vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > >
+void ExtrinsicCalibLines::CalibrateRotationManifold(const bool weight_uncertainty)
+{
+    cout << "ExtrinsicCalibLines::CalibrateRotationManifold...\n";
+    const size_t n_DoF = 3*(num_sensors-1);
+    T accum_error2;
+    T accum_error_deg;
+
+    // Parameters of the Least-Squares optimization
+    int _max_iterations = 10;
+    T _epsilon_transf = 0.00001;
+    T _convergence_error = 0.000001;
+
+    T increment = 1000, diff_error = 1000;
+    int it = 0;
+    while(it < _max_iterations && increment > _epsilon_transf && diff_error > _convergence_error)
+    {
+        // Calculate the Hessian and the gradient
+        Matrix<T,Dynamic,Dynamic> Hessian(n_DoF,n_DoF); //= Matrix<T,Dynamic,Dynamic>::Zero(n_DoF,n_DoF); // Hessian of the rotation of the decoupled system
+        Matrix<T,Dynamic,1> gradient(n_DoF,1); //= Matrix<T,Dynamic,Dynamic>::Zero(n_DoF,1); // Gradient of the rotation of the decoupled system
+        Matrix<T,Dynamic,1> update_vector(n_DoF,1);
+        cout << it << " Hessian \n" << Hessian << "gradient \n" << gradient.transpose() << endl;
+        accum_error2 = 0.0;
+        accum_error_deg = 0.0;
+        size_t numPlaneCorresp = 0;
+
+        for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
+        {
+            for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
+            {
+                CMatrixDouble & correspondences = lines.mm_corresp[sensor1][sensor2];
+                numPlaneCorresp += correspondences.rows();
+                for(size_t i=0; i < correspondences.rows(); i++)
+                {
+                    // T weight = (inliers / correspondences(i,3)) / correspondences.rows()
+                    // if(weight_uncertainty && correspondences.cols() == 10)
+                    // else
+                    {
+                        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
+                        Matrix<T,3,1> v2; v2 << correspondences(i,15)-correspondences(i,12), correspondences(i,16)-correspondences(i,13), correspondences(i,17)-correspondences(i,14);
+                        v2.normalize();
+                        Matrix<T,3,1> n_1 = Rt_estimated[sensor1].block(0,0,3,3) * n1;
+                        Matrix<T,3,1> v_2 = Rt_estimated[sensor2].block(0,0,3,3) * v2;
+                        Matrix<T,3,3> jacobian_rot_1 = (n_1.cross(v_2)).transpose();
+                        Matrix<T,3,3> jacobian_rot_2 = -jacobian_rot_1;
+                        double rot_error = (Rot1*n1).dot(Rot2*v2);
+                        accum_error2 += rot_error*rot_error; // weight *
+                        accum_error_deg += RAD2DEG(acos(rot_error));
+
+                        if(sensor1 != 0) // The pose of the first camera is fixed
+                        {
+                            Hessian.block(3*(sensor1-1), 3*(sensor1-1), 3, 3) += jacobian_rot_1.transpose() * jacobian_rot_1;
+                            gradient.block(3*(sensor1-1),0,3,1) += jacobian_rot_1.transpose() * rot_error;
+                            // Cross term
+                            Hessian.block(3*(sensor1-1), 3*(sensor2-1), 3, 3) += jacobian_rot_1.transpose() * jacobian_rot_2;
+                        }
+                        Hessian.block(3*(sensor2-1), 3*(sensor2-1), 3, 3) += jacobian_rot_2.transpose() * jacobian_rot_2;
+                        gradient.block(3*(sensor2-1),0,3,1) += jacobian_rot_2.transpose() * rot_error;
+                    }
+                    {
+                        Matrix<T,3,1> v1; v1 << correspondences(i,8)-correspondences(i,5), correspondences(i,7)-correspondences(i,4), correspondences(i,6)-correspondences(i,3);
+                        Matrix<T,3,1> n2; n2 << correspondences(i,9), correspondences(i,10), correspondences(i,11);
+                        v1.normalize();
+                        Matrix<T,3,1> v_1 = Rt_estimated[sensor1].block(0,0,3,3) * v1;
+                        Matrix<T,3,1> n_2 = Rt_estimated[sensor2].block(0,0,3,3) * n2;
+                        Matrix<T,3,3> jacobian_rot_1 = (v_1.cross(n_2)).transpose();
+                        Matrix<T,3,3> jacobian_rot_2 = -jacobian_rot_1;
+                        double rot_error = (Rot1*v1).dot(Rot2*n2);
+                        accum_error2 += rot_error*rot_error; // weight *
+                        accum_error_deg += RAD2DEG(acos(rot_error));
+
+                        if(sensor1 != 0) // The pose of the first camera is fixed
+                        {
+                            Hessian.block(3*(sensor1-1), 3*(sensor1-1), 3, 3) += jacobian_rot_1.transpose() * jacobian_rot_1;
+                            gradient.block(3*(sensor1-1),0,3,1) += jacobian_rot_1.transpose() * rot_error;
+                            // Cross term
+                            Hessian.block(3*(sensor1-1), 3*(sensor2-1), 3, 3) += jacobian_rot_1.transpose() * jacobian_rot_2;
+                        }
+                        Hessian.block(3*(sensor2-1), 3*(sensor2-1), 3, 3) += jacobian_rot_2.transpose() * jacobian_rot_2;
+                        gradient.block(3*(sensor2-1),0,3,1) += jacobian_rot_2.transpose() * rot_error;
+                    }
+                }
+                if(sensor1 != 0) // Fill the lower left triangle with the corresponding cross terms
+                    Hessian.block(3*(sensor2-1), 3*(sensor1-1), 3, 3) = Hessian.block(3*(sensor1-1), (sensor2-1), 3, 3).transpose();
+            }
+        }
+        accum_error_deg /= numPlaneCorresp;
+
+        Eigen::JacobiSVD<Eigen::Matrix<T,n_DoF,n_DoF> > svd(Hessian, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        T conditioning = svd.minCoeff().minCoeff() / svd.singularValues().maxCoeff();
+        cout << "conditioning " << conditioning << endl;
+        if(conditioning < threshold_conditioning)
+            return; // Rt_estimated;
+
+        // Solve the rotation
+        update_vector = -Hessian.inverse() * gradient;
+        cout << "update_vector " << update_vector.transpose() << endl;
+
+        // Update rotation of the poses
+        vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > Rt_estim = Rt_estimated; // Load the initial extrinsic calibration from the device'
+        for(int sensor_id = 1; sensor_id < num_sensors; sensor_id++)
+        {
+            mrpt::poses::CPose3D pose;
+            CArrayNumeric< double, 3 > rot_manifold;
+            rot_manifold[0] = update_vector(3*sensor_id-3,0);
+            rot_manifold[1] = update_vector(3*sensor_id-2,0);
+            rot_manifold[2] = update_vector(3*sensor_id-1,0);
+            CMatrixDouble33 update_rot = pose.exp_rotation(rot_manifold);
+            //cout << "update_rot\n" << update_rot << endl;
+            Matrix<T,3,3> update_rot_eig;
+            update_rot_eig <<   update_rot(0,0), update_rot(0,1), update_rot(0,2),
+                                update_rot(1,0), update_rot(1,1), update_rot(1,2),
+                                update_rot(2,0), update_rot(2,1), update_rot(2,2);
+            Rt_estim[sensor_id].block(0,0,3,3) = update_rot_eig * Rt_estimated[sensor_id].block(0,0,3,3);
+            //      cout << "old rotation" << sensor_id << "\n" << Rt_estimated[sensor_id].block(0,0,3,3) << endl;
+            //      cout << "new rotation\n" << Rt_estim[sensor_id].block(0,0,3,3) << endl;
+        }
+
+        cout << " accum_error2 " << accum_error2 << endl;
+        accum_error2 = calcRotationError(Rt_estimated);
+        T new_accum_error2 = calcRotationError(Rt_estim);
+        cout << "New rotation error " << new_accum_error2 << " previous " << accum_error2 << endl;
+
+        // Assign new rotations
+        if(new_accum_error2 < accum_error2)
+        {
+//            Rt_estimated = Rt_estim;
+            for(int sensor_id = 1; sensor_id < num_sensors; sensor_id++)
+                Rt_estimated.block(0,0,3,3) = Rt_estim.block(0,0,3,3);
+        }
+
+        increment = update_vector .dot (update_vector);
+        diff_error = accum_error2 - new_accum_error2;
+        ++it;
+        //      cout << "Iteration " << it << " increment " << increment << " diff_error " << diff_error << endl;
+    }
+
+    cout << "ErrorCalibRotation " << accum_error2 << " " << accum_error_deg << endl;
+
+//    return Rt_estim;
+}
+
+void ExtrinsicCalibLines::CalibrateTranslation(const bool weight_uncertainty = false)
+{
+    cout << "ExtrinsicCalibLines::CalibrateTranslation...\n";
+    const size_t n_DoF = 3*(num_sensors-1);
+    T accum_error2;
+//    size_t numPlaneCorresp = 0;
+
+    // Parameters of the Least-Squares optimization
+    int _max_iterations = 10;
+    T _epsilon_transf = 0.00001;
+    T _convergence_error = 0.000001;
+
+    T increment = 1000, diff_error = 1000;
+    int it = 0;
+    while(it < _max_iterations && increment > _epsilon_transf && diff_error > _convergence_error)
+    {
+        // Calculate the Hessian and the gradient
+        Matrix<T,Dynamic,Dynamic> Hessian(n_DoF,n_DoF); //= Matrix<T,Dynamic,Dynamic>::Zero(n_DoF,n_DoF); // Hessian of the rotation of the decoupled system
+        Matrix<T,Dynamic,1> gradient(n_DoF,1); //= Matrix<T,Dynamic,Dynamic>::Zero(n_DoF,1); // Gradient of the rotation of the decoupled system
+        Matrix<T,Dynamic,1> update_vector(n_DoF,1);
+        cout << it << " Hessian \n" << Hessian << "gradient \n" << gradient.transpose() << endl;
+        accum_error2 = 0.0;
+        accum_error_deg = 0.0;
+        size_t numPlaneCorresp = 0;
+
+        for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
+        {
+            for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
+            {
+                Eigen::Matrix<T,4,4> Rt_1_2 = Rt_estimated[sensor1].inverse() * Rt_estimated[sensor2];
+                Eigen::Matrix<T,4,4> Rt_2_1 = Rt_1_2.inverse();
+                CMatrixDouble & correspondences = lines.mm_corresp[sensor1][sensor2];
+                numPlaneCorresp += correspondences.rows();
+                for(size_t i=0; i < correspondences.rows(); i++)
+                {
+                    // T weight = (inliers / correspondences(i,3)) / correspondences.rows()
+                    // if(weight_uncertainty && correspondences.cols() == 10)
+                    // else
+                    {
+                        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
+                        Matrix<T,3,1> p2; p2 << correspondences(i,15)+correspondences(i,12), correspondences(i,16)+correspondences(i,13), correspondences(i,17)+correspondences(i,14); p2 /= 2;
+                        Matrix<T,3,1> p2_r1 = Rt_1_2.block<3,3>(0,0)*p2 + Rt_1_2.block<3,1>(0,3);
+                        double p2_r1_norm = p2_r1.norm();
+                        p2_r1.normalize();
+                        double trans_error = n1.dot(p2_r1);
+                        accum_error2 += trans_error.dot(trans_error); // weight *
+                        accum_error_m += fabs(trans_error);
+                        Matrix<T,3,1> n_1 = Rt_estimated[sensor1].block(0,0,3,3) * n1;
+                        Matrix<T,3,1> v_2 = Rt_estimated[sensor2].block(0,0,3,3) * v2;
+                        Matrix<T,3,3> jacobian_trans_1 = n_1.transpose() * (-Rt_estimated[sensor1].block(0,0,3,3).transpose() - p2_r1*p2_r1.transpose()) / p2_r1_norm;
+                        Matrix<T,3,3> jacobian_trans_2 = n_1.transpose() * (Rt_estimated[sensor2].block(0,0,3,3).transpose() - p2_r1*p2_r1.transpose()) / p2_r1_norm;
+
+                        if(sensor1 != 0) // The pose of the first camera is fixed
+                        {
+                            Hessian.block(3*(sensor1-1), 3*(sensor1-1), 3, 3) += jacobian_trans_1.transpose() * jacobian_trans_1;
+                            gradient.block(3*(sensor1-1),0,3,1) += jacobian_trans_1.transpose() * trans_error;
+                            // Cross term
+                            Hessian.block(3*(sensor1-1), 3*(sensor2-1), 3, 3) += jacobian_trans_1.transpose() * jacobian_trans_2;
+                        }
+                        Hessian.block(3*(sensor2-1), 3*(sensor2-1), 3, 3) += jacobian_trans_2.transpose() * jacobian_trans_2;
+                        gradient.block(3*(sensor2-1),0,3,1) += jacobian_trans_2.transpose() * trans_error;
+                    }
+                    {
+                        Matrix<T,3,1> p1; p1 << correspondences(i,8)+correspondences(i,5), correspondences(i,7)+correspondences(i,4), correspondences(i,6)+correspondences(i,3); p1 /= 2;
+                        Matrix<T,3,1> n2; n2 << correspondences(i,9), correspondences(i,10), correspondences(i,11);
+                        Matrix<T,3,1> p1_r2 = Rt_2_1.block<3,3>(0,0)*p1 + Rt_2_1.block<3,1>(0,3);
+                        double p1_r2_norm = p1_r2.norm();
+                        p1_r2.normalize();
+                        double trans_error = n2.dot(p1_r2);
+                        accum_error2 += trans_error.dot(trans_error); // weight *
+                        accum_error_m += fabs(trans_error);
+                        Matrix<T,3,1> n_1 = Rt_estimated[sensor1].block(0,0,3,3) * n1;
+                        Matrix<T,3,1> v_2 = Rt_estimated[sensor2].block(0,0,3,3) * v2;
+                        Matrix<T,3,3> jacobian_trans_1 = n_2.transpose() * (-Rt_estimated[sensor2].block(0,0,3,3).transpose() - p1_r2*p1_r2.transpose()) / p1_r2_norm;
+                        Matrix<T,3,3> jacobian_trans_2 = n_1.transpose() * (Rt_estimated[sensor1].block(0,0,3,3).transpose() - p1_r2*p1_r2.transpose()) / p1_r2_norm;
+
+                        if(sensor1 != 0) // The pose of the first camera is fixed
+                        {
+                            Hessian.block(3*(sensor1-1), 3*(sensor1-1), 3, 3) += jacobian_trans_1.transpose() * jacobian_trans_1;
+                            gradient.block(3*(sensor1-1),0,3,1) += jacobian_trans_1.transpose() * trans_error;
+                            // Cross term
+                            Hessian.block(3*(sensor1-1), 3*(sensor2-1), 3, 3) += jacobian_trans_1.transpose() * jacobian_trans_2;
+                        }
+                        Hessian.block(3*(sensor2-1), 3*(sensor2-1), 3, 3) += jacobian_trans_2.transpose() * jacobian_trans_2;
+                        gradient.block(3*(sensor2-1),0,3,1) += jacobian_trans_2.transpose() * trans_error;
+                    }
+                }
+                if(sensor1 != 0) // Fill the lower left triangle with the corresponding cross terms
+                    Hessian.block(3*(sensor2-1), 3*(sensor1-1), 3, 3) = Hessian.block(3*(sensor1-1), (sensor2-1), 3, 3).transpose();
+            }
+        }
+        //    av_error /= numPlaneCorresp;
+
+        Eigen::JacobiSVD<Eigen::Matrix<T,n_DoF,n_DoF> > svd(Hessian, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        T conditioning = svd.minCoeff().minCoeff() / svd.singularValues().maxCoeff();
+        cout << "conditioning " << conditioning << endl;
+        if(conditioning < threshold_conditioning)
+            return; // Rt_estimated;
+
+        // Solve system
+        Matrix<T,Dynamic,1> update_vector = -Hessian.inverse() * gradient;
+        cout << "update_vector " << update_vector.transpose() << endl;
+
+        // Update translation of the poses
+        vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > Rt_estim = Rt_estimated; // Load the initial extrinsic calibration from the device'
+        for(int sensor_id = 1; sensor_id < num_sensors; sensor_id++)
+        {
+            Rt_estim[sensor_id].block(0,3,3,1) += update_vector.block(3*sensor_id-3,0,3,1);
+            //      cout << "old translation" << sensor_id << "\n" << Rt_estimated[sensor_id].block(0,3,3,1) << endl;
+            //      cout << "new translation" << Rt_estim[sensor_id].block(0,3,3,1) << endl;
+        }
+
+        cout << " accum_error2 " << accum_error2 << endl;
+        accum_error2 = calcTranslationError(Rt_estimated);
+        T new_accum_error2 = calcTranslationError(Rt_estim);
+        cout << "New rotation error " << new_accum_error2 << " previous " << accum_error2 << endl;
+
+        // Assign new rotations
+        if(new_accum_error2 < accum_error2)
+        {
+//            Rt_estimated = Rt_estim;
+            for(int sensor_id = 1; sensor_id < num_sensors; sensor_id++)
+                Rt_estimated.block(0,3,3,1) = Rt_estim.block(0,3,3,1);
+        }
+
+        increment = update_vector .dot (update_vector);
+        diff_error = accum_error2 - new_accum_error2;
+        ++it;
+        //      cout << "Iteration " << it << " increment " << increment << " diff_error " << diff_error << endl;
+    }
+
+    cout << "ErrorTranslation " << accum_error2 << " " << accum_error2 << endl;
+}
+
+void ExtrinsicCalibLines::Calibrate()
+{
+    CalibrateRotation();
+    CalibrateTranslation();
+    //      cout << "Rt_estimated\n" << Rt_estimated << endl;
+
+    cout << "Errors " << calcRotationError(Rt_estimated) << " av deg " << calcRotationError(Rt_estimated,true) << " av trans " << calcTranslationError(Rt_estimated,true) << endl;
 }
