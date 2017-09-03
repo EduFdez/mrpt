@@ -18,7 +18,7 @@
  *
  *  \ingroup calib_group
  */
-template<typename T>
+//template<typename T>
 class FeatCorresp
 {
   public:
@@ -30,7 +30,7 @@ class FeatCorresp
     std::map<size_t, std::map<size_t, mrpt::math::CMatrixDouble> > mm_corresp;
 
     /*! Constructor */
-    FeatCorresp(size_t sensors = 2) : n_sensors(sensors) {}
+    FeatCorresp(const size_t sensors = 2, const size_t length = 8);
 
     /*! Destructor */
     virtual ~FeatCorresp(){};

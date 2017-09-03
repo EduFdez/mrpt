@@ -18,8 +18,8 @@
  *
  *  \ingroup calib_group
  */
-template<typename T>
-class LineCorresp : public FeatCorresp
+//template<typename T>
+class LineCorresp : public FeatCorresp//<T>
 {
   public:
 

@@ -20,7 +20,8 @@
  *
  *  \ingroup calib_group
  */
-class PlaneCorresp : public FeatCorresp
+//template<typename T>
+class PlaneCorresp : public FeatCorresp//<T>
 {
   public:
 
@@ -30,13 +31,13 @@ class PlaneCorresp : public FeatCorresp
     /*! Destructor */
     virtual ~PlaneCorresp(){};
 
-    /*! Get the rate of inliers near the border of the sensor (the border nearer to the next lower index Asus sensor).
-     *  This only works for QVGA resolution
-     */
-    float inliersUpperFringe(mrpt::pbmap::Plane &plane, float fringeWidth);
+//    /*! Get the rate of inliers near the border of the sensor (the border nearer to the next lower index Asus sensor).
+//     *  This only works for QVGA resolution
+//     */
+//    float inliersUpperFringe(mrpt::pbmap::Plane &plane, float fringeWidth);
 
-    ///*! Get the rate of inliers near the border of the sensor (the border nearer to the next upper index Asus sensor) */
-    float inliersLowerFringe(mrpt::pbmap::Plane &plane, float fringeWidth);
+//    ///*! Get the rate of inliers near the border of the sensor (the border nearer to the next upper index Asus sensor) */
+//    float inliersLowerFringe(mrpt::pbmap::Plane &plane, float fringeWidth);
 };
 
 #endif // PLANE_CORRESP_H

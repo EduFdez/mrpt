@@ -33,44 +33,26 @@
 #pragma once
 
 #include "extrinsic_calib.h"
-#include "plane_corresp.h"
+#include "feat_corresp.h"
+//#include "plane_corresp.h"
 //#include <mrpt/system/filesystem.h>
 #include <mrpt/pbmap/PbMap.h>
+
+typedef double T;
 
 /*! This class contains the functionality to calibrate the extrinsic parameters of a pair of non-overlapping depth cameras.
  *  This extrinsic calibration is obtained by matching planes that are observed by both sensors at the same time instants.
  */
-template<typename T>
-class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib<T>
+//template<typename T>
+class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib//<T>
 {    
-  private:
-    using ExtrinsicCalib<T>::num_sensors;
-    using ExtrinsicCalib<T>::Rt_estimated;
-    using ExtrinsicCalib<T>::mm_conditioning;
-    using ExtrinsicCalib<T>::mm_covariance;
-//    using ExtrinsicCalib<T>::calcConditioningPair(const size_t, const size_t);
-
-    /*! Indices of the candidate correspondences */
-    std::array<size_t,2> plane_candidate;
-    std::array<size_t,2> plane_candidate_all;
-    std::map<unsigned, unsigned> plane_corresp;
-
   public:
 
 //    /*! The current extrinsic calibration parameters */
 //    ExtrinsicCalib<T> * calib;
 
-    /*! The plane correspondences between the different sensors */
-    PlaneCorresp<T> planes;
-
-    /*! Whether to visually check or not every proposed correspondence */
-    bool b_confirm_visually;
-
-    /*! Return value of visual confirmation */
-    int confirmed_corresp; // {0: waiting for confirmation, 1: confirmation true, -1: confirmation false (do not use this corresp)}
-
     /*! Constructor */
-    ExtrinsicCalibPlanes() : b_confirm_visually(false)
+    ExtrinsicCalibPlanes() : b_wait_plane_confirm(false)
     {
     }
 //    ExtrinsicCalibPlanes(const ExtrinsicCalib<T> * cal): calib(cal)
@@ -129,4 +111,25 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib<T>
 
     /*! Calibrate the relative rigid transformation (Rt) of the pair. */
     void Calibrate();
+
+  protected:
+
+    /*! The plane correspondences between the different sensors */
+    //    PlaneCorresp planes;
+    FeatCorresp planes;
+
+    /*! A PbMap containing all the planes of the current observation (approx. synchronization) */
+    mrpt::pbmap::PbMap all_planes;
+
+    /*! Indices of the candidate correspondences (for visualization) */
+    std::array<size_t,2> plane_candidate_all;
+
+    /*! Indices of the matched correspondences from the current observation (for visualization) */
+    std::map< size_t, std::map< size_t, std::map<size_t, size_t> > > mmm_plane_matches_all;
+
+    /*! True if waiting for visual confirmation (for visualization) */
+    bool b_wait_plane_confirm;
+
+    /*! Minimum number of inliers of a plane to be matched */
+    const size_t min_inliers = 2e4;
 };

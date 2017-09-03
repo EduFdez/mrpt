@@ -29,8 +29,11 @@ using namespace std;
 ************************************************************************************************/
 void CFeatureLines::extractLines(const cv::Mat & image,
                                 std::vector<cv::Vec4i> & segments,
-                                unsigned int threshold )
+                                size_t threshold,
+                                const bool display )
 {
+    //cout << "CFeatureLines::extractLines... threshold " << threshold << endl;
+
     // Canny edge detector
     cv::Mat canny_img;
     int lowThreshold = 150;
@@ -48,8 +51,7 @@ void CFeatureLines::extractLines(const cv::Mat & image,
     cv::HoughLines(canny_img, lines, 1, CV_PI / 180.0, threshold); // CAUTION: The last parameter depends on the input image, it's the smallest number of pixels to consider a line in the accumulator
     //    double minLineLength=50, maxLineGap=5;
     //    cv::HoughLinesP(canny_img, lines, 1, CV_PI / 180.0, threshold, minLineLength, maxLineGap); // CAUTION: The last parameter depends on the input image, it's the smallest number of pixels to consider a line in the accumulator
-
-    //    std::cout << lines.size() << " lines detected" << std::endl;
+    //std::cout << lines.size() << " lines detected" << std::endl;
 
     // Possible dilatation of the canny detector
     // Useful when the lines are thin and not perfectly straight
@@ -65,12 +67,29 @@ void CFeatureLines::extractLines(const cv::Mat & image,
     // Extracting segments (pairs of points) from the filtered Canny detector
     // And using the line parameters from lines
     extractLines_CannyHough(filteredCanny, lines, segments, threshold);
+
+    // Display 2D segments
+    if(display)
+    {
+        cv::Mat image_lines;
+        image.convertTo(image_lines, CV_8UC1, 1.0 / 2);
+        for(auto line = begin(segments); line != end(segments); ++line)
+        {
+            //cout << "line: " << (*line)[0] << " " << (*line)[1] << " " << (*line)[2] << " " << (*line)[3] << " \n";
+            //image.convertTo(image_lines, CV_8UC1, 1.0 / 2);
+            cv::line(image_lines, cv::Point((*line)[0], (*line)[1]), cv::Point((*line)[2], (*line)[3]), cv::Scalar(255, 0, 255), 1);
+            //cv::imshow("lines", image_lines); cv::moveWindow("lines", 20,100+700);
+            //cv::waitKey(0);
+        }
+        cv::imshow("lines", image_lines); cv::moveWindow("lines", 20,100+700);
+        cv::waitKey(0);
+    }
 }
 
 void CFeatureLines::extractLines_CannyHough( const cv::Mat & canny_image,
                                              const cv::vector<cv::Vec2f> lines,
                                              std::vector<cv::Vec4i> & segments,
-                                             unsigned int threshold )
+                                             size_t threshold )
 {
     // Some variables to change the coordinate system from polar to cartesian
     double rho, theta;
@@ -210,6 +229,7 @@ void CFeatureLines::extractLines_CannyHough( const cv::Mat & canny_image,
 
         numerator = longest / 2;
 
+        //cout << n << " numerator " << numerator << endl;
         for (int i(0); i <= longest; ++i)
         {
             // For each pixel, we don't want to use a classic "plot", but to look into canny_image for a black or white pixel
@@ -220,6 +240,7 @@ void CFeatureLines::extractLines_CannyHough( const cv::Mat & canny_image,
                     onSegment = false;
                     if (nbPixels >= threshold) {
                         segments.push_back(cv::Vec4i(memoryX, memoryY, xPrev, yPrev));
+                        //cout << "new segment " << segments.back() << endl;
                     }
                 }
                 else

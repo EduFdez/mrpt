@@ -358,13 +358,36 @@ namespace pbmap {
         return static_cast<dataType>(meanShift);
     }
 
+    template <class POINT>
+    typename pcl::PointCloud<POINT>::Ptr colourPointCloud(const typename pcl::PointCloud<POINT>::Ptr &in, const unsigned char r, const unsigned char g, const unsigned char b, float alpha)
+    {
+        if( !std::is_same<POINT,pcl::PointXYZRGB>::value && !std::is_same<POINT,pcl::PointXYZRGBA>::value )
+            throw std::runtime_error("\nERROR: mrpt::pbmap::colourPointCloud called without an input colour cloud\n");
+
+        // Maxe sure that: 0 <= alpha <= 1
+        if( alpha < 0.f ) alpha = 0.f;
+        else if( alpha > 1.f ) alpha = 1.f;
+
+        const float beta = 1.f - alpha;
+        float alpha_r(alpha*r), alpha_g(alpha*g), alpha_b(alpha*b);
+        typename pcl::PointCloud<POINT>::Ptr out(new typename pcl::PointCloud<POINT>(*in));
+        for(size_t i=0; i < in->size(); i++)
+        {
+            out->points[i].r = (unsigned char)(beta*out->points[i].r + alpha_r);
+            out->points[i].g = (unsigned char)(beta*out->points[i].g + alpha_g);
+            out->points[i].b = (unsigned char)(beta*out->points[i].b + alpha_b);
+        }
+
+        return out;
+    }
+
     /**
     * Output a vector as a stream that is space separated.
     * @param os Output stream
     * @param v Vector to output
     * @return the stream output
     */
-    template<class T>
+    template<typename T>
     std::ostream& operator<<(std::ostream& os, const std::vector<T>& v)
     {
         std::copy(v.begin(), v.end(), std::ostream_iterator<T>(os, " "));

@@ -35,6 +35,8 @@
 #include <iostream>
 #include <mrpt/poses/CPose3D.h>
 //#include <mrpt/math/ransac_applications.h>
+#include <opencv2/highgui/highgui.hpp>
+#include <boost/thread/thread.hpp>
 
 #define VISUALIZE_SENSOR_DATA 0
 #define SHOW_IMAGES 0
@@ -42,9 +44,85 @@
 using namespace std;
 using namespace Eigen;
 using namespace mrpt::math;
-using namespace mrpt::pbmap::PbMap;
+using namespace mrpt::pbmap;
 
-typedef float T;
+// Obtain the rigid transformation from 3 matched planes
+CMatrixDouble registerMatchedPlanes( const CMatrixDouble &matched_planes )
+{
+  ASSERT_(size(matched_planes,1) == 8 && size(matched_planes,2) == 3);
+
+  //Calculate rotation
+  Matrix3f normalCovariances = Matrix3f::Zero();
+  normalCovariances(0,0) = 1;
+  for(unsigned i=0; i<3; i++)
+  {
+    Vector3f n_i = Vector3f(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
+    Vector3f n_ii = Vector3f(matched_planes(4,i), matched_planes(5,i), matched_planes(6,i));
+    normalCovariances += n_i * n_ii.transpose();
+//    normalCovariances += matched_planes.block(i,0,1,3) * matched_planes.block(i,4,1,3).transpose();
+  }
+
+  JacobiSVD<MatrixXf> svd(normalCovariances, ComputeThinU | ComputeThinV);
+  Matrix3f Rotation = svd.matrixV() * svd.matrixU().transpose();
+
+//  float conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
+//  if(conditioning > 100)
+//  {
+//    cout << " ConsistencyTest::initPose -> Bad conditioning: " << conditioning << " -> Returning the identity\n";
+//    return Eigen::Matrix4f::Identity();
+//  }
+
+  double det = Rotation.determinant();
+  if(det != 1)
+  {
+    Eigen::Matrix3f aux;
+    aux << 1, 0, 0, 0, 1, 0, 0, 0, det;
+    Rotation = svd.matrixV() * aux * svd.matrixU().transpose();
+  }
+
+  // Calculate translation
+  Vector3f translation;
+  Matrix3f hessian = Matrix3f::Zero();
+  Vector3f gradient = Vector3f::Zero();
+  hessian(0,0) = 1;
+  for(unsigned i=0; i<3; i++)
+  {
+    float trans_error = (matched_planes(3,i) - matched_planes(7,i)); //+n*t
+//    hessian += matched_planes.block(i,0,1,3) * matched_planes.block(i,0,1,3).transpose();
+//    gradient += matched_planes.block(i,0,1,3) * trans_error;
+    Vector3f n_i = Vector3f(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
+    hessian += n_i * n_i.transpose();
+    gradient += n_i * trans_error;
+  }
+  translation = -hessian.inverse() * gradient;
+//cout << "Previous average translation error " << sumError / matched_planes.size() << endl;
+
+//  // Form SE3 transformation matrix. This matrix maps the model into the current data reference frame
+//  Eigen::Matrix4f rigidTransf;
+//  rigidTransf.block(0,0,3,3) = Rotation;
+//  rigidTransf.block(0,3,3,1) = translation;
+//  rigidTransf.row(3) << 0,0,0,1;
+
+  CMatrixDouble rigidTransf(4,4);
+  rigidTransf(0,0) = Rotation(0,0);
+  rigidTransf(0,1) = Rotation(0,1);
+  rigidTransf(0,2) = Rotation(0,2);
+  rigidTransf(1,0) = Rotation(1,0);
+  rigidTransf(1,1) = Rotation(1,1);
+  rigidTransf(1,2) = Rotation(1,2);
+  rigidTransf(2,0) = Rotation(2,0);
+  rigidTransf(2,1) = Rotation(2,1);
+  rigidTransf(2,2) = Rotation(2,2);
+  rigidTransf(0,3) = translation(0);
+  rigidTransf(1,3) = translation(1);
+  rigidTransf(2,3) = translation(2);
+  rigidTransf(3,0) = 0;
+  rigidTransf(3,1) = 0;
+  rigidTransf(3,2) = 0;
+  rigidTransf(3,3) = 1;
+
+  return rigidTransf;
+}
 
 // Ransac functions to detect outliers in the plane matching
 void ransacPlaneAlignment_fit ( const CMatrixDouble &planeCorresp,
@@ -66,7 +144,7 @@ void ransacPlaneAlignment_fit ( const CMatrixDouble &planeCorresp,
         fitModels.resize(1);
         //    Matrix<T,4,4> &M = fitModels[0];
         CMatrixDouble &M = fitModels[0];
-        M = getAlignment(corresp);
+        M = registerMatchedPlanes(corresp);
     }
     catch(exception &)
     {
@@ -125,7 +203,7 @@ bool ransac3Dplane_degenerate(const CMatrixDouble &planeCorresp, const mrpt::vec
 
 void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<PointT>::Ptr> & cloud)
 {
-    mrpt::pbmap::PbMap all_planes;
+    cout << "ExtrinsicCalibPlanes::getCorrespondences... \n";
     vector<size_t> planesSourceIdx(num_sensors+1, 0);
 
     //						Segment local planes
@@ -134,41 +212,11 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
     for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
     {
         // sensor_id = omp_get_thread_num();
-        cout << sensor_id << " cloud " << cloud[sensor_id]->height << "x" << cloud[sensor_id]->width << endl;
-
-        //        pcl::visualization::CloudViewer viewer ("Simple Cloud Viewer");
-        //        viewer.showCloud(cloud[sensor_id]);
-        //        while (!viewer.wasStopped ())
-        //            boost::this_thread::sleep (boost::posix_time::milliseconds (10));
-
-        //cout << "PbMapMaker::pbMapFromPCloud\n";
+//        cout << sensor_id << " cloud " << cloud[sensor_id]->height << "x" << cloud[sensor_id]->width << endl;
 //        PbMap::pbMapFromPCloud(cloud[sensor_id], v_pbmap[sensor_id]);
-        all_planes.MergeWith(v_pbmap[sensor_id], Rt_estimated[sensor_id]);
+        all_planes.MergeWith(v_pbmap[sensor_id], Rt_estimated[sensor_id].cast<float>());
         planesSourceIdx[sensor_id+1] = planesSourceIdx[sensor_id] + v_pbmap[sensor_id].vPlanes.size();
         //cout << planesSourceIdx[sensor_id+1] << " ";
-    }
-
-    if(display)
-    {
-        // Show registered depth
-        cv::Mat img_transposed, img_rotated;
-        cv::transpose(depth[0], img_transposed);
-        cv::flip(img_transposed, img_rotated, 0);
-        cv::Mat depth_concat(height, 2*width+20, CV_32FC1, cv::Scalar(0.f));
-        cv::Mat tmp = depth_concat(cv::Rect(0, 0, width, height));
-        img_rotated.copyTo(tmp);
-        cv::transpose(depth[1], img_transposed);
-        cv::flip(img_transposed, img_rotated, 0);
-        tmp = depth_concat(cv::Rect(width+20, 0, width, height));
-        img_rotated.copyTo(tmp);
-        cv::Mat img_depth_display;
-        depth_concat.convertTo(img_depth_display, CV_32FC1, 0.3 );
-        cv::Mat depth_display = cv::Mat(depth_concat.rows, depth_concat.cols, depth_concat.type(), cv::Scalar(1.f)) - img_depth_display;
-        depth_display.setTo(cv::Scalar(0.f), depth_concat < 0.1f);
-        cv::imshow("depth", depth_display ); cv::moveWindow("depth", 20,100+640);
-        //                cout << "Some depth values: " << depth_concat.at<float>(200, 320) << " " << depth_concat.at<float>(50, 320) << " " //<< depth_concat.at<float>(650, 320) << " "
-        //                     << depth[0].at<float>(200, 320) << " " << depth[0].at<float>(50, 320) << " " << depth[1].at<float>(430, 320) << " " << depth[1].at<float>(280, 320) << "\n";
-        cv::waitKey(0);
     }
 
     //==============================================================================
@@ -176,67 +224,47 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
     //==============================================================================
     for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
     {
-        //        matches.mmCorrespondences[sensor_id1] = map<unsigned, CMatrixDouble>();
         for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
             sensor_pair = {sensor1, sensor2};
-            double thres_trans = max(v_approx_trans[sensor_id1], v_approx_trans[sensor_id2]);
-            double thres_rot_cos = 1 - pow(sin(DEG2RAD(max(v_approx_rot[sensor_id1], v_approx_rot[sensor_id2]))),2);
-            //            matches.mmCorrespondences[sensor1] = map<unsigned, CMatrixDouble>();
-
+            double thres_trans = max(v_approx_trans[sensor1], v_approx_trans[sensor2]);
+            double thres_rot_cos = 1 - pow(sin(mrpt::utils::DEG2RAD(max(v_approx_rot[sensor1], v_approx_rot[sensor2]))),2);
             for(size_t i=0; i < v_pbmap[sensor1].vPlanes.size(); i++) // Find plane correspondences
             {
                 size_t planesIdx_i = planesSourceIdx[sensor1];
                 for(size_t j=0; j < v_pbmap[sensor2].vPlanes.size(); j++)
                 {
                     size_t planesIdx_j = planesSourceIdx[sensor2];
+                    cout << "  Check planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
 
-                    //                cout << "  Check planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
-
-                    if( all_planes.vPlanes[planesIdx_i+i].inliers.size() > 1000 && all_planes.vPlanes[planesIdx_j+j].inliers.size() > min_1nliers &&
+                    if( all_planes.vPlanes[planesIdx_i+i].inliers.size() > min_inliers && all_planes.vPlanes[planesIdx_j+j].inliers.size() > min_inliers &&
                         all_planes.vPlanes[planesIdx_i+i].elongation < 5 && all_planes.vPlanes[planesIdx_j+j].elongation < 5 &&
                         all_planes.vPlanes[planesIdx_i+i].v3normal .dot (all_planes.vPlanes[planesIdx_j+j].v3normal) > thres_rot_cos &&
                         fabs(all_planes.vPlanes[planesIdx_i+i].d - all_planes.vPlanes[planesIdx_j+j].d) < thres_trans )//&&
                         // v_pbmap[0].vPlanes[i].hasSimilarDominantColor(v_pbmap[1].vPlanes[j],0.06) &&
                         // v_pbmap[0].vPlanes[planes_counter_i+i].isPlaneNearby(v_pbmap[1].vPlanes[planes_counter_j+j], 0.5)
                     {
+                        cout << "  b_confirm_visually " << b_confirm_visually << "\n";
                         if(b_confirm_visually)
                         {
-                            plane_candidate[0] = i; plane_candidate[1] = j;
                             plane_candidate_all[0] = planesIdx_i; plane_candidate_all[1] = planesIdx_j;
-                            confirmed_corresp = 0;
-                            while(confirmed_corresp == 0)
-                                mrpt::system::sleep(10);
+                            b_wait_plane_confirm = true;
+                            confirm_corresp = 0;
+                            while(confirm_corresp == 0){
+                                //cout << "  wait confirmation " << b_confirm_visually << "\n";
+                                boost::this_thread::sleep (boost::posix_time::milliseconds (10));}
+//                                mrpt::system::sleep(10);
+                            b_wait_plane_confirm = false;
                         }
-                        if(confirmed_corresp == -1)
+                        if(confirm_corresp == -1)
                             continue;
-
-                        //                        #if VISUALIZE_POINT_CLOUD
-                        //                          // Visualize Control Planes
-                        //                          { boost::mutex::scoped_lock updateLock(visualizationMutex);
-                        //                            match1 = planesIdx_i+i;
-                        //                            match2 = planesIdx_j+j;
-                        //                            drawMatch = true;
-                        //                            keyDown = false;
-                        //                          updateLock.unlock();
-                        //                          }
-
-                        //      //                    match1 = planesIdx_i+i;
-                        //      //                    match2 = planesIdx_j+j;
-                        //      //                    pcl::visualization::CloudViewer viewer("RGBD360_calib");
-                        //      //                    viewer.runOnVisualizationThread (boost::bind(&GetControlPlanes::viz_cb, this, _1), "viz_cb");
-                        //      //                    viewer.registerKeyboardCallback(&GetControlPlanes::keyboardEventOccurred, *this);
-
-                        //      //                    cout << " keyDown " << keyDown << endl;
-                        //                          while(!keyDown)
-                        //                            boost::this_thread::sleep (boost::posix_time::milliseconds (10));
-                        //                        #endif
 
                         cout << "\tAssociate planes " << endl;
                         // cout << "Corresp " << v_pbmap[sensor1].vPlanes[i].v3normal.transpose() << " vs " << v_pbmap[sensor2].vPlanes[j].v3normal.transpose() << " = " << v_pbmap[1].vPlanes[j].v3normal.transpose() << endl;
+                        mmm_plane_matches_all[sensor1][sensor2][planesIdx_i] = planesIdx_j;
 
                         // Calculate conditioning
-                        mm_covariance[sensor1][sensor2] += v_pbmap[sensor2].vPlanes[j].v3normal * v_pbmap[sensor1].vPlanes[i].v3normal.transpose();
+                        mm_covariance[sensor1][sensor2] += (v_pbmap[sensor2].vPlanes[j].v3normal * v_pbmap[sensor1].vPlanes[i].v3normal.transpose()).cast<T>();
                         calcConditioningPair(sensor1, sensor2);
                         cout << "    conditioning " << sensor1 << "-" << sensor2 << " : " << mm_conditioning[sensor1][sensor2] << "\n";
 
@@ -253,47 +281,47 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
                         planes.mm_corresp[sensor1][sensor2](prevSize, 7) = v_pbmap[sensor2].vPlanes[j].d;
 
                         // Store the uncertainty information about the matched planes
-                        //                    Matrix<T,4,4> informationFusion;
-                        //                    Matrix<T,4,4> tf = Matrix<T,4,4>::Identity();
-                        //                    tf.block(0,0,3,3) = calib_planes.Rt_estimated.block(0,0,3,3);
-                        //                    tf.block(3,0,1,3) = -calib_planes.Rt_estimated.block(0,3,3,1).transpose();
-                        //                    informationFusion = v_pbmap[0].vPlanes[i].information;
-                        //                    informationFusion += tf * v_pbmap[1].vPlanes[j].information * tf.inverse();
-                        //                    JacobiSVD<Matrix<T,4,4> > svd_cov(informationFusion, ComputeFullU | ComputeFullV);
-                        //                    Vector4f minEigenVector = svd_cov.matrixU().block(0,3,4,1);
-                        //                    cout << "minEigenVector " << minEigenVector.transpose() << endl;
-                        //                    informationFusion -= svd.singularValues().minCoeff() * minEigenVector * minEigenVector.transpose();
-                        //                    cout << "informationFusion \n" << informationFusion << "\n minSV " << svd.singularValues().minCoeff() << endl;
+//                        Matrix<T,4,4> informationFusion;
+//                        Matrix<T,4,4> tf = Matrix<T,4,4>::Identity();
+//                        tf.block(0,0,3,3) = calib_planes.Rt_estimated.block(0,0,3,3);
+//                        tf.block(3,0,1,3) = -calib_planes.Rt_estimated.block(0,3,3,1).transpose();
+//                        informationFusion = v_pbmap[0].vPlanes[i].information;
+//                        informationFusion += tf * v_pbmap[1].vPlanes[j].information * tf.inverse();
+//                        JacobiSVD<Matrix<T,4,4> > svd_cov(informationFusion, ComputeFullU | ComputeFullV);
+//                        Vector4f minEigenVector = svd_cov.matrixU().block(0,3,4,1);
+//                        cout << "minEigenVector " << minEigenVector.transpose() << endl;
+//                        informationFusion -= svd.singularValues().minCoeff() * minEigenVector * minEigenVector.transpose();
+//                        cout << "informationFusion \n" << informationFusion << "\n minSV " << svd.singularValues().minCoeff() << endl;
 
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 8) = informationFusion(0,0);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 9) = informationFusion(0,1);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 10) = informationFusion(0,2);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 11) = informationFusion(0,3);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 12) = informationFusion(1,1);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 13) = informationFusion(1,2);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 14) = informationFusion(1,3);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 15) = informationFusion(2,2);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 16) = informationFusion(2,3);
-                        //                    planes.mm_corresp[sensor1][sensor2](prevSize, 17) = informationFusion(3,3);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 8) = informationFusion(0,0);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 9) = informationFusion(0,1);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 10) = informationFusion(0,2);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 11) = informationFusion(0,3);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 12) = informationFusion(1,1);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 13) = informationFusion(1,2);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 14) = informationFusion(1,3);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 15) = informationFusion(2,2);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 16) = informationFusion(2,3);
+//                        planes.mm_corresp[sensor1][sensor2](prevSize, 17) = informationFusion(3,3);
 
 
-                        //                    FIMrot += -skew(v_pbmap[1].vPlanes[j].v3normal) * informationFusion.block(0,0,3,3) * skew(v_pbmap[1].vPlanes[j].v3normal);
-                        //                    FIMtrans += v_pbmap[0].vPlanes[i].v3normal * v_pbmap[0].vPlanes[i].v3normal.transpose() * informationFusion(3,3);
+//                        FIMrot += -skew(v_pbmap[1].vPlanes[j].v3normal) * informationFusion.block(0,0,3,3) * skew(v_pbmap[1].vPlanes[j].v3normal);
+//                        FIMtrans += v_pbmap[0].vPlanes[i].v3normal * v_pbmap[0].vPlanes[i].v3normal.transpose() * informationFusion(3,3);
 
-                        //                    JacobiSVD<Matrix<T,3,3> > svd_rot(FIMrot, ComputeFullU | ComputeFullV);
-                        //                    JacobiSVD<Matrix<T,3,3> > svd_trans(FIMtrans, ComputeFullU | ComputeFullV);
-                        //                    // T conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
-                        //                    CMatrixDouble conditioningFIM;
-                        //                    conditioningFIM.setSize(prevSize+1, conditioningFIM.getColCount());
-                        //                    conditioningFIM(prevSize, 0) = svd_rot.singularValues()[0];
-                        //                    conditioningFIM(prevSize, 1) = svd_rot.singularValues()[1];
-                        //                    conditioningFIM(prevSize, 2) = svd_rot.singularValues()[2];
-                        //                    conditioningFIM(prevSize, 3) = svd_trans.singularValues()[0];
-                        //                    conditioningFIM(prevSize, 4) = svd_trans.singularValues()[1];
-                        //                    conditioningFIM(prevSize, 5) = svd_trans.singularValues()[2];
+//                        JacobiSVD<Matrix<T,3,3> > svd_rot(FIMrot, ComputeFullU | ComputeFullV);
+//                        JacobiSVD<Matrix<T,3,3> > svd_trans(FIMtrans, ComputeFullU | ComputeFullV);
+//                        // T conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
+//                        CMatrixDouble conditioningFIM;
+//                        conditioningFIM.setSize(prevSize+1, conditioningFIM.getColCount());
+//                        conditioningFIM(prevSize, 0) = svd_rot.singularValues()[0];
+//                        conditioningFIM(prevSize, 1) = svd_rot.singularValues()[1];
+//                        conditioningFIM(prevSize, 2) = svd_rot.singularValues()[2];
+//                        conditioningFIM(prevSize, 3) = svd_trans.singularValues()[0];
+//                        conditioningFIM(prevSize, 4) = svd_trans.singularValues()[1];
+//                        conditioningFIM(prevSize, 5) = svd_trans.singularValues()[2];
 
-                        ////                            matches.covariances[sensor1] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
-                        ////                            matches.calcConditioningPair(sensor1);
+////                            matches.covariances[sensor1] += all_planes.vPlanes[planesIdx_i+i].v3normal * all_planes.vPlanes[planesIdx_j+j].v3normal.transpose();
+////                            matches.calcConditioningPair(sensor1);
 
                     }
                 }
@@ -306,7 +334,7 @@ double ExtrinsicCalibPlanes::calcRotationErrorPair(const CMatrixDouble & corresp
 {
     double accum_error2 = 0.0;
     double accum_error_deg = 0.0;
-    for(size_t i=0; i < correspondences.rows(); i++)
+    for(int i=0; i < correspondences.rows(); i++)
     {
         // T weight = (correspondences(i,8) / (correspondences(i,3) * correspondences(i,9)));
         T weight = 1.0;
@@ -314,7 +342,7 @@ double ExtrinsicCalibPlanes::calcRotationErrorPair(const CMatrixDouble & corresp
         Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
         Matrix<T,3,1> rot_error = (Rot1*n1 - Rot2*n2);
         accum_error2 += weight * rot_error.dot(rot_error);
-        accum_error_deg += RAD2DEG(acos((Rot1*n1).dot(Rot2*n2)));
+        accum_error_deg += mrpt::utils::RAD2DEG(acos((Rot1*n1).dot(Rot2*n2)));
     }
 
     if(in_deg)
@@ -342,18 +370,17 @@ double ExtrinsicCalibPlanes::calcRotationError(const vector<Matrix<T,4,4>, align
     return accum_error2;
 }
 
-double calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool in_meters)
+double ExtrinsicCalibPlanes::calcTranslationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,4,4> & Rt1, const Eigen::Matrix<T,4,4> & Rt2, bool in_meters)
 {
     T accum_error2 = 0.0;
     T accum_error_m = 0.0;
-    Matrix<T,3,1> translation = Rt_estimated[sensor1].block(0,0,3,3).transpose() * (Rt_estimated[sensor2].block(0,3,3,1) - Rt_estimated[sensor1].block(0,3,3,1));
-    for(size_t i=0; i < correspondences.rows(); i++)
+    Matrix<T,3,1> translation = Rt1.block(0,0,3,3).transpose() * (Rt2.block(0,3,3,1) - Rt1.block(0,3,3,1));
+    for(int i=0; i < correspondences.rows(); i++)
     {
         //        T weight = (correspondences(i,8) / (correspondences(i,3) * correspondences(i,9)));
-        T weight = 1.0;
         Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
         T trans_error = (correspondences(i,3) - correspondences(i,7) + n1.dot(translation));
-        accum_error2 += weight * trans_error.dot(trans_error);
+        accum_error2 += trans_error*trans_error; // weight *
         accum_error_m += fabs(trans_error);
     }
     cout << "calcTranslationErrorPair " << accum_error2 << " AvError deg " << accum_error_m / correspondences.rows() << endl;
@@ -383,43 +410,43 @@ double ExtrinsicCalibPlanes::calcTranslationError(const vector<Matrix<T,4,4>, al
     return error;
 }
 
-Matrix<T,3,3> ExtrinsicCalibPlanes::calcRotationFIM(const CMatrixDouble & correspondences)
-{
-    Matrix<T,3,3> FIM = Matrix<T,3,3>::Zero();
+//Matrix<T,3,3> ExtrinsicCalibPlanes::calcRotationFIM(const CMatrixDouble & correspondences)
+//{
+//    Matrix<T,3,3> FIM = Matrix<T,3,3>::Zero();
 
-    for(unsigned i=0; i < correspondences.rows(); i++)
-    {
-        //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
-        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
-        Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
+//    for(unsigned i=0; i < correspondences.rows(); i++)
+//    {
+//        //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
+//        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
+//        Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
 
-        Matrix<T,3,1> n1_x_n2 = (Rt_estimated[sensor1]<3,3>(0,0)*n1) .cross (Rt_estimated[sensor2]<3,3>(0,0)*n2);
+//        Matrix<T,3,1> n1_x_n2 = (Rt_estimated[sensor1]<3,3>(0,0)*n1) .cross (Rt_estimated[sensor2]<3,3>(0,0)*n2);
 
-        FIM += n1_x_n2 * n1_x_n2.transpose();
-    }
+//        FIM += n1_x_n2 * n1_x_n2.transpose();
+//    }
 
-    return FIM;
-}
+//    return FIM;
+//}
 
-Matrix<T,3,3> ExtrinsicCalibPlanes::calcTranslationFIM()
-{
-    Matrix<T,3,3> FIM = Matrix<T,3,3>::Zero();
+//Matrix<T,3,3> ExtrinsicCalibPlanes::calcTranslationFIM()
+//{
+//    Matrix<T,3,3> FIM = Matrix<T,3,3>::Zero();
 
-    for(unsigned i=0; i < correspondences.rows(); i++)
-    {
-        //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
-        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
-        //        Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
-        T d_obs_i = correspondences(i,3);
-        T d_obs_2 = correspondences(i,7);
+//    for(unsigned i=0; i < correspondences.rows(); i++)
+//    {
+//        //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
+//        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
+//        //        Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
+//        T d_obs_i = correspondences(i,3);
+//        T d_obs_2 = correspondences(i,7);
 
-        Matrix<T,3,1> score = calcScoreTranslation(n1, d_obs_i, d_obs_2);
+//        Matrix<T,3,1> score = calcScoreTranslation(n1, d_obs_i, d_obs_2);
 
-        FIM += score * score.transpose();
-    }
+//        FIM += score * score.transpose();
+//    }
 
-    return FIM;
-}
+//    return FIM;
+//}
 
 
 //    Matrix<T,3,3> calcFisherInfMat(const int weightedLS)
@@ -478,7 +505,7 @@ Matrix<T,3,3> ExtrinsicCalibPlanes::CalibrateRotationPair(const size_t sensor1, 
 
     T accum_error2 = 0;
     CMatrixDouble & correspondences = planes.mm_corresp[sensor1][sensor2];
-    for(size_t i=0; i < correspondences.rows(); i++)
+    for(int i=0; i < correspondences.rows(); i++)
     {
         //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
         Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
@@ -518,8 +545,8 @@ Matrix<T,3,3> ExtrinsicCalibPlanes::CalibrateRotationPair(const size_t sensor1, 
     }
     cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation) << endl;
     cout << "average error: "
-              << calcRotErrorPair_deg(planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1]<3,3>(0,0), Rt_estimated[sensor2]<3,3>(0,0)) << " vs "
-              << calcRotErrorPair_deg(planes.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation) << " degrees\n";
+              << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "
+              << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation, true) << " degrees\n";
 
     return rotation;
 }
@@ -534,7 +561,7 @@ Eigen::Matrix<T,3,1> ExtrinsicCalibPlanes::CalibrateTranslationPair(const size_t
 
     T accum_error2 = 0;
     CMatrixDouble & correspondences = planes.mm_corresp[sensor1][sensor2];
-    for(size_t i=0; i < correspondences.rows(); i++)
+    for(int i=0; i < correspondences.rows(); i++)
     {
         Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
 //        Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
@@ -603,15 +630,15 @@ void ExtrinsicCalibPlanes::CalibrateRotationManifold(const bool weight_uncertain
             {
                 CMatrixDouble & correspondences = planes.mm_corresp[sensor1][sensor2];
                 numPlaneCorresp += correspondences.rows();
-                for(size_t i=0; i < correspondences.rows(); i++)
+                for(int i=0; i < correspondences.rows(); i++)
                 {
                     //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
                     Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
                     Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
                     Matrix<T,3,1> n_1 = Rt_estimated[sensor1].block(0,0,3,3) * n1;
                     Matrix<T,3,1> n_2 = Rt_estimated[sensor2].block(0,0,3,3) * n2;
-                    Matrix<T,3,3> jacobian_rot_1 = skew(-n_1);
-                    Matrix<T,3,3> jacobian_rot_2 = skew(n_2);
+                    Matrix<T,3,3> jacobian_rot_1 = skew<T>(-n_1);
+                    Matrix<T,3,3> jacobian_rot_2 = skew<T>(n_2);
                     Matrix<T,3,1> rot_error = (n1 - n_2);
                     accum_error2 += rot_error.dot(rot_error);
                     av_angle_error += acos(n_1.dot(n_2));
@@ -649,8 +676,8 @@ void ExtrinsicCalibPlanes::CalibrateRotationManifold(const bool weight_uncertain
         }
         av_angle_error /= numPlaneCorresp;
 
-        Eigen::JacobiSVD<Eigen::Matrix<T,n_DoF,n_DoF> > svd(Hessian, Eigen::ComputeFullU | Eigen::ComputeFullV);
-        T conditioning = svd.minCoeff().minCoeff() / svd.singularValues().maxCoeff();
+        Eigen::JacobiSVD<Matrix<T,Dynamic,Dynamic> > svd(Hessian, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        T conditioning = svd.singularValues().minCoeff() / svd.singularValues().maxCoeff();
         cout << "conditioning " << conditioning << endl;
         if(conditioning < threshold_conditioning)
             return; // Rt_estimated;
@@ -661,7 +688,7 @@ void ExtrinsicCalibPlanes::CalibrateRotationManifold(const bool weight_uncertain
 
         // Update rotation of the poses
         vector<Matrix<T,4,4>, aligned_allocator<Matrix<T,4,4> > > Rt_estim = Rt_estimated; // Load the initial extrinsic calibration from the device'
-        for(int sensor_id = 1; sensor_id < num_sensors; sensor_id++)
+        for(size_t sensor_id = 1; sensor_id < num_sensors; sensor_id++)
         {
             mrpt::poses::CPose3D pose;
             CArrayNumeric< double, 3 > rot_manifold;
@@ -688,8 +715,8 @@ void ExtrinsicCalibPlanes::CalibrateRotationManifold(const bool weight_uncertain
         if(new_accum_error2 < accum_error2)
         {
 //            Rt_estimated = Rt_estim;
-            for(int sensor_id = 1; sensor_id < num_sensors; sensor_id++)
-                Rt_estimated.block(0,0,3,3) = Rt_estim.block(0,0,3,3);
+            for(size_t sensor_id = 1; sensor_id < num_sensors; sensor_id++)
+                Rt_estimated[sensor_id].block(0,0,3,3) = Rt_estim[sensor_id].block(0,0,3,3);
         }
 
         increment = update_vector .dot (update_vector);
@@ -703,20 +730,22 @@ void ExtrinsicCalibPlanes::CalibrateRotationManifold(const bool weight_uncertain
 //    return Rt_estim;
 }
 
-void ExtrinsicCalibPlanes::CalibrateTranslation(const bool weight_uncertainty = false)
+void ExtrinsicCalibPlanes::CalibrateTranslation(const bool weight_uncertainty)
 {
     cout << "ExtrinsicCalibPlanes::CalibrateTranslation...\n";
     const size_t n_DoF = 3*(num_sensors-1);
     T accum_error2;
     size_t numPlaneCorresp = 0;
 
+    Matrix<T,Dynamic,Dynamic> Hessian(n_DoF,n_DoF); //= Matrix<T,Dynamic,Dynamic>::Zero(n_DoF,n_DoF); // Hessian of the rotation of the decoupled system
+    Matrix<T,Dynamic,1> gradient(n_DoF,1); //= Matrix<T,Dynamic,Dynamic>::Zero(n_DoF,1); // Gradient of the rotation of the decoupled system
     for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
     {
         for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
             CMatrixDouble & correspondences = planes.mm_corresp[sensor1][sensor2];
             numPlaneCorresp += correspondences.rows();
-            for(size_t i=0; i < correspondences.rows(); i++)
+            for(int i=0; i < correspondences.rows(); i++)
             {
                 //          float weight = (inliers / it_pair->second(i,3)) / it_pair->second.rows()
                 Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
@@ -766,8 +795,8 @@ void ExtrinsicCalibPlanes::CalibrateTranslation(const bool weight_uncertainty = 
     }
 //    av_error /= numPlaneCorresp;
 
-    Eigen::JacobiSVD<Eigen::Matrix<T,n_DoF,n_DoF> > svd(Hessian, Eigen::ComputeFullU | Eigen::ComputeFullV);
-    T conditioning = svd.minCoeff().minCoeff() / svd.singularValues().maxCoeff();
+    Eigen::JacobiSVD<Eigen::Matrix<T,Dynamic,Dynamic> > svd(Hessian, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    T conditioning = svd.singularValues().minCoeff() / svd.singularValues().maxCoeff();
     cout << "conditioning " << conditioning << endl;
     if(conditioning < threshold_conditioning)
         return; // Rt_estimated;
@@ -777,10 +806,10 @@ void ExtrinsicCalibPlanes::CalibrateTranslation(const bool weight_uncertainty = 
     cout << "update_vector " << update_vector.transpose() << endl;
 
     // Update translation of the poses
-    Matrix<T,3,1> translation0 = Rt_estimated[0].block(0,3,3,1);
-    Rt_estimated[0].block(0,3,3,1) = -centerDevice;
-    for(int sensor_id = 1; sensor_id < num_sensors; sensor_id++)
-        Rt_estimated[sensor_id].block(0,3,3,1) = update_vector.block(3*sensor_id-3,0,3,1) + translation0;
+//    Matrix<T,3,1> translation0 = Rt_estimated[0].block(0,3,3,1);
+//    Rt_estimated[0].block(0,3,3,1) = -centerDevice;
+    for(size_t sensor_id = 1; sensor_id < num_sensors; sensor_id++)
+        Rt_estimated[sensor_id].block(0,3,3,1) = update_vector.block(3*sensor_id-3,0,3,1);// + translation0;
 }
 
 void ExtrinsicCalibPlanes::Calibrate()
@@ -788,7 +817,7 @@ void ExtrinsicCalibPlanes::Calibrate()
     if(num_sensors == 2)
          CalibrateRotationPair();
     else
-        CalibrateRotation();
+        CalibrateRotationManifold();
 
     CalibrateTranslation();
     //      cout << "Rt_estimated\n" << Rt_estimated << endl;

@@ -82,7 +82,7 @@ namespace mrpt {
                                         const float dist_threshold = 0.02f, const float angle_threshold = 0.05f, const size_t min_inliers = 2e4, const float max_curvature_plane = 0.0013f);
 
             /*!This function displays the PbMap extracted from an organized point_cloud (corresponding to the rgb image) */
-            static void displayImagePbMap(const pcl::PointCloud<PointT>::Ptr & point_cloud, const cv::Mat & rgb, const PbMap & pbmap);
+            static void displayImagePbMap(const pcl::PointCloud<PointT>::Ptr & point_cloud, const cv::Mat & rgb, const PbMap & pbmap, const bool b_fill_polygon = true, const cv::Point pt = cv::Point(0,0));
 
             /*!Save PbMap in the given filePath*/
             void savePbMap(std::string filePath);
@@ -91,7 +91,7 @@ namespace mrpt {
             void loadPbMap(std::string PbMapFile);
 
             /*!Merge two pbmaps*/
-            void MergeWith(PbMap &pbm, Eigen::Matrix4f &T);
+            void MergeWith(const PbMap &pbm, const Eigen::Matrix4f &T);
 
             /*! Print PbMap content to a text file*/
             void printPbMap(std::string txtFilePbm);

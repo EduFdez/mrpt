@@ -422,22 +422,19 @@ void Plane::computeParamsConvexHull()
     //    cout << "computeParams profiling " << (start_end - start_time)*1e6 << " us\n";
 }
 
-bool Plane::isInHull(const int index, const int im_width)
+bool Plane::isInHull(const int index, const int im_width) const
 {
-    cout << " Plane::isInHull " << index << " im_width " << im_width << std::endl;
-
-    Eigen::Vector2i normalLine; // This vector points inward the hull
-    Eigen::Vector2i r(index%im_width, index/im_width);
+    //cout << " Plane::isInHull " << index << " im_width " << im_width << std::endl;
+    array<int,2> p = {index%im_width, index/im_width};
     array<int,2> p1, p2 = {polygon_indices[0]%im_width, polygon_indices[0]/im_width};
     for(size_t i=1; i < polygon_indices.size(); i++)
     {
         p1 = p2;
         p2 = {polygon_indices[i]%im_width, polygon_indices[i]/im_width};
-        normalLine[0] = p1[0] - p2[0];
-        normalLine[1] = p2[1] - p1[0];
-        r[0] = r[0] - p2[0];
-        r[1] = r[1] - p2[1];
-        if( (r .dot( normalLine) ) < 0)
+        array<int,3> line2D = {p1[1]-p2[1], p2[0]-p1[0], 0}; // This vector points inside the hull
+        line2D[2] = -(line2D[0]*p1[0] + line2D[1]*p1[1]);
+        //cout << "line2D " << line2D[0] << " " << line2D[1] << " " << line2D[2] << " p1 " << p1[0] << " " << p1[1] << " p2 " << p2[0] << " " << p2[1] << " dist " << (line2D[0]*p[0] + line2D[1]*p[1] + line2D[2]) << endl;
+        if( (line2D[0]*p[0] + line2D[1]*p[1] + line2D[2]) < 0)
             return false;
     }
     return true;
@@ -853,12 +850,12 @@ void Plane::calcConvexHull(pcl::PointCloud<PointT>::Ptr &pointCloud, std::vector
     }
 
     // Fill convexHull vector (polygonContourPtr)
-    size_t c_hull_size = k-1; // Neglect the last_point = first_point
+//    size_t c_hull_size = k-1; // Neglect the last_point = first_point
     H.resize(k);
-    polygonContourPtr->resize(c_hull_size);
-    indices.resize(c_hull_size);
+    polygonContourPtr->resize(k);
+    indices.resize(k);
 
-    for(size_t i=0; i < c_hull_size; i++)
+    for(int i=0; i < k; i++)
     {
         polygonContourPtr->points[i] = pointCloud->points[ H[i].id ];
         indices[i] = H[i].id;

@@ -45,31 +45,26 @@
 
 #include <omp.h>
 
-typedef float T;
+typedef double T;
 
 /*! This class calibrates the extrinsic parameters of the omnidirectional RGB-D sensor. For that, the sensor is accessed
  *  and big planes are segmented and matched between different single sensors.
 */
-//template<typename T>
 //class KinectRigCalib : public ExtrinsicCalib<T>
-class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLines<T>
+//template<typename T>
+class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
 {
-    using ExtrinsicCalib<T>::num_sensors;
-    using ExtrinsicCalib<T>::Rt_estimated;
-    using ExtrinsicCalib<T>::mm_conditioning;
-    using ExtrinsicCalib<T>::mm_covariance;
 
     /*! Visualization elements */
     pcl::visualization::CloudViewer viewer;
-
-    bool b_confirm_visually;
     bool b_exit;
     bool b_viz_init;
     bool b_freeze;
 
     void viz_cb (pcl::visualization::PCLVisualizer& viz);
-
     void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event, void* viewer_void);
+
+    void setNumSensors(const size_t n_sensors);
 
   public:
 
@@ -86,7 +81,6 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
 
     // Sensor parameters
     std::vector<std::string> sensor_labels;
-    std::vector<mrpt::utils::TStereoCamera> rgbd_intrinsics;
     std::vector<mrpt::poses::CPose3D> init_poses;
     double max_diff_sync;
 
@@ -108,16 +102,15 @@ class KinectRigCalib : public ExtrinsicCalibPlanes<T>, public ExtrinsicCalibLine
 
     KinectRigCalib() :
         viewer("kinect-rig-calib"),
-        b_confirm_visually(false),
         b_exit(false),
         b_viz_init(false),
-        b_freeze(false),
+        b_freeze(true),
         s_type(PLANES_AND_LINES),
         max_diff_sync(0.005)
     {
         // Initialize visualizer
-        viewer.runOnVisualizationThread (boost::bind(&KinectRigCalib_display::viz_cb, this, _1), "viz_cb");
-        viewer.registerKeyboardCallback ( &KinectRigCalib_display::keyboardEventOccurred, *this );
+        viewer.runOnVisualizationThread (boost::bind(&KinectRigCalib::viz_cb, this, _1), "viz_cb");
+        viewer.registerKeyboardCallback ( &KinectRigCalib::keyboardEventOccurred, *this );
     }
 
     /*! Load a config which indicates the system to calibrate: input rawlog dataset, initial poses with uncertainty, plus other parameters. */

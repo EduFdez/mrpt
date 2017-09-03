@@ -18,8 +18,9 @@
 
 #include <numeric>
 #include <mrpt/poses/CPose3D.h>
-//#include <mrpt/system/os.h>
-//#include <mrpt/system/filesystem.h>
+#include <opencv2/core/eigen.hpp>
+//#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
 
 template<typename T> inline Eigen::Matrix<T,3,3> skew(const Eigen::Matrix<T,3,1> &vec)
 {
@@ -33,7 +34,7 @@ template<typename T> inline Eigen::Matrix<T,3,3> skew(const Eigen::Matrix<T,3,1>
     return skew_matrix;
 }
 
-void convertRange_mrpt2cvMat(const mrpt::math::CMatrix & range_mrpt, cv::Mat & depthImage)
+inline void convertRange_mrpt2cvMat(const mrpt::math::CMatrix & range_mrpt, cv::Mat & depthImage)
 {
     Eigen::MatrixXf range_eigen(range_mrpt);
     cv::eigen2cv(range_eigen, depthImage);
@@ -53,8 +54,8 @@ Eigen::Matrix<T,4,4> getPoseEigen(const mrpt::poses::CPose3D & pose)
 //    return pose.getHomogeneousMatrixVal();
 }
 
-//pcl::PointCloud<PointT>::Ptr pointCloudPtr getPointCloudRegistered(cv::Mat & rgb_img, cv::Mat & depth_img, mrpt::vision::TStereoCalibResults & claib) // mrpt::utils::TStereoCamera
-pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Mat & depth_img, const mrpt::utils::TStereoCamera & calib)
+template<typename PointT>
+typename pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Mat & depth_img, const mrpt::utils::TStereoCamera & calib)
 {
     const int height = rgb_img.rows;
     const int width = rgb_img.cols;
@@ -70,7 +71,7 @@ pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Ma
     const float inv_fx = 1.f/fx;
     const float inv_fy = 1.f/fy;
 
-    pcl::PointCloud<PointT>::Ptr pointCloudPtr (new pcl::PointCloud<PointT>());
+    typename pcl::PointCloud<PointT>::Ptr pointCloudPtr (new pcl::PointCloud<PointT>());
     pointCloudPtr->height = height;
     pointCloudPtr->width = width;
     pointCloudPtr->is_dense = false;
@@ -87,13 +88,17 @@ pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Ma
 //    #endif
         for( int y = 0; y < height; y++ )
         {
-            unsigned short *_depth = depth_img.ptr<unsigned short>(0) + y*width;
+            unsigned short *_depth = const_cast<unsigned short*>(depth_img.ptr<unsigned short>(0)) + y*width;
+            cv::Vec3b *_bgr = const_cast<cv::Vec3b*>(rgb_img.ptr<cv::Vec3b>(0)) + y*width;
             for( int x = 0; x < width; x++ )
             {
-                cv::Vec3b& bgr = rgb_img.at<cv::Vec3b>(y,x);
-                pointCloudPtr->points[width*y+x].r = bgr[2];
-                pointCloudPtr->points[width*y+x].g = bgr[1];
-                pointCloudPtr->points[width*y+x].b = bgr[0];
+//                cv::Vec3b bgr = rgb_img.at<cv::Vec3b>(y,x);
+//                pointCloudPtr->points[width*y+x].r = bgr[2];
+//                pointCloudPtr->points[width*y+x].g = bgr[1];
+//                pointCloudPtr->points[width*y+x].b = bgr[0];
+                pointCloudPtr->points[width*y+x].r = (*_bgr)[2];
+                pointCloudPtr->points[width*y+x].g = (*_bgr)[1];
+                pointCloudPtr->points[width*y+x].b = (*_bgr++)[0];
 
                 float z = (*_depth++)*0.001f;
 //                    std::cout << "Build " << z << " from " << depth_img.at<unsigned short>(y,x) << std::endl;
@@ -124,12 +129,12 @@ pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Ma
         for( int y = 0; y < height; y++ )
         {
             //float *_depth = depth_img.ptr<float>(0) + y*width;
+            cv::Vec3b *_bgr = const_cast<cv::Vec3b*>(rgb_img.ptr<cv::Vec3b>(0)) + y*width;
             for( int x = 0; x < width; x++ )
             {
-                cv::Vec3b& bgr = rgb_img.at<cv::Vec3b>(y,x);
-                pointCloudPtr->points[width*y+x].r = bgr[2];
-                pointCloudPtr->points[width*y+x].g = bgr[1];
-                pointCloudPtr->points[width*y+x].b = bgr[0];
+                pointCloudPtr->points[width*y+x].r = (*_bgr)[2];
+                pointCloudPtr->points[width*y+x].g = (*_bgr)[1];
+                pointCloudPtr->points[width*y+x].b = (*_bgr++)[0];
 
                 //float z = *_depth++;
                 float z = depth_img.at<float>(y,x); //convert from milimeters to meters
@@ -162,7 +167,8 @@ pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Ma
     return pointCloudPtr;
 }
 
-pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(const cv::Mat & rgb_img, const cv::Mat & depth_img, const mrpt::utils::TStereoCamera & calib, cv::Mat & depth_reg = cv::Mat() )
+template<typename PointT>
+typename pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(const cv::Mat & rgb_img, const cv::Mat & depth_img, const mrpt::utils::TStereoCamera & calib, cv::Mat & depth_reg)
 {
     const int height = rgb_img.rows;
     const int width = rgb_img.cols;
@@ -179,7 +185,7 @@ pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(const cv::Mat & rgb_img, co
     const float oxc = calib.rightCamera.cx();
     const float oyc = calib.rightCamera.cy();
     //cout << "fx " << fx << " fxc " << fxc << endl;
-    pcl::PointCloud<PointT>::Ptr pointCloudPtr (new pcl::PointCloud<PointT>());
+    typename pcl::PointCloud<PointT>::Ptr pointCloudPtr (new pcl::PointCloud<PointT>());
     pointCloudPtr->height = height;
     pointCloudPtr->width = width;
     pointCloudPtr->is_dense = false;
@@ -196,14 +202,9 @@ pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(const cv::Mat & rgb_img, co
 //    #endif
         for( int y = 0; y < height; y++ )
         {
-            unsigned short *_depth = depth_img.ptr<unsigned short>(0) + y*width;
+            unsigned short *_depth = const_cast<unsigned short*>(depth_img.ptr<unsigned short>(0)) + y*width;
             for( int x = 0; x < width; x++ )
             {
-//                    cv::Vec3b& bgr = rgb_img.at<cv::Vec3b>(y,x);
-//                    pointCloudPtr->points[width*y+x].r = bgr[2];
-//                    pointCloudPtr->points[width*y+x].g = bgr[1];
-//                    pointCloudPtr->points[width*y+x].b = bgr[0];
-
                 float z = (*_depth++)*0.001f;
 //                    std::cout << "Build " << z << " from " << depth_img.at<unsigned short>(y,x) << std::endl;
                 //if(z>0 && z>=minDepth_ && z<=maxDepth_) //If the point has valid depth information assign the 3D point to the point cloud
@@ -235,11 +236,6 @@ pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(const cv::Mat & rgb_img, co
             //float *_depth = depth_img.ptr<float>(0) + y*width;
             for( int x = 0; x < width; x++ )
             {
-//                    cv::Vec3b& bgr = rgb_img.at<cv::Vec3b>(y,x);
-//                    pointCloudPtr->points[width*y+x].r = bgr[2];
-//                    pointCloudPtr->points[width*y+x].g = bgr[1];
-//                    pointCloudPtr->points[width*y+x].b = bgr[0];
-
                 //float z = *_depth++;
                 float z = depth_img.at<float>(y,x); //convert from milimeters to meters
                 //std::cout << "Build " << z << std::endl;
@@ -268,7 +264,7 @@ pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(const cv::Mat & rgb_img, co
 //            std::cout << non_zeros << std::endl;
     }
 
-    pcl::PointCloud<PointT>::Ptr pointCloudPtr2 (new pcl::PointCloud<PointT>());
+    typename pcl::PointCloud<PointT>::Ptr pointCloudPtr2 (new pcl::PointCloud<PointT>());
 //    Eigen::Matrix4f pose_rgb2depth = Eigen::Matrix4f::Identity(); pose_rgb2depth(0,3) = -0.025;
     Eigen::Matrix4f pose_rgb2depth = getPoseEigen<float>(mrpt::poses::CPose3D(-calib.rightCameraPose));
     pcl::transformPointCloud(*pointCloudPtr, *pointCloudPtr2, pose_rgb2depth);
@@ -295,8 +291,7 @@ pcl::PointCloud<PointT>::Ptr getPointCloudRegistered(const cv::Mat & rgb_img, co
             if ((x_coor>=0)&&(x_coor<depth_reg.cols)&&(y_coor>=0)&&(y_coor<depth_reg.rows))
             {
                 depth_reg.at<float>(y_coor,x_coor) = z_;//(ushort) (z_*1000.0);
-
-                cv::Vec3b& bgr = rgb_img.at<cv::Vec3b>(y_coor,x_coor);
+                cv::Vec3b bgr = rgb_img.at<cv::Vec3b>(y_coor,x_coor);
                 pointCloudPtr2->points[width*y+x].r = bgr[2];
                 pointCloudPtr2->points[width*y+x].g = bgr[1];
                 pointCloudPtr2->points[width*y+x].b = bgr[0];

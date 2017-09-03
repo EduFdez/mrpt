@@ -499,7 +499,7 @@ Eigen::Matrix4f ConsistencyTest::getRTwithModel( std::map<unsigned, unsigned> &m
 
 
 // Obtain the rigid transformation from 3 matched planes
-CMatrixDouble getAlignment( const CMatrixDouble &matched_planes )
+CMatrixDouble registerMatchedPlanes( const CMatrixDouble &matched_planes )
 {
   ASSERT_(size(matched_planes,1) == 8 && size(matched_planes,2) == 3);
 
@@ -598,7 +598,8 @@ void ransacPlaneAlignment_fit(
     fitModels.resize(1);
 //    Eigen::Matrix4f &M = fitModels[0];
     CMatrixDouble &M = fitModels[0];
-    M = getAlignment(corresp);
+//    M = ConsistencyTest::registerMatchedPlanes(corresp);
+    M = registerMatchedPlanes(corresp);
   }
   catch(exception &)
   {

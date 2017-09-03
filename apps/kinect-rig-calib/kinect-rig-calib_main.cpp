@@ -27,9 +27,11 @@
 //#include "DownsampleRGBD.h"
 #include "kinect-rig-calib.h"
 #include "kinect-rig-calib_misc.h"
-#include "kinect-rig-calib_display.h"
+//#include "kinect-rig-calib_display.h"
+#include <mrpt/system/os.h>
 
 using namespace std;
+using namespace mrpt::system;
 
 void print_help(char ** argv)
 {

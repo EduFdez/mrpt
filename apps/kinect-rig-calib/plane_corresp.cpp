@@ -22,28 +22,28 @@ PlaneCorresp::PlaneCorresp(size_t sensors) : FeatCorresp(sensors)
     }
 }
 
-/*! Get the rate of inliers near the border of the sensor (the border nearer to the next lower index Asus sensor) */
-float PlaneCorresp::inliersUpperFringe(mrpt::pbmap::Plane &plane, float fringeWidth) // This only works for QVGA resolution
-{
-    size_t count = 0;
-    size_t im_size = 320 * 240;
-    int limit = fringeWidth * im_size;
-    for(size_t i=0; i < plane.inliers.size(); ++i)
-        if(plane.inliers[i] < limit)
-            ++count;
+///*! Get the rate of inliers near the border of the sensor (the border nearer to the next lower index Asus sensor) */
+//float PlaneCorresp::inliersUpperFringe(mrpt::pbmap::Plane &plane, float fringeWidth) // This only works for QVGA resolution
+//{
+//    size_t count = 0;
+//    size_t im_size = 320 * 240;
+//    int limit = fringeWidth * im_size;
+//    for(size_t i=0; i < plane.inliers.size(); ++i)
+//        if(plane.inliers[i] < limit)
+//            ++count;
 
-    return float(count) / (im_size*fringeWidth);
-}
+//    return float(count) / (im_size*fringeWidth);
+//}
 
-/*! Get the rate of inliers near the border of the sensor (the border nearer to the next upper index Asus sensor) */
-float PlaneCorresp::inliersLowerFringe(mrpt::pbmap::Plane &plane, float fringeWidth)
-{
-    size_t count = 0;
-    size_t im_size = 320 * 240;
-    int limit = (1 - fringeWidth) * im_size;
-    for(unsigned i=0; i < plane.inliers.size(); ++i)
-        if(plane.inliers[i] > limit)
-            ++count;
+///*! Get the rate of inliers near the border of the sensor (the border nearer to the next upper index Asus sensor) */
+//float PlaneCorresp::inliersLowerFringe(mrpt::pbmap::Plane &plane, float fringeWidth)
+//{
+//    size_t count = 0;
+//    size_t im_size = 320 * 240;
+//    int limit = (1 - fringeWidth) * im_size;
+//    for(unsigned i=0; i < plane.inliers.size(); ++i)
+//        if(plane.inliers[i] > limit)
+//            ++count;
 
-    return float(count) / (im_size*fringeWidth);
-}
+//    return float(count) / (im_size*fringeWidth);
+//}

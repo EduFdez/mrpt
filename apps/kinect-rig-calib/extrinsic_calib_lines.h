@@ -33,39 +33,50 @@
 #pragma once
 
 #include "extrinsic_calib.h"
-#include "line_corresp.h"
+#include "feat_corresp.h"
+//#include "line_corresp.h"
 #include <mrpt/system/filesystem.h>
 #include <mrpt/math/lightweight_geom_data.h>
 #include <mrpt/math/CMatrixTemplateNumeric.h>  // For mrpt::math::CMatrixDouble
-#include <mrpt/vision/chessboard_stereo_camera_calib.h>
+//#include <mrpt/vision/chessboard_stereo_camera_calib.h>
+#include <mrpt/utils/TCamera.h>
 #include <opencv2/core/core.hpp>
 #include <Eigen/Dense>
+
+typedef double T;
 
 /*! This class contains the functionality to calibrate the extrinsic parameters of a pair of non-overlapping depth cameras.
  *  This extrinsic calibration is obtained by matching lines that are observed by both sensors at the same time instants.
  *
  *  \ingroup calib_group
  */
-template<typename T>
-class ExtrinsicCalibLines : public virtual ExtrinsicCalib<T>
+//template<typename T>
+class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 {
-private:
-
-    using ExtrinsicCalib<T>::num_sensors;
-    using ExtrinsicCalib<T>::Rt_estimated;
+protected:
 
     size_t min_pixels_line;
-    std::vector< std::vector<cv::Vec4i> > v_segments2D;
+    std::vector< std::vector<cv::Vec4i> > vv_segments2D;
     cv::Vec4i line_match1;
     cv::Vec4i line_match2;
-    std::vector< std::vector<Eigen::Vector3f> > v_segment_n; // The normal vector to the plane containing the 2D line segment and the optical center
-    std::vector< std::vector<mrpt::math::TLine3D> > v_lines3D;
-    std::vector< std::vector<Eigen::Matrix<T,6,1> > > v_segments3D;
-    std::vector< std::vector<bool> > v_line_has3D;
+    std::vector< std::vector<Eigen::Matrix<T,3,1> > > vv_segment_n; // The normal vector to the plane containing the 2D line segment and the optical center
+    std::vector< std::vector<mrpt::math::TLine3D> > vv_lines3D;
+    std::vector< std::vector<Eigen::Matrix<T,6,1> > > vv_segments3D;
+    std::vector< std::vector<bool> > vv_line_has3D;
 
     /*! Indices of the candidate correspondences */
     std::array<size_t,2> line_candidate;
 //    std::map<unsigned, unsigned> line_corresp;
+
+//    /*! True if waiting for visual confirmation */
+//    bool b_wait_line_confirm;
+
+    /*! The plane correspondences between the different sensors */
+//    LineCorresp<T> lines;
+    FeatCorresp lines;
+
+    /*! The coordinates of the optical center of the rgb cameras */
+    std::vector<float> cx, cy;
 
 public:
 
@@ -78,14 +89,8 @@ public:
     /*! The current extrinsic calibration parameters */
 //    ExtrinsicCalib<T> * calib;
 
-    /*! The plane correspondences between the different sensors */
-    LineCorresp<T> lines;
-
-    /*! The coordinates of the optical center of the rgb cameras */
-    std::vector<float> cx, cy;
-
     /*! Constructor */
-    ExtrinsicCalibLines(const ExtrinsicCalib<T> * cal, std::vector<mrpt::utils::TStereoCamera> intrinsics) : calib(cal), min_pixels_line(120)
+    ExtrinsicCalibLines() : min_pixels_line(150)//, b_wait_line_confirm(false) //calib(cal),
     {
 //            std::map<unsigned, std::map<unsigned, mrpt::math::CMatrixDouble> > mm_corresp_;
 
@@ -97,8 +102,8 @@ public:
     }
 
     /*! Extract 3D lines from 2D segments in a RGB-D image.*/
-    static void getSegments3D(const TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const vector<cv::Vec4i> & segments2D,
-                              const std::vector<Eigen::Vector3f> & segments_n, vector<Matrix<T,6,1> > & segments3D, vector<bool> & line_has3D);
+    static void getSegments3D(const mrpt::utils::TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const std::vector<cv::Vec4i> & segments2D,
+                              std::vector<Eigen::Matrix<T,3,1> > &segments_n, std::vector<Eigen::Matrix<T,6,1> > & segments3D, std::vector<bool> & line_has3D);
 
     /*! Extract line correspondences between the different sensors.*/
     void getCorrespondences(const std::vector<cv::Mat> & rgb, const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
@@ -112,7 +117,7 @@ public:
     /*! Calculate the angular error of the plane correspondences.*/
     inline double calcRotationErrorPair(const size_t sensor1, const size_t sensor2, bool in_deg = false)
     {
-        return calcRotationErrorPair( planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0) );
+        return calcRotationErrorPair( lines.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0) );
     }
 
     /*! Calculate the angular error of the plane correspondences.*/
@@ -136,7 +141,7 @@ public:
     Eigen::Matrix<T,3,3> calcTranslationFIM();
 
     /*! Calibrate the relative rotation between the pair of sensors. Closed form solution. */
-    Eigen::Matrix<T,3,3> CalibrateRotationPair(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);
+    Eigen::Matrix<T,3,3> ApproximateRotationZeroTrans(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);
 
     /*! Calibrate the relative translation between the pair of sensors. Closed form solution (linear LS). */
     Eigen::Matrix<T,3,1> CalibrateTranslationPair(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);

@@ -179,7 +179,6 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
     cout << " number of planes " << n_planes << " cloud size " << point_cloud->size() << "\n";
 
     // Create a vector with the planes detected in this keyframe, and calculate their parameters (normal, center, pointclouds, etc.)
-    cout << "cloud_size " << point_cloud->size() << "\n";
     pbmap.vPlanes.clear();
     for (size_t i = 0; i < regions.size (); i++)
     {
@@ -240,7 +239,7 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
         //
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr contourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>);
         contourPtr->points = regions[i].getContour();
-        cout << "PbMap::pbMapFromPCloud regions[i].getContour() size " << contourPtr->points.size() << " vs " << boundary_indices[i].indices.size() << endl;
+        //cout << "PbMap::pbMapFromPCloud regions[i].getContour() size " << contourPtr->points.size() << " vs " << boundary_indices[i].indices.size() << endl;
         std::vector<int> indices_hull;
 
 //            cout << "Extract contour\n";
@@ -251,7 +250,6 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
         }
         else
         {
-            //        assert(false);
             std::cout << "HULL 000\n" << plane.planePointCloudPtr->size() << std::endl;
             static pcl::VoxelGrid<pcl::PointXYZRGBA> plane_grid;
             plane_grid.setLeafSize(0.05,0.05,0.05);
@@ -304,7 +302,7 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
     //std::cout << "PlaneFeatures::pbMapFromPCloud in " << (extractPlanes_end - extractPlanes_start)*1000 << " ms\n";
 }
 
-void PbMap::displayImagePbMap(const pcl::PointCloud<PointT>::Ptr & point_cloud, const cv::Mat & rgb, const PbMap & pbmap)
+void PbMap::displayImagePbMap(const pcl::PointCloud<PointT>::Ptr & point_cloud, const cv::Mat & rgb, const PbMap & pbmap, const bool b_fill_polygon, const cv::Point pt)
 {
     cout << " PbMap::displayImagePbMap... " << point_cloud->width << " pbmap " << pbmap.vPlanes.size() << std::endl;
 
@@ -325,24 +323,28 @@ void PbMap::displayImagePbMap(const pcl::PointCloud<PointT>::Ptr & point_cloud, 
     for(size_t i=0; i < pbmap.vPlanes.size(); i++)
     {
         const cv::Vec3b color = cv::Vec3b(blu[i%10], grn[i%10], red[i%10]);
-        for(size_t j=0; j < pbmap.vPlanes[i].inliers.size(); j++)
-            pixel[pbmap.vPlanes[i].inliers[j]] = color;
+        if(b_fill_polygon)
+            for(size_t j=0; j < pbmap.vPlanes[i].inliers.size(); j++)
+                pixel[pbmap.vPlanes[i].inliers[j]] = color;
 
         // Draw the polygonal contour of the planar regions
-        cout << i << " polygon_indices ";
-        for (auto& k: pbmap.vPlanes[i].polygon_indices)
-            cout << k << " ";
-        for(size_t j=0; j < pbmap.vPlanes[i].polygon_indices.size()-1; j++)
+//        cout << i << " polygon_indices ";
+//        for (auto& k: pbmap.vPlanes[i].polygon_indices)
+//            cout << k << " ";
+//        cout << endl;
+        for(size_t j=1; j < pbmap.vPlanes[i].polygon_indices.size(); j++)
         {
-            int x1 = pbmap.vPlanes[i].polygon_indices[j] % img_regions.cols;
-            int y1 = pbmap.vPlanes[i].polygon_indices[j] / img_regions.cols;
-            int x2 = pbmap.vPlanes[i].polygon_indices[j+1] % img_regions.cols;
-            int y2 = pbmap.vPlanes[i].polygon_indices[j+1] / img_regions.cols;
+            int x1 = pbmap.vPlanes[i].polygon_indices[j-1] % img_regions.cols;
+            int y1 = pbmap.vPlanes[i].polygon_indices[j-1] / img_regions.cols;
+            int x2 = pbmap.vPlanes[i].polygon_indices[j] % img_regions.cols;
+            int y2 = pbmap.vPlanes[i].polygon_indices[j] / img_regions.cols;
             cv::line(img_regions, cv::Point(x1,y1), cv::Point(x2,y2), cv::Scalar(color[0],color[1],color[2]), 2);
         }
     }
+    if(pt.x != 0 && pt.y != 0)
+        cv::circle(img_regions, pt, 3, cv::Scalar(200, 0, 0), 3);
 
-    cv::imshow( "displayRegions", img_regions );
+    cv::imshow( "displayRegions", img_regions ); cv::moveWindow("displayRegions", 20,100+img_regions.rows);
     cv::waitKey(0);
 }
 
@@ -384,7 +386,7 @@ void PbMap::loadPbMap(std::string filePath)
 
 
 // Merge two pbmaps.
-void PbMap::MergeWith(PbMap &pbm, Eigen::Matrix4f &T)
+void PbMap::MergeWith(const PbMap &pbm, const Eigen::Matrix4f &T)
 {
     // Rotate and translate PbMap
     for(size_t i = 0; i < pbm.vPlanes.size(); i++)

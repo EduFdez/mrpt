@@ -174,7 +174,7 @@ namespace pbmap {
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr polygonContourPtr;
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr outerPolygonPtr; // This is going to be deprecated
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr planePointCloudPtr; // This is going to be deprecated
-        bool isInHull(const int index, const int im_width);
+        bool isInHull(const int index, const int im_width) const;
 
         /*!
          * Calculate plane's main color using "MeanShift" method

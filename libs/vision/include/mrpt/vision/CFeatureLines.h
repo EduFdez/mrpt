@@ -27,14 +27,14 @@ namespace mrpt
         class VISION_IMPEXP CFeatureLines
         {
           public:
-            void extractLines ( const cv::Mat & image,
+            void extractLines (const cv::Mat & image,
                                 std::vector<cv::Vec4i> & segments,
-                                unsigned int threshold );
+                                size_t threshold , const bool display = false);
 
             void extractLines_CannyHough(const cv::Mat & canny_image,
                                          const cv::vector<cv::Vec2f> lines,
                                          std::vector<cv::Vec4i> & segments,
-                                         unsigned int threshold );
+                                         size_t threshold );
         }; // end of class
 
     } // end of namespace

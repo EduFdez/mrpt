@@ -49,13 +49,14 @@ namespace mrpt{
     {
     public:
 
-        /*! Static function to display a 3D view of a RgbdFeat
-         * \param frame to display
-         * \param win_name window name
+        /*! Static function to display a 3D view of a PbMap
+         * \param point_cloud to display
+         * \param pbmap to display
          */
-        static inline void displayAndPause(const pcl::PointCloud<PointT>::Ptr & point_cloud, PbMap *pbmap = NULL)
+        static inline void displayAndPause(const pcl::PointCloud<PointT>::Ptr & point_cloud, PbMap & pbmap)
         {
-            DisplayCloudPbMap display(point_cloud, pbmap, "Cloud_and_PbMap");
+            std::cout << "DisplayCloudPbMap::displayAndPause()... \n";
+            DisplayCloudPbMap display(point_cloud, &pbmap, "Cloud_and_PbMap");
             while( !display.viewer_.wasStopped() )
                 boost::this_thread::sleep( boost::posix_time::milliseconds(10) );
         }
@@ -77,9 +78,9 @@ namespace mrpt{
             viewer_.runOnVisualizationThread(boost::bind(&DisplayCloudPbMap::viz_cb, this, _1), "viz_cb");
             viewer_.registerKeyboardCallback(&DisplayCloudPbMap::keyboardEventOccurred, *this);
 
-            std::cout << "Initialize DisplayCloudPbMap visualizer \n";
+            std::cout << "Initialize DisplayCloudPbMap visualizer... \n";
             if(pbmap_)
-                std::cout << "Features to display: " << pbmap_->vPlanes.size() << " planes, 0 lines and 0 points.\n";
+                std::cout << "Features to display: " << pbmap_->vPlanes.size() << " planes, 0 lines and 0 points. Point Cloud size " << cloud_->size() << "\n";
         }
 
       private:

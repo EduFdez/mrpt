@@ -63,8 +63,9 @@ namespace pbmap {
         This function iteratively minimizes the alignment error of the matched planes wrt the rigid transformation.*/
         Eigen::Matrix4f getRTwithModel( std::map<unsigned, unsigned> &matched_planes );
 
-
-        //Eigen::Matrix4f getAlignment( const mrpt::math::CMatrixFixedNumeric<float,3,8> &matched_planes );
+        /*! Obtain the rigid transformation from 3 matched planes */
+        //static Eigen::Matrix4f registerMatchedPlanes( const mrpt::math::CMatrixFixedNumeric<float,3,8> &matched_planes );
+        //static CMatrixDouble registerMatchedPlanes( const CMatrixDouble &matched_planes );
 
         Eigen::Matrix4f estimatePoseRANSAC( std::map<unsigned, unsigned> &matched_planes );
 

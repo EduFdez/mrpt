@@ -33,27 +33,27 @@
 #pragma once
 
 #include <mrpt/math/CMatrixTemplateNumeric.h>  // For mrpt::math::CMatrixDouble
+#include <mrpt/utils/TStereoCamera.h>
 #include <mrpt/pbmap/PbMap.h>
+#include <mrpt/system/filesystem.h>
 #include <Eigen/Geometry>
 #include <map>
+#include <array>
+
+typedef double T;
 
 /*! This generic class serves as base class for extrinsic calibration. It stores the number of sensors to calibrate and their poses.
  */
-template<typename T>
+//template<typename T>
 class ExtrinsicCalib
 {
-  protected:
-    /*! Indices of the pair of sensors being evaluated */
-//    size_t sensor1, sensor2;
-    std::array<size_t,2> sensor_pair;
-
-    /*! Calibration parameter to consider if the problem is ill-posed */
-    const double threshold_conditioning = 1e-3;
-
   public:
 
     /*! Number of sensors to calibrate */
     size_t num_sensors;
+
+    /*! Intrinsic parameters of the RGB-D sensors */
+    std::vector<mrpt::utils::TStereoCamera> intrinsics;
 
     /*! The extrinsic matrix estimated by this calibration method */
     std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > Rt_estimated;
@@ -77,7 +77,7 @@ class ExtrinsicCalib
     std::vector<mrpt::pbmap::PbMap> v_pbmap;
 
     /*! Constructor */
-    ExtrinsicCalib(const size_t n_sensors = 2): num_sensors(n_sensors)
+    ExtrinsicCalib(const size_t n_sensors = 2): num_sensors(n_sensors), b_confirm_visually(true), confirm_corresp(1)
     {
         if(!std::is_floating_point<T>::value)
             throw std::runtime_error("\nExtrinsicCalibPlanes template type is not valid, not floating point.");
@@ -108,8 +108,8 @@ class ExtrinsicCalib
     {
         std::cout << "Conditioning\n";
         for(std::map<size_t, std::map<size_t, double> >::iterator it1=mm_conditioning.begin(); it1 != mm_conditioning.end(); it1++)
-            for(std::map<size_t, std::map<size_t, double> >::iterator it2=it1->second.begin(); it2 != it1->second.end(); it2++)
-                std::cout << "    sensors " << it1->first << "-" << it2->first << " : " << mm_conditioning[sensor_id][sensor_id+1] << "\n";
+            for(std::map<size_t, double>::iterator it2=it1->second.begin(); it2 != it1->second.end(); it2++)
+                std::cout << "    sensors " << it1->first << "-" << it2->first << " : " << mm_conditioning[it1->first][it2->first] << " = " << it2->second << "\n";
         std::cout << std::endl;
     }
 
@@ -119,10 +119,25 @@ class ExtrinsicCalib
         if( sensor1 > sensor2 )
             throw std::runtime_error("\nERROR: ExtrinsicCalib::calcConditioningPair sensor1 > sensor2!");
 
-        Eigen::JacobiSVD<Eigen::Matrix3f> svd(mm_covariance[sensor1][sensor2], Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd(mm_covariance[sensor1][sensor2], Eigen::ComputeFullU | Eigen::ComputeFullV);
         mm_conditioning[sensor1][sensor2] = svd.singularValues().minCoeff() / svd.singularValues().maxCoeff();
         if( std::isnan(mm_conditioning[sensor1][sensor2]) )
             mm_conditioning[sensor1][sensor2] = 0.0;
     }
+
+  protected:
+
+    /*! Indices of the pair of sensors being evaluated */
+    //    size_t sensor1, sensor2;
+    std::array<size_t,2> sensor_pair;
+
+    /*! Calibration parameter to consider if the problem is ill-posed */
+    const double threshold_conditioning = 1e-3;
+
+    /*! Whether to visually check or not every proposed correspondence */
+    bool b_confirm_visually;
+
+    /*! Return value of visual confirmation */
+    int confirm_corresp; // {0: waiting for confirmation, 1: confirmation true, -1: confirmation false (do not use this corresp)}
 
 };
