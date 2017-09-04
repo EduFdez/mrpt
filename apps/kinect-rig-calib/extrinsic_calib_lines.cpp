@@ -299,7 +299,7 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
                     cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), 3, cv::Scalar(0, 0, 200), 3);
                     cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), 3, cv::Scalar(0, 0, 200), 3);
                     cv::putText(img_line1, string(to_string(i)+"/"+to_string(vv_segments2D[sensor1].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
-                    cv::imshow("img_line1", img_line1); cv::moveWindow("img_line1", 20,20);
+                    cv::imshow("img_line1", img_line1); cv::moveWindow("img_line1", 20,60);
                 }
 
                 for(size_t j=0; j < vv_segments2D[sensor2].size(); j++)

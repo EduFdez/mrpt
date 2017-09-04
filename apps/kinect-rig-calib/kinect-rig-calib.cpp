@@ -651,11 +651,11 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
 //                            viz.setShapeRenderingProperties (pcl::visualization::PCL_VISUALIZER_OPACITY, 0.4, name, 0);
 //                            //viz.setShapeRenderingProperties (pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, name, 0);
 
-                            pcl::PointXYZ pt1_n = p1;//(triangle->points[0]); // Begin and end points of normal's arrow for visualization
+//                            pcl::PointXYZ pt1_n(triangle->points[0]); // Begin and end points of normal's arrow for visualization
 //                            pt1_n.getVector3fMap() += triangle->points[1].getVector3fMap() + triangle->points[2].getVector3fMap(); pt1_n.getVector3fMap() /= 3.f;
-                            pcl::PointXYZ pt2_n(pt1_n); pt2_n.getVector3fMap() += 0.1f*vv_segment_n[sensor[i]][idx[i]].cast<float>();
+                            pcl::PointXYZ pt2_n(pt1); pt2_n.getVector3fMap() += 0.1f*(Rt_estimated[sensor[i]].block<3,3>(0,0)*vv_segment_n[sensor[i]][idx[i]]).cast<float>();
                             sprintf (name, "seg_n_%lu_%lu", sensor[i], idx[i]);
-                            viz.addArrow (pt2_n, pt1_n, ared[col], agrn[col], ablu[col], false, name);
+                            viz.addArrow (pt2_n, pt1, ared[col], agrn[col], ablu[col], false, name);
                         }
                     }
             viz.addText (matched_lines.c_str(), 420, 20, "matched_lines");
