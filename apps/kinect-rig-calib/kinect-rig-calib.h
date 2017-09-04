@@ -60,11 +60,18 @@ class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
     bool b_exit;
     bool b_viz_init;
     bool b_freeze;
+    bool b_show_corresp;
+    bool b_pause;
 
+    /*! Visualization callbacks */
     void viz_cb (pcl::visualization::PCLVisualizer& viz);
     void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event, void* viewer_void);
 
+    /*! Set the size of the observation containers */
     void setNumSensors(const size_t n_sensors);
+
+    /*! Display the RGB-D images (This function has been written for adjacent sensors from RGBD360) */
+    void displayObservation();
 
   public:
 
@@ -105,12 +112,14 @@ class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
         b_exit(false),
         b_viz_init(false),
         b_freeze(true),
+        b_pause(false),
         s_type(PLANES_AND_LINES),
         max_diff_sync(0.005)
     {
         // Initialize visualizer
         viewer.runOnVisualizationThread (boost::bind(&KinectRigCalib::viz_cb, this, _1), "viz_cb");
         viewer.registerKeyboardCallback ( &KinectRigCalib::keyboardEventOccurred, *this );
+        b_show_corresp = false;
     }
 
     /*! Load a config which indicates the system to calibrate: input rawlog dataset, initial poses with uncertainty, plus other parameters. */

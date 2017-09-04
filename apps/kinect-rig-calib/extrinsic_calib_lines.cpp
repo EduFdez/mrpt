@@ -145,6 +145,17 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
         Matrix<T,3,1> v1( (x1-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y1-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
         Matrix<T,3,1> v2( (x2-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y2-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
         segments_n[i] = v1.cross(v2);
+        // Force the normal vector to be around the 2nd quadrant of X-Y (i.e. positive X and negative Y)
+        if(fabs(segments_n[i][0]) > fabs(segments_n[i][1]) ) // Larger X component
+        {
+            if(segments_n[i][0] < 0.f)
+                segments_n[i] = -segments_n[i];
+        }
+        else
+        {
+            if(segments_n[i][1] > 0.f)
+                segments_n[i] = -segments_n[i];
+        }
         segments_n[i].normalize();
 
         // Check the depth of the end points
@@ -287,7 +298,8 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
                     cv::line(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), cv::Scalar(255, 0, 255), 1);
                     cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), 3, cv::Scalar(0, 0, 200), 3);
                     cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), 3, cv::Scalar(0, 0, 200), 3);
-                    cv::imshow("img_line1", img_line1); cv::moveWindow("img_line1", 20,100);
+                    cv::putText(img_line1, string(to_string(i)+"/"+to_string(vv_segments2D[sensor1].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
+                    cv::imshow("img_line1", img_line1); cv::moveWindow("img_line1", 20,20);
                 }
 
                 for(size_t j=0; j < vv_segments2D[sensor2].size(); j++)
@@ -315,12 +327,15 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
                             cv::line(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), cv::Scalar(255, 0, 255), 1);
                             cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), 3, cv::Scalar(0, 0, 200), 3);
                             cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), 3, cv::Scalar(0, 0, 200), 3);
+                            cv::putText(img_line2, string(to_string(j)+"/"+to_string(vv_segments2D[sensor2].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
                             cv::imshow("img_line2", img_line2); cv::moveWindow("img_line2", 20,100+500);
                             char key = 'a';
                             while( key != 'k' && key != 'K' && key != 'l' && key != 'L' )
                                 key = cv::waitKey(0);
                             if( key != 'k' && key != 'K' )
                                 continue;
+
+                            mmm_line_matches[sensor1][sensor2][i] = j;
 
                             // Store the parameters of the matched lines
                             size_t prevSize = lines.mm_corresp[sensor1][sensor2].getRowCount();
@@ -460,7 +475,8 @@ double ExtrinsicCalibLines::calcTranslationError(const vector<Matrix<T,4,4>, ali
 
 Matrix<T,3,3> ExtrinsicCalibLines::ApproximateRotationZeroTrans(const size_t sensor1, const size_t sensor2, const bool weight_uncertainty)
 {
-    // Calibration system
+    cout << "ExtrinsicCalibLines::ApproximateRotationZeroTrans... " << lines.mm_corresp[sensor1][sensor2].rows() << " correspondences\n";
+
     mm_covariance[sensor1][sensor2] = Matrix<T,3,3>::Zero();
 //    Matrix<T,3,3> cov = Matrix<T,3,3>::Zero();
     // Matrix<T,3,3> FIM_rot = Matrix<T,3,3>::Zero();
@@ -470,41 +486,29 @@ Matrix<T,3,3> ExtrinsicCalibLines::ApproximateRotationZeroTrans(const size_t sen
     for(int i=0; i < correspondences.rows(); i++)
     {
         //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
-        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
-        Matrix<T,3,1> n2; n2 << correspondences(i,9), correspondences(i,10), correspondences(i,11);
+        Matrix<T,3,1> n1(correspondences(i,0), correspondences(i,1), correspondences(i,2));
+        Matrix<T,3,1> n2(correspondences(i,9), correspondences(i,10), correspondences(i,11));
         Matrix<T,3,1> n_1 = Rt_estimated[sensor1].block(0,0,3,3) * n1;
         Matrix<T,3,1> n_2 = Rt_estimated[sensor2].block(0,0,3,3) * n2;
         Matrix<T,3,1> rot_error = (n_1 - n_2);
         accum_error2 += rot_error.dot(rot_error);
+        mm_covariance[sensor1][sensor2] += n2 * n1.transpose();
 
-//        if(weight_uncertainty && correspondences.cols() == 10)
-//        {
-//            T weight = (correspondences(i,8) / (correspondences(i,3) * correspondences(i,9)));// / correspondences.rows();
-//            mm_covariance[sensor1][sensor2] += weight * n2 * n1.transpose();
-//        }
-//        else
-            mm_covariance[sensor1][sensor2] += n2 * n1.transpose();
+        // Add perpendicular vectors for each pair of correspondences
+        for(int j=i+1; j < correspondences.rows(); j++)
+        {
+            Matrix<T,3,1> n1b(correspondences(j,0), correspondences(j,1), correspondences(j,2));
+            Matrix<T,3,1> n2b(correspondences(j,9), correspondences(j,10), correspondences(j,11));
+//            Matrix<T,3,1> n_1b = Rt_estimated[sensor1].block(0,0,3,3) * n1b;
+//            Matrix<T,3,1> n_2b = Rt_estimated[sensor2].block(0,0,3,3) * n2b;
+            mm_covariance[sensor1][sensor2] += (n2.cross(n2b)) * (n1.cross(n1b)).transpose();
+        }
     }
 
-    // Calculate calibration Rt
-    //      cout << "Solve system\n";
-    calcConditioningPair(sensor1, sensor2);
-    cout << "conditioning " << mm_conditioning[sensor1][sensor2] << endl;
-    if(mm_conditioning[sensor1][sensor2] < threshold_conditioning )
-    {
-        cout << "Bad conditioning " << mm_conditioning[sensor1][sensor2] << " < " << threshold_conditioning << endl;
-        return Matrix<T,3,3>::Identity();
-    }
+    // Calculate Rotation
+    // cout << "Solve rotation";
+    Matrix<T,3,3> rotation = rotationFromNormals(mm_covariance[sensor1][sensor2], threshold_conditioning);
 
-    JacobiSVD<Matrix<T,3,3> > svd(mm_covariance[sensor1][sensor2], ComputeFullU | ComputeFullV);
-    Matrix<T,3,3> rotation = svd.matrixV() * svd.matrixU().transpose();
-    double det = rotation.determinant();
-    if(det != 1)
-    {
-        Matrix<T,3,3> aux;
-        aux << 1, 0, 0, 0, 1, 0, 0, 0, det;
-        rotation = svd.matrixV() * aux * svd.matrixU().transpose();
-    }
     cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation) << endl;
     cout << "average error: "
               << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "

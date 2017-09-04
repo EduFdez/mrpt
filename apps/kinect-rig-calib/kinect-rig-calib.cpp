@@ -67,6 +67,61 @@ void KinectRigCalib::setNumSensors(const size_t n_sensors)
     }
 }
 
+void KinectRigCalib::displayObservation()
+{
+    cout << "KinectRigCalib::displayObservation...\n";
+
+    // Note that the RGB-D camera is in a vertical configuration in the rig RGBD360
+    cv::Mat img_transposed, img_rotated;
+    cv::transpose(rgb[0], img_transposed);
+    cv::flip(img_transposed, img_rotated, 0);
+    cv::Mat rgb_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_8UC3, cv::Scalar(155,100,255));
+    cv::Mat tmp = rgb_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
+    img_rotated.copyTo(tmp);
+    cv::transpose(rgb[1], img_transposed);
+    cv::flip(img_transposed, img_rotated, 0);
+    tmp = rgb_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
+    img_rotated.copyTo(tmp);
+    //cv::circle(rgb_concat, cv::Point(240,320),5,cv::Scalar(0, 0, 200));
+    //cout << "Pixel values " << rgb_concat.at<cv::Vec3b>(5,5) << " " << rgb_concat.at<cv::Vec3b>(5,475) << " " << rgb_concat.at<cv::Vec3b>(5,485) << " " << endl;
+    cv::imshow("rgb", rgb_concat ); cv::moveWindow("rgb", 20,20);
+
+//            // Show depth
+//            cv::transpose(depth[0], img_transposed);
+//            cv::flip(img_transposed, img_rotated, 0);
+//            cv::Mat depth_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_32FC1, cv::Scalar(0.f));
+//            tmp = depth_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
+//            img_rotated.copyTo(tmp);
+//            cv::transpose(depth[1], img_transposed);
+//            cv::flip(img_transposed, img_rotated, 0);
+//            tmp = depth_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
+//            img_rotated.copyTo(tmp);
+//            cv::Mat img_depth_display;
+//            depth_concat.convertTo(img_depth_display, CV_32FC1, 0.3 );
+//            cv::Mat depth_display = cv::Mat(depth_concat.rows, depth_concat.cols, depth_concat.type(), cv::Scalar(1.f)) - img_depth_display;
+//            depth_display.setTo(cv::Scalar(0.f), depth_concat < 0.1f);
+//            cv::imshow("depth", depth_display ); cv::moveWindow("depth", 20,100+640);
+//            //cout << "Some depth values: " << depth_concat.at<float>(200, 320) << " " << depth_concat.at<float>(50, 320) << " " << depth[0].at<float>(200, 320) << " " << depth[0].at<float>(50, 320) << " " << depth[1].at<float>(430, 320) << " " << depth[1].at<float>(280, 320) << "\n";
+
+    // Show registered depth
+    cv::transpose(depth_reg[0], img_transposed);
+    cv::flip(img_transposed, img_rotated, 0);
+    cv::Mat depth_reg_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_32FC1, cv::Scalar(0.f));
+    tmp = depth_reg_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
+    img_rotated.copyTo(tmp);
+    cv::transpose(depth_reg[1], img_transposed);
+    cv::flip(img_transposed, img_rotated, 0);
+    tmp = depth_reg_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
+    img_rotated.copyTo(tmp);
+    cv::Mat img_depth_display;
+    depth_reg_concat.convertTo(img_depth_display, CV_32FC1, 0.3 );
+    cv::Mat depth_reg_display = cv::Mat(depth_reg_concat.rows, depth_reg_concat.cols, depth_reg_concat.type(), cv::Scalar(1.f)) - img_depth_display;
+    depth_reg_display.setTo(cv::Scalar(0.f), depth_reg_concat < 0.1f);
+    cv::imshow("depth_reg", depth_reg_display ); cv::moveWindow("depth_reg", 20,100+640);
+
+    cv::waitKey(0);
+}
+
 void KinectRigCalib::loadConfiguration(const string & config_file)
 {
     //Initial steps. Load configuration file
@@ -79,6 +134,8 @@ void KinectRigCalib::loadConfiguration(const string & config_file)
     display = cfg.read_bool("GLOBAL", "display", 0, true);
     verbose = cfg.read_bool("GLOBAL", "verbose", 0, true);
     min_pixels_line = cfg.read_int("GLOBAL", "min_pixels_line", 100, true);
+    th_dist_plane = cfg.read_float("GLOBAL", "th_dist_plane", 0.02, true);
+    th_angle_plane = cfg.read_float("GLOBAL", "th_angle_plane", 0.04, true);
 
     if(verbose)
         cout << "loadConfiguration -> dataset: " << rawlog_file << "\toutput: " << output_dir << "\tdecimation: " << decimation << endl;
@@ -295,83 +352,40 @@ void KinectRigCalib::run()
 //                boost::this_thread::sleep (boost::posix_time::milliseconds (10));
             updateLock.unlock();
         }
+        b_freeze = false; // Update 3D visualization
 
         // Display color and depth images
-        cout << "...Display color and depth images\n";
-        if(display)
-        {
-            // Note that the RGB-D camera is in a vertical configuration in the rig RGBD360
-            cv::Mat img_transposed, img_rotated;
-            cv::transpose(rgb[0], img_transposed);
-            cv::flip(img_transposed, img_rotated, 0);
-            cv::Mat rgb_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_8UC3, cv::Scalar(155,100,255));
-            cv::Mat tmp = rgb_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
-            img_rotated.copyTo(tmp);
-            cv::transpose(rgb[1], img_transposed);
-            cv::flip(img_transposed, img_rotated, 0);
-            tmp = rgb_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
-            img_rotated.copyTo(tmp);
-            //cv::circle(rgb_concat, cv::Point(240,320),5,cv::Scalar(0, 0, 200));
-            //cout << "Pixel values " << rgb_concat.at<cv::Vec3b>(5,5) << " " << rgb_concat.at<cv::Vec3b>(5,475) << " " << rgb_concat.at<cv::Vec3b>(5,485) << " " << endl;
-            cv::imshow("rgb", rgb_concat ); cv::moveWindow("rgb", 20,20);
-
-//            // Show depth
-//            cv::transpose(depth[0], img_transposed);
-//            cv::flip(img_transposed, img_rotated, 0);
-//            cv::Mat depth_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_32FC1, cv::Scalar(0.f));
-//            tmp = depth_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
-//            img_rotated.copyTo(tmp);
-//            cv::transpose(depth[1], img_transposed);
-//            cv::flip(img_transposed, img_rotated, 0);
-//            tmp = depth_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
-//            img_rotated.copyTo(tmp);
-//            cv::Mat img_depth_display;
-//            depth_concat.convertTo(img_depth_display, CV_32FC1, 0.3 );
-//            cv::Mat depth_display = cv::Mat(depth_concat.rows, depth_concat.cols, depth_concat.type(), cv::Scalar(1.f)) - img_depth_display;
-//            depth_display.setTo(cv::Scalar(0.f), depth_concat < 0.1f);
-//            cv::imshow("depth", depth_display ); cv::moveWindow("depth", 20,100+640);
-//            //cout << "Some depth values: " << depth_concat.at<float>(200, 320) << " " << depth_concat.at<float>(50, 320) << " " << depth[0].at<float>(200, 320) << " " << depth[0].at<float>(50, 320) << " " << depth[1].at<float>(430, 320) << " " << depth[1].at<float>(280, 320) << "\n";
-
-            // Show registered depth
-            cv::transpose(depth_reg[0], img_transposed);
-            cv::flip(img_transposed, img_rotated, 0);
-            cv::Mat depth_reg_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_32FC1, cv::Scalar(0.f));
-            tmp = depth_reg_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
-            img_rotated.copyTo(tmp);
-            cv::transpose(depth_reg[1], img_transposed);
-            cv::flip(img_transposed, img_rotated, 0);
-            tmp = depth_reg_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
-            img_rotated.copyTo(tmp);
-            cv::Mat img_depth_display;
-            depth_reg_concat.convertTo(img_depth_display, CV_32FC1, 0.3 );
-            cv::Mat depth_reg_display = cv::Mat(depth_reg_concat.rows, depth_reg_concat.cols, depth_reg_concat.type(), cv::Scalar(1.f)) - img_depth_display;
-            depth_reg_display.setTo(cv::Scalar(0.f), depth_reg_concat < 0.1f);
-            cv::imshow("depth_reg", depth_reg_display ); cv::moveWindow("depth_reg", 20,100+640);
-
-            cv::waitKey(0);
-        }
+        //displayObservation();
 
         //						Segment local planes
         //==================================================================
         // #pragma omp parallel num_threads(num_sensors)
         for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
         {
-            boost::mutex::scoped_lock updateLock(visualizationMutex);
-            PbMap::pbMapFromPCloud(cloud[sensor_id], v_pbmap[sensor_id]);
+            //boost::mutex::scoped_lock updateLock(visualizationMutex);
+            PbMap::pbMapFromPCloud(cloud[sensor_id], v_pbmap[sensor_id], th_dist_plane, th_angle_plane, min_inliers);
             //DisplayCloudPbMap::displayAndPause(cloud[sensor_id], v_pbmap[sensor_id]); // This 3D visualization is not compatible with KinectRigCalib's one
             //PbMap::displayImagePbMap(cloud[sensor_id], rgb[sensor_id], v_pbmap[sensor_id]);
-            updateLock.unlock();
+            //updateLock.unlock();
         }
 
         //==============================================================================
         //								Get Correspondences
         //==============================================================================
         cout << "Get Correspondences\n";
-        b_freeze = false;
+        b_freeze = false; // Update 3D visualization
         getCorrespondences(); // Both planes and lines according to s_type strategy
 
-        // Compute the calibration if there are enough measurements
+        b_show_corresp = true;
+        b_freeze = false; // Update 3D visualization
+        b_pause = true;
+        while(b_pause)
+            boost::this_thread::sleep (boost::posix_time::milliseconds (50));
 
+        // Compute the calibration if there are enough measurements
+        Matrix<T,3,3> R_planes = CalibrateRotationPair();
+        Matrix<T,3,3> R_lines_n = ApproximateRotationZeroTrans();
+        cout << "ROTATION diff " << RAD2DEG(acos( (trace<T,3>(R_planes * R_lines_n.transpose()) - 1) / 2)) << endl;
     }
 
     //========================== Perform calibration ===============================
@@ -379,11 +393,9 @@ void KinectRigCalib::run()
     calibrate(save_corresp);
 }
 
-
 void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
 {
-    //cout << "ExtrinsicRgbdCalibration::viz_cb(...)\n";
-    cout << "b_freeze " << b_freeze << endl;
+    //cout << "ExtrinsicRgbdCalibration::viz_cb(...) " << b_freeze << "\n";
     if(!b_viz_init)
     {
         viz.setSize(1280,960); // Set the window size
@@ -397,7 +409,7 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
         boost::this_thread::sleep (boost::posix_time::milliseconds (10));
         return;
     }
-    cout << "   ::viz_cb(...) Update visualization \n";
+    //cout << "   ::viz_cb(...) Update visualization \n";
 
     viz.removeAllShapes();
     viz.removeAllPointClouds();
@@ -433,7 +445,6 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
                 for(size_t i=0; i < 2; i++)
                 {
                     // Draw camera system
-                    //Rt.matrix() = initOffset;
                     sprintf (name, "ref_%lu", i);
                     Rt.matrix() = Rt_estimated[sensor_pair[i]].cast<float>();
                     viz.removeCoordinateSystem();
@@ -442,23 +453,21 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
                     mrpt::pbmap::Plane &plane = all_planes.vPlanes[plane_candidate_all[i]];
                     sprintf (name, "m_normal_%lu", i);
                     pcl::PointXYZ pt1(plane.v3center[0], plane.v3center[1], plane.v3center[2]); // Begin and end points of normal's arrow for visualization
-                    pcl::PointXYZ pt2(plane.v3center[0] + (0.3f * plane.v3normal[0]), plane.v3center[1] + (0.3f * plane.v3normal[1]), plane.v3center[2] + (0.3f * plane.v3normal[2]));
+                    pcl::PointXYZ pt2(plane.v3center[0] + (0.2f*plane.v3normal[0]), plane.v3center[1] + (0.2f*plane.v3normal[1]), plane.v3center[2] + (0.2f*plane.v3normal[2]));
                     viz.addArrow (pt2, pt1, ared[i%10], agrn[i%10], ablu[i%10], false, name);
-                    sprintf (name, "m_plane_contour_%02d", int (sensor_pair[i]));
+                    sprintf (name, "m_plane_contour_%lu", i);
                     viz.addPolygon<PointT> (plane.polygonContourPtr, red[0], grn[0], blu[0], name);
-                    sprintf (name, "m_inliers_%02d", int (sensor_pair[i]));
+                    sprintf (name, "m_inliers_%lu", i);
                     pcl::PointCloud<PointT>::Ptr planeCloudColoured = colourPointCloud<PointT>(plane.planePointCloudPtr, red[0], grn[0], blu[0], 0.5f);
                     viz.addPointCloud (planeCloudColoured, name);
+                    viz.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 5, name);
                     //pcl::visualization::PointCloudColorHandlerCustom <PointT> color (plane.planePointCloudPtr, red[0], grn[0], blu[0]);
                     //viz.addPointCloud (plane.planePointCloudPtr, color, name);
                 }
-                cout << "wait 1 Draw a pair of candidate planes to match \n";
-                viz.spinOnce();
-                //viz.spinOnce(1, false);
                 while(confirm_corresp == 0){
-                    cout << "wait XX Draw a pair of candidate planes to match \n";
-                    boost::this_thread::sleep (boost::posix_time::milliseconds (10));}
-                cout << "wait 2 Draw a pair of candidate planes to match \n";
+                    viz.spinOnce(50);
+                    boost::this_thread::sleep (boost::posix_time::milliseconds (50));
+                }
 
                 updateLock.unlock();
                 return;
@@ -522,9 +531,11 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
             //            }
             //            return;
             //        }
-//        }
-//        else
-//        {
+        }
+
+        if(b_show_corresp)
+        {
+//            cout << "   ::viz_cb(...) Draw correspondences \n";
 //            // Draw planes
 //            for(size_t i=0; i < all_planes.vPlanes.size(); i++)
 //            {
@@ -534,7 +545,7 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
 //                mrpt::pbmap::Plane &plane = all_planes.vPlanes[i];
 //                sprintf (name, "normal_%u", static_cast<unsigned>(i));
 //                pcl::PointXYZ pt1(plane.v3center[0], plane.v3center[1], plane.v3center[2]); // Begin and end points of normal's arrow for visualization
-//                pcl::PointXYZ pt2(plane.v3center[0] + (0.3f * plane.v3normal[0]), plane.v3center[1] + (0.3f * plane.v3normal[1]), plane.v3center[2] + (0.3f * plane.v3normal[2]));
+//                pcl::PointXYZ pt2(plane.v3center[0] + (0.2f*plane.v3normal[0]), plane.v3center[1] + (0.2f*plane.v3normal[1]), plane.v3center[2] + (0.2f*plane.v3normal[2]));
 //                viz.addArrow (pt2, pt1, ared[i%10], agrn[i%10], ablu[i%10], false, name);
 
 //                sprintf (name, "plane_contour_%02d", int (i));
@@ -543,7 +554,6 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
 
 //            }
             // Draw plane matches
-            cout << "   ::viz_cb(...) Draw plane matches \n";
             set<size_t> drawn_planes;
             string matched_planes = "Matched planes:\n";
             for(map< size_t, map< size_t, map<size_t, size_t> > >::iterator it1=mmm_plane_matches_all.begin(); it1 != mmm_plane_matches_all.end(); it1++)
@@ -551,6 +561,7 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
                     for(map<size_t, size_t>::iterator it3=it2->second.begin(); it3 != it2->second.end(); it3++)
                     {
                         matched_planes += to_string(it3->first) + " - " + to_string(it3->second);
+                        size_t col = it3->first%10; // Colour index
                         array<size_t,2> idx = {it3->first, it3->second};
                         for(size_t i=0; i < 2; i++)
                         {
@@ -560,44 +571,102 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
                             mrpt::pbmap::Plane &plane = all_planes.vPlanes[idx[i]];
                             sprintf (name, "normal_%lu", idx[i]);
                             pcl::PointXYZ pt1(plane.v3center[0], plane.v3center[1], plane.v3center[2]);
-                            pcl::PointXYZ pt2(plane.v3center[0] + (0.3f * plane.v3normal[0]), plane.v3center[1] + (0.3f * plane.v3normal[1]), plane.v3center[2] + (0.3f * plane.v3normal[2]));
-                            viz.addArrow (pt2, pt1, ared[i%10], agrn[i%10], ablu[i%10], false, name);
+                            pcl::PointXYZ pt2(plane.v3center[0] + (0.2f*plane.v3normal[0]), plane.v3center[1] + (0.2f*plane.v3normal[1]), plane.v3center[2] + (0.2f*plane.v3normal[2]));
+                            viz.addArrow (pt2, pt1, ared[col], agrn[col], ablu[col], false, name);
 
-                            sprintf (name, "plane_contour_%02d", int (i));
-                            viz.addPolygon<PointT> (plane.polygonContourPtr, red[i%10], grn[i%10], blu[i%10], name);
+                            sprintf (name, "plane_contour_%lu", idx[i]);
+                            viz.addPolygon<PointT> (plane.polygonContourPtr, red[col], grn[col], blu[col], name);
 
-                            sprintf (name, "inliers_%02d", int (i));
-                            pcl::PointCloud<PointT>::Ptr planeCloudColoured = colourPointCloud<PointT>(plane.planePointCloudPtr, red[i%10], grn[i%10], blu[i%10], 0.5f);
+                            sprintf (name, "inliers_%lu", idx[i]);
+                            pcl::PointCloud<PointT>::Ptr planeCloudColoured = colourPointCloud<PointT>(plane.planePointCloudPtr, red[col], grn[col], blu[col], 0.5f);
                             viz.addPointCloud (planeCloudColoured, name);
-                            //pcl::visualization::PointCloudColorHandlerCustom <PointT> color (plane.planePointCloudPtr, red[i%10], grn[i%10], blu[i%10]);
-                            //viz.addPointCloud (plane.planePointCloudPtr, color, name);
                         }
                     }
             viz.addText (matched_planes.c_str(), 220, 20, "matched_planes");
 
-            // Draw lines
-            for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
-            {
-                for(size_t i=0; i < vv_segments3D[sensor_id].size(); i++)
-                    //for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
-                {
-                    //vector<mrpt::math::TLine3D> seg3D = vv_segments3D[sensor_id];
-                    Matrix<T,3,1> seg3D_1(Rt_estimated[sensor_id].block<3,3>(0,0)*vv_segments3D[sensor_id][i].block<3,1>(0,0) + Rt_estimated[sensor_id].block<3,1>(0,3));
-                    Matrix<T,3,1> seg3D_2(Rt_estimated[sensor_id].block<3,3>(0,0)*vv_segments3D[sensor_id][i].block<3,1>(3,0) + Rt_estimated[sensor_id].block<3,1>(0,3));
-                    pcl::PointXYZ pt1(seg3D_1[0], seg3D_1[1], seg3D_1[2]);
-                    pcl::PointXYZ pt2(seg3D_2[0], seg3D_2[1], seg3D_2[2]);
-                    sprintf (name, "line_%lu_%u", sensor_id, static_cast<unsigned>(i));
-                    viz.removeShape(name);
-                    viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], name);
-                }
-            }
+//            // Draw lines
+//            for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
+//            {
+//                for(size_t i=0; i < vv_segments3D[sensor_id].size(); i++)
+//                    //for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
+//                {
+//                    //vector<mrpt::math::TLine3D> seg3D = vv_segments3D[sensor_id];
+//                    Matrix<T,3,1> seg3D_1(Rt_estimated[sensor_id].block<3,3>(0,0)*vv_segments3D[sensor_id][i].block<3,1>(0,0) + Rt_estimated[sensor_id].block<3,1>(0,3));
+//                    Matrix<T,3,1> seg3D_2(Rt_estimated[sensor_id].block<3,3>(0,0)*vv_segments3D[sensor_id][i].block<3,1>(3,0) + Rt_estimated[sensor_id].block<3,1>(0,3));
+//                    pcl::PointXYZ pt1(seg3D_1[0], seg3D_1[1], seg3D_1[2]);
+//                    pcl::PointXYZ pt2(seg3D_2[0], seg3D_2[1], seg3D_2[2]);
+//                    sprintf (name, "line_%lu_%lu", sensor_id, i);
+//                    viz.removeShape(name);
+//                    viz.addLine<pcl::PointXYZ>(pt1, pt2, ared[i%10], agrn[i%10], ablu[i%10], name);
+//                }
+//            }
+            // Draw line matches
+            //cout << "   ::viz_cb(...) Draw line matches \n";
+            vector< set<size_t> > drawn_lines(num_sensors);
+            string matched_lines = "Matched lines:\n";
+            for(map< size_t, map< size_t, map<size_t, size_t> > >::iterator it1=mmm_line_matches.begin(); it1 != mmm_line_matches.end(); it1++)
+                for(map< size_t, map<size_t, size_t> >::iterator it2=it1->second.begin(); it2 != it1->second.end(); it2++)
+                    for(map<size_t, size_t>::iterator it3=it2->second.begin(); it3 != it2->second.end(); it3++)
+                    {
+                        matched_lines += to_string(it1->first) + "." + to_string(it3->first) + " - " + to_string(it2->first) + "." + to_string(it3->second);
+                        size_t col = it3->first%10; // Colour index
+                        array<size_t,2> idx = {it3->first, it3->second};
+                        array<size_t,2> sensor = {it1->first, it2->first};
+                        for(size_t i=0; i < 2; i++)
+                        {
+                            //cout << i << " line " << vv_segments3D[sensor[i]][idx[i]].transpose() << endl;
+                            if(drawn_lines[sensor[i]].count(idx[i]))
+                                continue;
+                            drawn_lines[sensor[i]].insert(idx[i]);
+
+                            Matrix<T,3,1> seg3D_1(Rt_estimated[sensor[i]].block<3,3>(0,0)*vv_segments3D[sensor[i]][idx[i]].block<3,1>(0,0) + Rt_estimated[sensor[i]].block<3,1>(0,3));
+                            Matrix<T,3,1> seg3D_2(Rt_estimated[sensor[i]].block<3,3>(0,0)*vv_segments3D[sensor[i]][idx[i]].block<3,1>(3,0) + Rt_estimated[sensor[i]].block<3,1>(0,3));
+                            pcl::PointXYZ pt1(seg3D_1[0], seg3D_1[1], seg3D_1[2]);
+                            pcl::PointXYZ pt2(seg3D_2[0], seg3D_2[1], seg3D_2[2]);
+                            sprintf (name, "line_%lu_%lu", sensor[i], idx[i]);
+                            viz.removeShape(name);
+                            viz.addLine<pcl::PointXYZ>(pt1, pt2, red[col], grn[col], blu[col], name);
+                            sprintf (name, "sp1_%lu_%lu", sensor[i], idx[i]);
+                            viz.addSphere<pcl::PointXYZ>(pt1, 0.01, red[col], grn[col], blu[col], name);
+                            sprintf (name, "sp2_%lu_%lu", sensor[i], idx[i]);
+                            viz.addSphere<pcl::PointXYZ>(pt2, 0.01, red[col], grn[col], blu[col], name);
+
+                            // Draw virtual plane
+                            sprintf (name, "virtual_plane_%lu_%lu", sensor[i], idx[i]);
+                            pcl::PointCloud<pcl::PointXYZ>::Ptr triangle(new pcl::PointCloud<pcl::PointXYZ>());
+                            triangle->points.resize(3);
+                            triangle->points[0].getVector3fMap() = Rt_estimated[sensor[i]].block<3,1>(0,3).cast<float>(); // Set the optical center of the camera
+                            triangle->points[1] = pt1;
+                            triangle->points[2] = pt2;
+                            viz.addPolygon<pcl::PointXYZ> (triangle, red[col], grn[col], blu[col], name);
+
+//                            pcl::ModelCoefficients::Ptr plane(new pcl::ModelCoefficients);
+//                            plane->values.resize(4);
+//                            plane->values[0] = vv_segment_n[sensor[i]][idx[i]][0];
+//                            plane->values[1] = vv_segment_n[sensor[i]][idx[i]][1];
+//                            plane->values[2] = vv_segment_n[sensor[i]][idx[i]][2];
+//                            plane->values[3] = 0;
+//                            viz.addPlane (*plane, name, 0);
+//                            viz.setShapeRenderingProperties (pcl::visualization::PCL_VISUALIZER_COLOR,  ared[col], agrn[col], ablu[col], name, 0);
+//                            viz.setShapeRenderingProperties (pcl::visualization::PCL_VISUALIZER_OPACITY, 0.4, name, 0);
+//                            //viz.setShapeRenderingProperties (pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, name, 0);
+
+                            pcl::PointXYZ pt1_n = p1;//(triangle->points[0]); // Begin and end points of normal's arrow for visualization
+//                            pt1_n.getVector3fMap() += triangle->points[1].getVector3fMap() + triangle->points[2].getVector3fMap(); pt1_n.getVector3fMap() /= 3.f;
+                            pcl::PointXYZ pt2_n(pt1_n); pt2_n.getVector3fMap() += 0.1f*vv_segment_n[sensor[i]][idx[i]].cast<float>();
+                            sprintf (name, "seg_n_%lu_%lu", sensor[i], idx[i]);
+                            viz.addArrow (pt2_n, pt1_n, ared[col], agrn[col], ablu[col], false, name);
+                        }
+                    }
+            viz.addText (matched_lines.c_str(), 420, 20, "matched_lines");
+            b_show_corresp = false;
         }
 
 #if RECORD_VIDEO
         string screenshotFile = mrpt::format("im_%04u.png", ++numScreenshot);
         viz.saveScreenshot(screenshotFile);
 #endif
-//        b_freeze = true;
+        b_freeze = true;
         updateLock.unlock();
     }
 }
@@ -606,6 +675,7 @@ void KinectRigCalib::keyboardEventOccurred (const pcl::visualization::KeyboardEv
 {
     if ( event.keyDown () )
     {
+        cout << "KinectRigCalib::keyboardEventOccurred : " << event.getKeySym () << endl;
         if(event.getKeySym () == "e" || event.getKeySym () == "E")
             b_exit = true;
         else if(event.getKeySym () == "k" || event.getKeySym () == "K"){
@@ -613,8 +683,11 @@ void KinectRigCalib::keyboardEventOccurred (const pcl::visualization::KeyboardEv
         }
         else if(event.getKeySym () == "l" || event.getKeySym () == "L"){
             confirm_corresp = -1;
-            b_freeze = !b_freeze;
+//            b_freeze = !b_freeze;
+        }
+        else if(event.getKeySym () == "Return"){
+            cout << "PAUSE\n";
+            b_pause = !b_pause;
         }
     }
 }
-

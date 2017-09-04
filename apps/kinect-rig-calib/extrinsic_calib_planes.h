@@ -98,10 +98,10 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib//<T>
     //    Eigen::Matrix<T,3,3> calcFisherInfMat(const int weightedLS = 0)
 
     /*! Calibrate the relative rotation between the pair of sensors. Closed form solution. */
-    Eigen::Matrix<T,3,3> CalibrateRotationPair(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);
+    Eigen::Matrix<T,3,3> CalibrateRotationPair(const size_t sensor1 = 0, const size_t sensor2 = 1);//, const bool weight_uncertainty = false);
 
     /*! Calibrate the relative translation between the pair of sensors. Closed form solution (linear LS). */
-    Eigen::Matrix<T,3,1> CalibrateTranslationPair(const size_t sensor1 = 0, const size_t sensor2 = 1, const bool weight_uncertainty = false);
+    Eigen::Matrix<T,3,1> CalibrateTranslationPair(const size_t sensor1 = 0, const size_t sensor2 = 1);//, const bool weight_uncertainty = false);
 
     /*! Get the rotation of each sensor in a multisensor setup. The first sensor (sensor_id=0) is taken as reference. */
     void CalibrateRotationManifold(const bool weight_uncertainty = false);
@@ -130,6 +130,8 @@ class ExtrinsicCalibPlanes : public virtual ExtrinsicCalib//<T>
     /*! True if waiting for visual confirmation (for visualization) */
     bool b_wait_plane_confirm;
 
-    /*! Minimum number of inliers of a plane to be matched */
+    /*! Parameters for plane segmentation */
+    float th_dist_plane;
+    float th_angle_plane;
     const size_t min_inliers = 2e4;
 };

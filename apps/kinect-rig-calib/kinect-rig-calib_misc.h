@@ -54,6 +54,15 @@ Eigen::Matrix<T,4,4> getPoseEigen(const mrpt::poses::CPose3D & pose)
 //    return pose.getHomogeneousMatrixVal();
 }
 
+template<typename T, size_t N>
+T trace(const Eigen::Matrix<T,N,N> & matrix)
+{
+    T trace = 0.;
+    for(size_t i=0; i < N; i++)
+        trace += matrix(i,i);
+    return trace;
+}
+
 template<typename PointT>
 typename pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Mat & depth_img, const mrpt::utils::TStereoCamera & calib)
 {

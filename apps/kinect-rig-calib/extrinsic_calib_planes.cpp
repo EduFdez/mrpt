@@ -205,6 +205,7 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
 {
     cout << "ExtrinsicCalibPlanes::getCorrespondences... \n";
     vector<size_t> planesSourceIdx(num_sensors+1, 0);
+    all_planes = mrpt::pbmap::PbMap();
 
     //						Segment local planes
     //==================================================================
@@ -235,7 +236,7 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
                 for(size_t j=0; j < v_pbmap[sensor2].vPlanes.size(); j++)
                 {
                     size_t planesIdx_j = planesSourceIdx[sensor2];
-                    cout << "  Check planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
+                    //cout << "  Check planes " << planesIdx_i+i << " and " << planesIdx_j+j << endl;
 
                     if( all_planes.vPlanes[planesIdx_i+i].inliers.size() > min_inliers && all_planes.vPlanes[planesIdx_j+j].inliers.size() > min_inliers &&
                         all_planes.vPlanes[planesIdx_i+i].elongation < 5 && all_planes.vPlanes[planesIdx_j+j].elongation < 5 &&
@@ -250,10 +251,9 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
                             plane_candidate_all[0] = planesIdx_i; plane_candidate_all[1] = planesIdx_j;
                             b_wait_plane_confirm = true;
                             confirm_corresp = 0;
-                            while(confirm_corresp == 0){
-                                //cout << "  wait confirmation " << b_confirm_visually << "\n";
-                                boost::this_thread::sleep (boost::posix_time::milliseconds (10));}
-//                                mrpt::system::sleep(10);
+                            while(confirm_corresp == 0)
+                                boost::this_thread::sleep (boost::posix_time::milliseconds (50));
+//                                mrpt::system::sleep(50);
                             b_wait_plane_confirm = false;
                         }
                         if(confirm_corresp == -1)
@@ -496,53 +496,41 @@ double ExtrinsicCalibPlanes::calcTranslationError(const vector<Matrix<T,4,4>, al
 //      cout << "\nFIM_trans \n" << FIM_trans << endl;
 //    }
 
-Matrix<T,3,3> ExtrinsicCalibPlanes::CalibrateRotationPair(const size_t sensor1, const size_t sensor2, const bool weight_uncertainty)
+Matrix<T,3,3> ExtrinsicCalibPlanes::CalibrateRotationPair(const size_t sensor1, const size_t sensor2)//, const bool weight_uncertainty)
 {
-    // Calibration system
+    cout << "ExtrinsicCalibPlanes::CalibrateRotationPair... " << planes.mm_corresp[sensor1][sensor2].rows() << " correspondences\n";
+
     mm_covariance[sensor1][sensor2] = Matrix<T,3,3>::Zero();
 //    Matrix<T,3,3> cov = Matrix<T,3,3>::Zero();
     // Matrix<T,3,3> FIM_rot = Matrix<T,3,3>::Zero();
-
     T accum_error2 = 0;
     CMatrixDouble & correspondences = planes.mm_corresp[sensor1][sensor2];
     for(int i=0; i < correspondences.rows(); i++)
     {
-        //          T weight = (inliers / correspondences(i,3)) / correspondences.rows()
-        Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
-        Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
+        //T weight = (inliers / correspondences(i,3)) / correspondences.rows()
+        Matrix<T,3,1> n1(correspondences(i,0), correspondences(i,1), correspondences(i,2));
+        Matrix<T,3,1> n2(correspondences(i,4), correspondences(i,5), correspondences(i,6));
         Matrix<T,3,1> n_1 = Rt_estimated[sensor1].block(0,0,3,3) * n1;
         Matrix<T,3,1> n_2 = Rt_estimated[sensor2].block(0,0,3,3) * n2;
         Matrix<T,3,1> rot_error = (n_1 - n_2);
         accum_error2 += rot_error.dot(rot_error);
+        mm_covariance[sensor1][sensor2] += n2 * n1.transpose();
 
-//        if(weight_uncertainty && correspondences.cols() == 10)
-//        {
-//            T weight = (correspondences(i,8) / (correspondences(i,3) * correspondences(i,9)));// / correspondences.rows();
-//            mm_covariance[sensor1][sensor2] += weight * n2 * n1.transpose();
-//        }
-//        else
-            mm_covariance[sensor1][sensor2] += n2 * n1.transpose();
+        // Add perpendicular vectors for each pair of correspondences
+        for(int j=i+1; j < correspondences.rows(); j++)
+        {
+            Matrix<T,3,1> n1b(correspondences(j,0), correspondences(j,1), correspondences(j,2));
+            Matrix<T,3,1> n2b(correspondences(j,4), correspondences(j,5), correspondences(j,6));
+//            Matrix<T,3,1> n_1b = Rt_estimated[sensor1].block(0,0,3,3) * n1b;
+//            Matrix<T,3,1> n_2b = Rt_estimated[sensor2].block(0,0,3,3) * n2b;
+            mm_covariance[sensor1][sensor2] += (n2.cross(n2b)) * (n1.cross(n1b)).transpose();
+        }
     }
 
-    // Calculate calibration Rt
-    //      cout << "Solve system\n";
-    calcConditioningPair(sensor1, sensor2);
-    cout << "conditioning " << mm_conditioning[sensor1][sensor2] << endl;
-    if(mm_conditioning[sensor1][sensor2] < threshold_conditioning )
-    {
-        cout << "Bad conditioning " << mm_conditioning[sensor1][sensor2] << " < " << threshold_conditioning << endl;
-        return Matrix<T,3,3>::Identity();
-    }
+    // Calculate Rotation
+    // cout << "Solve rotation";
+    Matrix<T,3,3> rotation = rotationFromNormals(mm_covariance[sensor1][sensor2], threshold_conditioning);
 
-    JacobiSVD<Matrix<T,3,3> > svd(mm_covariance[sensor1][sensor2], ComputeFullU | ComputeFullV);
-    Matrix<T,3,3> rotation = svd.matrixV() * svd.matrixU().transpose();
-    double det = rotation.determinant();
-    if(det != 1)
-    {
-        Matrix<T,3,3> aux;
-        aux << 1, 0, 0, 0, 1, 0, 0, 0, det;
-        rotation = svd.matrixV() * aux * svd.matrixU().transpose();
-    }
     cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation) << endl;
     cout << "average error: "
               << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "
@@ -552,7 +540,7 @@ Matrix<T,3,3> ExtrinsicCalibPlanes::CalibrateRotationPair(const size_t sensor1, 
 }
 
 
-Eigen::Matrix<T,3,1> ExtrinsicCalibPlanes::CalibrateTranslationPair(const size_t sensor1, const size_t sensor2, const bool weight_uncertainty)
+Eigen::Matrix<T,3,1> ExtrinsicCalibPlanes::CalibrateTranslationPair(const size_t sensor1, const size_t sensor2)//, const bool weight_uncertainty)
 {
     // Calibration system
     Matrix<T,3,3> Hessian = Matrix<T,3,3>::Zero();

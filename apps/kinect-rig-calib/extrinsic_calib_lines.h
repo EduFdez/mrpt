@@ -53,32 +53,7 @@ typedef double T;
 //template<typename T>
 class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 {
-protected:
-
-    size_t min_pixels_line;
-    std::vector< std::vector<cv::Vec4i> > vv_segments2D;
-    cv::Vec4i line_match1;
-    cv::Vec4i line_match2;
-    std::vector< std::vector<Eigen::Matrix<T,3,1> > > vv_segment_n; // The normal vector to the plane containing the 2D line segment and the optical center
-    std::vector< std::vector<mrpt::math::TLine3D> > vv_lines3D;
-    std::vector< std::vector<Eigen::Matrix<T,6,1> > > vv_segments3D;
-    std::vector< std::vector<bool> > vv_line_has3D;
-
-    /*! Indices of the candidate correspondences */
-    std::array<size_t,2> line_candidate;
-//    std::map<unsigned, unsigned> line_corresp;
-
-//    /*! True if waiting for visual confirmation */
-//    bool b_wait_line_confirm;
-
-    /*! The plane correspondences between the different sensors */
-//    LineCorresp<T> lines;
-    FeatCorresp lines;
-
-    /*! The coordinates of the optical center of the rgb cameras */
-    std::vector<float> cx, cy;
-
-public:
+  public:
 
 //    /*! The current extrinsic calibration parameters */
 //    mrpt::math::TLine3D makeTLine3D(const Eigen::Vector3f & p1, const Eigen::Vector3f & p2)
@@ -92,13 +67,6 @@ public:
     /*! Constructor */
     ExtrinsicCalibLines() : min_pixels_line(150)//, b_wait_line_confirm(false) //calib(cal),
     {
-//            std::map<unsigned, std::map<unsigned, mrpt::math::CMatrixDouble> > mm_corresp_;
-
-//            /*! Conditioning numbers used to indicate if there is enough reliable information to calculate the extrinsic calibration */
-//            std::vector<float> conditioning;
-
-//            /*! Rotation covariance matrices from adjacent sensors */
-//            std::vector<Eigen::Matrix3f, Eigen::aligned_allocator<Eigen::Matrix3f> > covariances;
     }
 
     /*! Extract 3D lines from 2D segments in a RGB-D image.*/
@@ -154,4 +122,33 @@ public:
 
     /*! Calibrate the relative rigid transformation (Rt) of the pair. */
     void Calibrate();
+
+  protected:
+
+    /*! Minimum segment length to consider line correspondences */
+    size_t min_pixels_line;
+
+    /*! Lines segmented in the current observation */
+    std::vector< std::vector<cv::Vec4i> > vv_segments2D;
+    std::vector< std::vector<Eigen::Matrix<T,3,1> > > vv_segment_n; // The normal vector to the plane containing the 2D line segment and the optical center
+    std::vector< std::vector<mrpt::math::TLine3D> > vv_lines3D;
+    std::vector< std::vector<Eigen::Matrix<T,6,1> > > vv_segments3D;
+    std::vector< std::vector<bool> > vv_line_has3D;
+
+    /*! Indices of the matched correspondences from the current observation (for visualization) */
+    std::map< size_t, std::map< size_t, std::map<size_t, size_t> > > mmm_line_matches;
+
+//    /*! True if waiting for visual confirmation */
+//    bool b_wait_line_confirm;
+
+//    /*! Indices of the candidate correspondences */
+//    std::array<size_t,2> line_candidate;
+
+//    /*! Indices of the candidate correspondences (for visualization) */
+//    cv::Vec4i line_match1, line_match2;
+
+    /*! The plane correspondences between the different sensors */
+//    LineCorresp<T> lines;
+    FeatCorresp lines;
+
 };

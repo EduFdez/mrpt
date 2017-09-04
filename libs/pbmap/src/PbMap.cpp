@@ -142,13 +142,10 @@ size_t PbMap::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
     mps.setDistanceThreshold(dist_threshold); //2cm
     mps.setInputNormals(normal_cloud);
     mps.setInputCloud(cloud_filtered);
+    mps.setProjectPoints(true);
 
-//    std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
-//    std::vector<pcl::ModelCoefficients> model_coefficients;
-//    std::vector<pcl::PointIndices> inliers;
     pcl::PointCloud<pcl::Label>::Ptr labels (new pcl::PointCloud<pcl::Label>);
     std::vector<pcl::PointIndices> label_indices;
-//    std::vector<pcl::PointIndices> boundary_indices;
     mps.segmentAndRefine(regions, model_coefficients, inliers, labels, label_indices, boundary_indices);
     size_t n_regions = regions.size();
 
@@ -156,7 +153,7 @@ size_t PbMap::segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,
 }
 
 /*! This function segments planes from the point cloud */
-void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pbmap::PbMap & pbmap,
+void PbMap::pbMapFromPCloud(pcl::PointCloud<PointT>::Ptr & point_cloud, mrpt::pbmap::PbMap & pbmap,
                             const float dist_threshold, const float angle_threshold, const size_t min_inliers, const float max_curvature_plane)
 {
     // Downsample and filter point cloud
@@ -169,6 +166,7 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
     filter.setSigmaR (0.05);
     filter.setInputCloud(point_cloud);
     filter.filter(*cloud_filtered);
+    point_cloud = cloud_filtered;
 
     // Segment planes
     std::vector<pcl::PlanarRegion<PointT>, Eigen::aligned_allocator<pcl::PlanarRegion<PointT> > > regions;
@@ -186,14 +184,29 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
 
         plane.v3center = regions[i].getCentroid();
         plane.v3normal = Eigen::Vector3f(model_coefficients[i].values[0], model_coefficients[i].values[1], model_coefficients[i].values[2]);
+        plane.d = model_coefficients[i].values[3];
         if( plane.v3normal.dot(plane.v3center) > 0)
             plane.v3normal = -plane.v3normal;
+        plane.d = -plane.v3normal .dot( plane.v3center );
+        //cout << i << " Plane : " << plane.v3normal.transpose() << " " << -plane.v3normal.dot(plane.v3center) << " " << model_coefficients[i].values[3] << " centroid " << plane.v3center.transpose() << " "<< endl;
 
         plane.curvature = regions[i].getCurvature ();
         //    cout << i << " getCurvature\n";
-
 //        if(plane.curvature > max_curvature_plane)
 //          continue;
+
+//        // Refine inliers
+//        //cout << "Plane " << i << " inliers " << inliers[i].indices.size() << " dist_threshold " << dist_threshold << endl;
+//        for(vector<int>::iterator it=inliers[i].indices.begin(); it != inliers[i].indices.end(); )
+//        {
+//            Eigen::Vector3f p(point_cloud->points[*it].x, point_cloud->points[*it].y, point_cloud->points[*it].z);
+//            //cout << "inlier dist " << plane.v3normal.dot(p)+plane.d << endl;
+//            if( fabs(plane.v3normal.dot(p)+plane.d) > dist_threshold )
+//                inliers[i].indices.erase(it);
+//            else
+//                ++it;
+//        }
+//        //cout << "Plane " << i << " inliers " << inliers[i].indices.size() << endl;
 
         // Extract the planar inliers from the input cloud
         pcl::ExtractIndices<pcl::PointXYZRGBA> extract;
@@ -208,7 +221,7 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
         Eigen::Vector3f gravity_center = Eigen::Vector3f::Zero();
         for(size_t j=0; j < inliers[i].indices.size(); j++)
         {
-            Eigen::Vector3f pt; pt << plane.planePointCloudPtr->points[j].x, plane.planePointCloudPtr->points[j].y, plane.planePointCloudPtr->points[j].z;
+            Eigen::Vector3f pt(plane.planePointCloudPtr->points[j].x, plane.planePointCloudPtr->points[j].y, plane.planePointCloudPtr->points[j].z);
             gravity_center += pt;
         }
         cov_nd = gravity_center;
@@ -217,13 +230,20 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
         //        Eigen::Matrix3f M = Eigen::Matrix3f::Zero();
         for(size_t j=0; j < inliers[i].indices.size(); j++)
         {
-            Eigen::Vector3f pt; pt << plane.planePointCloudPtr->points[j].x, plane.planePointCloudPtr->points[j].y, plane.planePointCloudPtr->points[j].z;
+            Eigen::Vector3f pt(plane.planePointCloudPtr->points[j].x, plane.planePointCloudPtr->points[j].y, plane.planePointCloudPtr->points[j].z);
+            pt -= gravity_center;
             cov_normal += -pt*pt.transpose();// + (plane.v3normal.dot(pt-gravity_center))*(plane.v3normal.dot(pt))*Eigen::Matrix3f::Identity();
 //          Eigen::Vector3f pt_rg = (pt-gravity_center);
 //          M += pt_rg * pt_rg.transpose();
         }
-//            Eigen::JacobiSVD<Eigen::Matrix3f> svdM(M, Eigen::ComputeFullU | Eigen::ComputeFullV);
-//            cout << "normalV " << plane.v3normal.transpose() << " covM \n" << svdM.matrixU() << endl;
+        Eigen::JacobiSVD<Eigen::Matrix3f> svdM(cov_normal, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        //cout << "normalV " << plane.v3normal.transpose() << " covM \n" << svdM.matrixU() << endl;
+        plane.v3center = gravity_center;
+        plane.v3normal = svdM.matrixU().block<3,1>(0,2);
+        if( plane.v3normal.dot(plane.v3center) > 0)
+            plane.v3normal = -plane.v3normal;
+        plane.d = -plane.v3normal .dot( plane.v3center );
+        //cout << i << " Plane : " << plane.v3normal.transpose() << " " << -plane.v3normal.dot(plane.v3center) << " " << model_coefficients[i].values[3] << " centroid " << plane.v3center.transpose() << " "<< endl;
 
         Eigen::Matrix4f fim;//, covariance;
         fim.block(0,0,3,3) = cov_normal;
@@ -234,9 +254,9 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
         Eigen::JacobiSVD<Eigen::Matrix4f> svd(fim, Eigen::ComputeFullU | Eigen::ComputeFullV);
         //svd.pinv(plane.information);
         plane.information = pseudoinverse(fim);
-        //        std::cout << "covariance \n" << plane.information << std::endl;
         plane.information = -fim;
-        //
+        // std::cout << "covariance \n" << plane.information << std::endl;
+
         pcl::PointCloud<pcl::PointXYZRGBA>::Ptr contourPtr(new pcl::PointCloud<pcl::PointXYZRGBA>);
         contourPtr->points = regions[i].getContour();
         //cout << "PbMap::pbMapFromPCloud regions[i].getContour() size " << contourPtr->points.size() << " vs " << boundary_indices[i].indices.size() << endl;
@@ -267,8 +287,6 @@ void PbMap::pbMapFromPCloud(const pcl::PointCloud<PointT>::Ptr & point_cloud, mr
         plane.computeMassCenterAndArea();
         //    cout << "Extract convexHull\n";
         // Discard small planes
-
-        plane.d = -plane.v3normal .dot( plane.v3center );
 
         //        // Discard narrow planes
         //        plane.calcElongationAndPpalDir();

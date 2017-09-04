@@ -114,7 +114,7 @@ class ExtrinsicCalib
     }
 
     /*! Calculate adjacent conditioning (information between a pair of adjacent sensors) */
-    void calcConditioningPair(const size_t sensor1, const size_t sensor2)
+    inline void calcConditioningPair(const size_t sensor1, const size_t sensor2)
     {
         if( sensor1 > sensor2 )
             throw std::runtime_error("\nERROR: ExtrinsicCalib::calcConditioningPair sensor1 > sensor2!");
@@ -125,6 +125,30 @@ class ExtrinsicCalib
             mm_conditioning[sensor1][sensor2] = 0.0;
     }
 
+    /*! Calculate the rotation from the covariance matrix of a set of corresponding normal vectors */
+    inline Eigen::Matrix<T,3,3> rotationFromNormals(const Eigen::Matrix<T,3,3> & covariance, const T threshold_cond = 0.f)
+    {
+        Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        float conditioning = svd.singularValues().minCoeff() / svd.singularValues().maxCoeff();
+        if(threshold_cond > 1e-9 && conditioning < threshold_cond)
+        {
+            std::cout << "ExtrinsicCalib::rotationFromNormals: JacobiSVD bad conditioning " << conditioning << " < " << threshold_cond << "\n";
+            return Eigen::Matrix<T,3,3>::Identity();
+        }
+
+        Eigen::Matrix<T,3,3> rotation = svd.matrixV() * svd.matrixU().transpose();
+        double det = rotation.determinant();
+        if(det != 1)
+        {
+            Eigen::Matrix<T,3,3> aux;
+            aux << 1, 0, 0, 0, 1, 0, 0, 0, det;
+            rotation = svd.matrixV() * aux * svd.matrixU().transpose();
+        }
+        std::cout << "rotation \n" << rotation << "\nconditioning " << conditioning << "\n";
+
+        return rotation;
+    }
+
   protected:
 
     /*! Indices of the pair of sensors being evaluated */
@@ -132,7 +156,7 @@ class ExtrinsicCalib
     std::array<size_t,2> sensor_pair;
 
     /*! Calibration parameter to consider if the problem is ill-posed */
-    const double threshold_conditioning = 1e-3;
+    const T threshold_conditioning = 1e-5;
 
     /*! Whether to visually check or not every proposed correspondence */
     bool b_confirm_visually;
