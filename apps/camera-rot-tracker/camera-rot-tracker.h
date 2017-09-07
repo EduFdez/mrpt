@@ -8,12 +8,12 @@
    +---------------------------------------------------------------------------+ */
 
 /*---------------------------------------------------------------
-    APPLICATION: kinect-rig-calib
-    FILE: kinect-rig-calib_main.cpp
+    APPLICATION: camera-rot-tracker
+    FILE: camera-rot-tracker_main.cpp
     AUTHOR: Eduardo Fernández-Moral <efernandezmoral@gmail.com>
 
     See README.txt for instructions or
-          http://www.mrpt.org/Application:kinect-rig-calib
+          http://www.mrpt.org/Application:camera-rot-tracker
   ---------------------------------------------------------------*/
 
 #ifndef KINECT_RIG_CALIB_H
@@ -50,9 +50,9 @@ typedef double T;
 /*! This class calibrates the extrinsic parameters of the omnidirectional RGB-D sensor. For that, the sensor is accessed
  *  and big planes are segmented and matched between different single sensors.
 */
-//class KinectRigCalib : public ExtrinsicCalib<T>
+//class CameraRotTracker : public ExtrinsicCalib<T>
 //template<typename T>
-class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
+class CameraRotTracker : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
 {
 
     /*! Visualization elements */
@@ -67,9 +67,6 @@ class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
     void viz_cb (pcl::visualization::PCLVisualizer& viz);
     void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event, void* viewer_void);
 
-    /*! Set the size of the observation containers */
-    void setNumSensors(const size_t n_sensors);
-
     /*! Display the RGB-D images (This function has been written for adjacent sensors from RGBD360) */
     void displayObservation();
 
@@ -81,19 +78,14 @@ class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
     enum strategy{ PLANES, LINES, PLANES_AND_LINES } s_type;
 
     // Sensor parameters
-    std::vector<std::string> sensor_labels;
-    std::vector<mrpt::poses::CPose3D> init_poses;
-    double max_diff_sync;
+    mrpt::utils::TStereoCamera intrinsics;
+    mrpt::poses::CPose3 pose_init;
 
     // Observation parameters
     std::vector<cv::Mat> rgb;
     std::vector<cv::Mat> depth;
     std::vector<cv::Mat> depth_reg; // Depth image registered to RGB pose
     std::vector<pcl::PointCloud<PointT>::Ptr> cloud;
-//    std::vector<mrpt::pbmap::PbMap> v_pbmap;
-
-    Eigen::Matrix<T,4,4> initOffset;
-    std::vector<Eigen::Matrix<T,4,4>, Eigen::aligned_allocator<Eigen::Matrix<T,4,4> > > initOffsets;
 
     std::string rawlog_file;
     std::string output_dir;
@@ -101,8 +93,8 @@ class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
     bool display;
     bool verbose;
 
-    KinectRigCalib() :
-        viewer("kinect-rig-calib"),
+    CameraRotTracker() :
+        viewer("camera-rot-tracker"),
         b_exit(false),
         b_viz_init(false),
         b_freeze(true),
@@ -111,19 +103,13 @@ class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
         max_diff_sync(0.005)
     {
         // Initialize visualizer
-        viewer.runOnVisualizationThread (boost::bind(&KinectRigCalib::viz_cb, this, _1), "viz_cb");
-        viewer.registerKeyboardCallback ( &KinectRigCalib::keyboardEventOccurred, *this );
+        viewer.runOnVisualizationThread (boost::bind(&CameraRotTracker::viz_cb, this, _1), "viz_cb");
+        viewer.registerKeyboardCallback ( &CameraRotTracker::keyboardEventOccurred, *this );
         b_show_corresp = false;
     }
 
     /*! Load a config which indicates the system to calibrate: input rawlog dataset, initial poses with uncertainty, plus other parameters. */
     void loadConfiguration(const std::string & config_file);
-
-    /*! Extract plane and/or line correspondences to estimate the calibration. */
-    void getCorrespondences();
-
-    /*! Perform the calibration from plane and/or line correspondences. */
-    void calibrate(const bool save_corresp = true);
 
     /*! This function encapsulates the main functionality of the calibration process:
      *  parse the dataset to find geometric correspondences between the sensors, and estimate the calibration */
