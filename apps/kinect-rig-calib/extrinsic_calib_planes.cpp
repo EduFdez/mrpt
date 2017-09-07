@@ -330,7 +330,7 @@ void ExtrinsicCalibPlanes::getCorrespondences(const vector<pcl::PointCloud<Point
     }
 }
 
-double ExtrinsicCalibPlanes::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot1, const Matrix<T,3,3> & Rot2, bool in_deg)
+double ExtrinsicCalibPlanes::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot, bool in_deg)
 {
     double accum_error2 = 0.0;
     double accum_error_deg = 0.0;
@@ -340,9 +340,9 @@ double ExtrinsicCalibPlanes::calcRotationErrorPair(const CMatrixDouble & corresp
         T weight = 1.0;
         Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
         Matrix<T,3,1> n2; n2 << correspondences(i,4), correspondences(i,5), correspondences(i,6);
-        Matrix<T,3,1> rot_error = (Rot1*n1 - Rot2*n2);
+        Matrix<T,3,1> rot_error = (n1 - Rot*n2);
         accum_error2 += weight * rot_error.dot(rot_error);
-        accum_error_deg += mrpt::utils::RAD2DEG(acos((Rot1*n1).dot(Rot2*n2)));
+        accum_error_deg += mrpt::utils::RAD2DEG(acos((n1).dot(Rot*n2)));
     }
 
     if(in_deg)
@@ -361,7 +361,7 @@ double ExtrinsicCalibPlanes::calcRotationError(const vector<Matrix<T,4,4>, align
     for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
         for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
-            accum_error2 += calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt[sensor1].block<3,3>(0,0), Rt[sensor2].block<3,3>(0,0), in_deg);
+            accum_error2 += calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt[sensor1].block<3,3>(0,0).transpose()*Rt[sensor2].block<3,3>(0,0), in_deg);
             num_corresp += planes.mm_corresp[sensor1][sensor2].rows();
         }
 
@@ -531,10 +531,10 @@ Matrix<T,3,3> ExtrinsicCalibPlanes::CalibrateRotationPair(const size_t sensor1, 
     // cout << "Solve rotation";
     Matrix<T,3,3> rotation = rotationFromNormals(mm_covariance[sensor1][sensor2], threshold_conditioning);
 
-    cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation) << endl;
+    cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], rotation) << endl;
     cout << "average error: "
-              << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "
-              << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation, true) << " degrees\n";
+              << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0).transpose()*Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "
+              << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], rotation, true) << " degrees\n";
 
     return rotation;
 }

@@ -386,6 +386,8 @@ void KinectRigCalib::run()
         Matrix<T,3,3> R_planes = CalibrateRotationPair();
         Matrix<T,3,3> R_lines_n = ApproximateRotationZeroTrans();
         cout << "ROTATION diff " << RAD2DEG(acos( (trace<T,3>(R_planes * R_lines_n.transpose()) - 1) / 2)) << endl;
+        cout << "ROTATION ERROR " << ExtrinsicCalibPlanes::calcRotationErrorPair(planes.mm_corresp[0][1], R_planes, true) << " lines " << ExtrinsicCalibLines::calcRotationErrorPair(lines.mm_corresp[0][1], R_planes, true) << endl;
+        cout << "ROTATION ERROR " << ExtrinsicCalibPlanes::calcRotationErrorPair(planes.mm_corresp[0][1], R_lines_n, true) << " lines " << ExtrinsicCalibLines::calcRotationErrorPair(lines.mm_corresp[0][1], R_lines_n, true) << endl;
     }
 
     //========================== Perform calibration ===============================

@@ -368,7 +368,7 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
 }
 
 
-double ExtrinsicCalibLines::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot1, const Matrix<T,3,3> & Rot2, bool in_deg)
+double ExtrinsicCalibLines::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot, bool in_deg)
 {
     double accum_error2 = 0.0;
     double accum_error_deg = 0.0;
@@ -379,7 +379,7 @@ double ExtrinsicCalibLines::calcRotationErrorPair(const CMatrixDouble & correspo
             Matrix<T,3,1> n1; n1 << correspondences(i,0), correspondences(i,1), correspondences(i,2);
             Matrix<T,3,1> v2; v2 << correspondences(i,15)-correspondences(i,12), correspondences(i,16)-correspondences(i,13), correspondences(i,17)-correspondences(i,14);
             v2.normalize();
-            double rot_error = (Rot1*n1).dot(Rot2*v2);
+            double rot_error = (n1).dot(Rot*v2);
             accum_error2 += rot_error*rot_error; // weight *
             accum_error_deg += RAD2DEG(acos(rot_error));
         }
@@ -387,7 +387,7 @@ double ExtrinsicCalibLines::calcRotationErrorPair(const CMatrixDouble & correspo
             Matrix<T,3,1> v1; v1 << correspondences(i,8)-correspondences(i,5), correspondences(i,7)-correspondences(i,4), correspondences(i,6)-correspondences(i,3);
             Matrix<T,3,1> n2; n2 << correspondences(i,9), correspondences(i,10), correspondences(i,11);
             v1.normalize();
-            double rot_error = (Rot1*v1).dot(Rot2*n2);
+            double rot_error = (v1).dot(Rot*n2);
             accum_error2 += rot_error*rot_error; // weight *
             accum_error_deg += RAD2DEG(acos(rot_error));
         }
@@ -409,7 +409,7 @@ double ExtrinsicCalibLines::calcRotationError(const vector<Matrix<T,4,4>, aligne
     for(size_t sensor1=0; sensor1 < num_sensors; sensor1++)
         for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
-            accum_error2 += calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Rt[sensor1].block<3,3>(0,0), Rt[sensor2].block<3,3>(0,0), in_deg);
+            accum_error2 += calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Rt[sensor1].block<3,3>(0,0).transpose()*Rt[sensor2].block<3,3>(0,0), in_deg);
             num_corresp += lines.mm_corresp[sensor1][sensor2].rows();
         }
 
@@ -509,10 +509,10 @@ Matrix<T,3,3> ExtrinsicCalibLines::ApproximateRotationZeroTrans(const size_t sen
     // cout << "Solve rotation";
     Matrix<T,3,3> rotation = rotationFromNormals(mm_covariance[sensor1][sensor2], threshold_conditioning);
 
-    cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation) << endl;
+    cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], rotation) << endl;
     cout << "average error: "
-              << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0), Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "
-              << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Matrix<T,3,3>::Identity(), rotation, true) << " degrees\n";
+              << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0).transpose()*Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "
+              << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], rotation, true) << " degrees\n";
 
     return rotation;
 }
