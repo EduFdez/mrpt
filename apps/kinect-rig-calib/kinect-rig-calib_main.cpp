@@ -16,18 +16,9 @@
           http://www.mrpt.org/Application:kinect-rig-calib
   ---------------------------------------------------------------*/
 
-// 0 load init file with estimated init_poses and errors. display/verbose parameters    -OK
-// 1 open rawlog                                                                    -OK
-// 2 identify observation pairs/triples...                                          -OK
-// 3 segment planes and lines
-// 4 get correspondences
-// 5 perform calibration. calibration algorithm in a different file
-// 6 visualize and evaluate
-
 //#include "DownsampleRGBD.h"
 #include "kinect-rig-calib.h"
 #include "kinect-rig-calib_misc.h"
-//#include "kinect-rig-calib_display.h"
 #include <mrpt/system/os.h>
 
 using namespace std;
@@ -80,8 +71,7 @@ int main(int argc, char **argv)
         }
 
         KinectRigCalib calibrator;
-        calibrator.loadConfiguration(config_file);
-        calibrator.run();
+        calibrator.run(config_file);
 
         return 0;
     }

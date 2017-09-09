@@ -10,17 +10,15 @@
 #include "vision-precomp.h"   // Precompiled headers
 
 #include <mrpt/vision/CFeatureLines.h>
+#include <mrpt/utils/CTicTac.h>
 
 // Universal include for all versions of OpenCV
 #include <mrpt/otherlibs/do_opencv_includes.h> 
 
 #if MRPT_HAS_OPENCV
 
-using namespace mrpt;
 using namespace mrpt::vision;
-//using namespace mrpt::system;
-//using namespace mrpt::utils;
-//using namespace mrpt::math;
+using namespace mrpt::utils;
 using namespace std;
 
 
@@ -33,6 +31,7 @@ void CFeatureLines::extractLines(const cv::Mat & image,
                                 const bool display )
 {
     //cout << "CFeatureLines::extractLines... threshold " << threshold << endl;
+    CTicTac clock; clock.Tic(); //Clock to measure the runtime
 
     // Canny edge detector
     cv::Mat canny_img;
@@ -47,7 +46,7 @@ void CFeatureLines::extractLines(const cv::Mat & image,
     //            cv::destroyWindow("Canny detector");
 
     // Get lines through the Hough transform
-    cv::vector<cv::Vec2f> lines;
+    std::vector<cv::Vec2f> lines;
     cv::HoughLines(canny_img, lines, 1, CV_PI / 180.0, threshold); // CAUTION: The last parameter depends on the input image, it's the smallest number of pixels to consider a line in the accumulator
     //    double minLineLength=50, maxLineGap=5;
     //    cv::HoughLinesP(canny_img, lines, 1, CV_PI / 180.0, threshold, minLineLength, maxLineGap); // CAUTION: The last parameter depends on the input image, it's the smallest number of pixels to consider a line in the accumulator
@@ -59,14 +58,24 @@ void CFeatureLines::extractLines(const cv::Mat & image,
     // Choose whether filtering the Canny or not, for thin and non-perfect edges
     /*filteredCanny = canny_img.clone();*/
     cv::dilate(canny_img, filteredCanny, cv::Mat());
-    //            cv::namedWindow("Filtered Canny detector");
-    //            cv::imshow("Filtered Canny detector", filteredCanny);
-    //            cv::waitKey(0);
-    //            cv::destroyWindow("Filtered Canny detector");
+//    cv::namedWindow("Filtered Canny detector");
+//    cv::imshow("Filtered Canny detector", filteredCanny);
+//    cv::waitKey(0);
+//    cv::destroyWindow("Filtered Canny detector");
 
     // Extracting segments (pairs of points) from the filtered Canny detector
     // And using the line parameters from lines
     extractLines_CannyHough(filteredCanny, lines, segments, threshold);
+    cout << "  CFeatureLines::extractLines took " << 1000*clock.Tac() << " ms \n";
+
+    // Force the segments to have a predefined order (e1y <= e2y)
+    for(auto line = begin(segments); line != end(segments); ++line)
+        if((*line)[1] == (*line)[3]){
+            if((*line)[0] > (*line)[1])
+                *line = cv::Vec4i((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
+        }
+        else if((*line)[1] < (*line)[3])
+            *line = cv::Vec4i((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
 
     // Display 2D segments
     if(display)
@@ -78,16 +87,19 @@ void CFeatureLines::extractLines(const cv::Mat & image,
             //cout << "line: " << (*line)[0] << " " << (*line)[1] << " " << (*line)[2] << " " << (*line)[3] << " \n";
             //image.convertTo(image_lines, CV_8UC1, 1.0 / 2);
             cv::line(image_lines, cv::Point((*line)[0], (*line)[1]), cv::Point((*line)[2], (*line)[3]), cv::Scalar(255, 0, 255), 1);
+            cv::circle(image_lines, cv::Point((*line)[0], (*line)[1]), 3, cv::Scalar(255, 0, 255), 3);
+            cv::putText(image_lines, string(to_string(distance(begin(segments),line))), cv::Point(((*line)[0]+(*line)[2])/2,((*line)[1]+(*line)[3])/2), 0, 1.2, cv::Scalar(200,0,0), 3 );
             //cv::imshow("lines", image_lines); cv::moveWindow("lines", 20,100+700);
             //cv::waitKey(0);
         }
+        cv::imwrite("/home/efernand/lines.png", image_lines);
         cv::imshow("lines", image_lines); cv::moveWindow("lines", 20,100+700);
         cv::waitKey(0);
     }
 }
 
 void CFeatureLines::extractLines_CannyHough( const cv::Mat & canny_image,
-                                             const cv::vector<cv::Vec2f> lines,
+                                             const std::vector<cv::Vec2f> lines,
                                              std::vector<cv::Vec4i> & segments,
                                              size_t threshold )
 {

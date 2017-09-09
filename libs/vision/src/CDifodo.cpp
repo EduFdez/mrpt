@@ -690,7 +690,7 @@ void CDifodo::solveOneLevel()
 	kai_loc_level = Var;
 }
 
-void CDifodo::odometryCalculation()
+void CDifodo::odometryCalculation(const Matrix4f & init)
 {
 	//Clock to measure the runtime
 	utils::CTicTac clock;
@@ -700,11 +700,16 @@ void CDifodo::odometryCalculation()
 	if (fast_pyramid)	buildCoordinatesPyramidFast();
 	else				buildCoordinatesPyramid();
 
+    Matrix4f identity(Matrix4f::Identity());
+    transformations[0] = init;
+    for (unsigned int i=1; i<ctf_levels; i++)
+        transformations[i].setIdentity();
+
 	//Coarse-to-fines scheme
     for (unsigned int i=0; i<ctf_levels; i++)
     {
 		//Previous computations
-		transformations[i].setIdentity();
+        //transformations[i].setIdentity();
 
 		level = i;
 		unsigned int s = pow(2.f,int(ctf_levels-(i+1)));
@@ -712,8 +717,9 @@ void CDifodo::odometryCalculation()
         image_level = ctf_levels - i + round(log(float(width/cols))/log(2.f)) - 1;
 
 		//1. Perform warping
-		if (i == 0)
-		{
+        //if (i == 0)
+        if (transformations[i].isApprox(identity,1e-6))
+        {
 			depth_warped[image_level] = depth[image_level];
 			xx_warped[image_level] = xx[image_level];
 			yy_warped[image_level] = yy[image_level];

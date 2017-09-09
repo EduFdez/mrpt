@@ -124,7 +124,7 @@ namespace mrpt
 			float previous_speed_eig_weight;	//!<Default 0.5
 
 			/** Transformations of the coarse-to-fine levels */
-			std::vector<Eigen::MatrixXf> transformations;
+            std::vector<Eigen::Matrix4f> transformations;
 			
 			/** Solution from the solver at a given level */
 			Eigen::Matrix<float, 6, 1> kai_loc_level;
@@ -188,7 +188,7 @@ namespace mrpt
 
 			/** This method performs all the necessary steps to estimate the camera velocity once the new image is read,
 			    and updates the camera pose */
-			void odometryCalculation();
+            void odometryCalculation(const Eigen::Matrix4f & init = Eigen::Matrix4f::Identity());
 
 			/** Get the rows and cols of the depth image that are considered by the visual odometry method. */
 			inline void getRowsAndCols(unsigned int &num_rows, unsigned int &num_cols) const {num_rows = rows; num_cols = cols;}

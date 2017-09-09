@@ -16,8 +16,7 @@
           http://www.mrpt.org/Application:camera-rot-tracker
   ---------------------------------------------------------------*/
 
-#include "camera-rot-tracker.h"
-#include "camera-rot-tracker_misc.h"
+#include "DifOdometry_Datasets_RGBD.h"
 #include <mrpt/system/os.h>
 
 using namespace std;
@@ -57,7 +56,7 @@ int main(int argc, char **argv)
             mrpt::system::pause();
             return -1;
         }
-        string config_file = find_mrpt_shared_dir() + std::string("config_files/camera-tracking/rot_TUM_RGBD_rpy.ini"); // Default config file
+        string config_file = find_mrpt_shared_dir() + std::string("config_files/camera-tracking/camera-rot-tracker.ini"); // Default config file
         if(argc == 2)
             config_file = argv[1];
 
@@ -69,9 +68,9 @@ int main(int argc, char **argv)
             return -1;
         }
 
-        CameraRotTracker camera_tracker;
-        camera_tracker.loadConfiguration(config_file);
-        camera_tracker.run();
+        //CameraRotTracker camera_tracker;
+        CDifodoDatasets_RGBD camera_tracker;
+        camera_tracker.run(config_file);
 
         return 0;
     }

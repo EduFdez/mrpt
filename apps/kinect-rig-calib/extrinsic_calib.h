@@ -34,6 +34,7 @@
 
 #include <mrpt/math/CMatrixTemplateNumeric.h>  // For mrpt::math::CMatrixDouble
 #include <mrpt/utils/TStereoCamera.h>
+#include <mrpt/utils/CTicTac.h>
 #include <mrpt/pbmap/PbMap.h>
 #include <mrpt/system/filesystem.h>
 #include <Eigen/Geometry>
@@ -126,17 +127,20 @@ class ExtrinsicCalib
     }
 
     /*! Calculate the rotation from the covariance matrix of a set of corresponding normal vectors */
-    inline Eigen::Matrix<T,3,3> rotationFromNormals(const Eigen::Matrix<T,3,3> & covariance, const T threshold_cond = 0.f)
+    static inline T rotationFromNormals(const Eigen::Matrix<T,3,3> & covariance, Eigen::Matrix<T,3,3> & rotation) //, const T threshold_cond = -1)
     {
+//        std::cout << "ExtrinsicCalib::rotationFromNormals...\n";
+//        mrpt::utils::CTicTac clock; clock.Tic(); //Clock to measure the runtime
+
         Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
         float conditioning = svd.singularValues().minCoeff() / svd.singularValues().maxCoeff();
-        if(threshold_cond > 1e-9 && conditioning < threshold_cond)
-        {
-            std::cout << "ExtrinsicCalib::rotationFromNormals: JacobiSVD bad conditioning " << conditioning << " < " << threshold_cond << "\n";
-            return Eigen::Matrix<T,3,3>::Identity();
-        }
+//        if(conditioning < threshold_cond)
+//        {
+//            std::cout << "ExtrinsicCalib::rotationFromNormals: JacobiSVD bad conditioning " << conditioning << " < " << threshold_cond << "\n";
+//            return conditioning;
+//        }
 
-        Eigen::Matrix<T,3,3> rotation = svd.matrixV() * svd.matrixU().transpose();
+        rotation = svd.matrixV() * svd.matrixU().transpose();
         double det = rotation.determinant();
         if(det != 1)
         {
@@ -144,9 +148,11 @@ class ExtrinsicCalib
             aux << 1, 0, 0, 0, 1, 0, 0, 0, det;
             rotation = svd.matrixV() * aux * svd.matrixU().transpose();
         }
-        std::cout << "rotation \n" << rotation << "\nconditioning " << conditioning << "\n";
+        //std::cout << "    Estimation took " << 1000*clock.Tac() << " ms. Conditioning " << conditioning << "\n";
+        //std::cout << "rotation \n" << rotation << "\nconditioning " << conditioning << "\n";
+        //std::cout << "conditioning " << conditioning << "\n";
 
-        return rotation;
+        return conditioning;
     }
 
   protected:

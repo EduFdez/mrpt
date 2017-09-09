@@ -28,8 +28,6 @@
 #include <mrpt/maps/CColouredPointsMap.h>
 #include <mrpt/poses/CPose3D.h>
 #include <mrpt/utils/TStereoCamera.h>
-#include <mrpt/utils/CConfigFile.h>
-#include <mrpt/system/os.h>
 //#include <mrpt/system/threads.h>
 #include <mrpt/system/filesystem.h>
 #include <mrpt/vision/chessboard_stereo_camera_calib.h>
@@ -127,7 +125,7 @@ class KinectRigCalib : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
 
     /*! This function encapsulates the main functionality of the calibration process:
      *  parse the dataset to find geometric correspondences between the sensors, and estimate the calibration */
-    void run();
+    void run(const std::string & config_file);
 
 };
 

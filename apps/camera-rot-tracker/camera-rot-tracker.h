@@ -16,19 +16,16 @@
           http://www.mrpt.org/Application:camera-rot-tracker
   ---------------------------------------------------------------*/
 
-#ifndef KINECT_RIG_CALIB_H
-#define KINECT_RIG_CALIB_H
+#ifndef CAMERA_ROT_TRACKER_H
+#define CAMERA_ROT_TRACKER_H
 
-#include "extrinsic_calib_planes.h"
-#include "extrinsic_calib_lines.h"
-
+#include "../kinect-rig-calib/extrinsic_calib_lines.h"
 #include <numeric>
 #include <mrpt/obs/CRawlog.h>
 #include <mrpt/obs/CObservation3DRangeScan.h>
 #include <mrpt/maps/CColouredPointsMap.h>
 #include <mrpt/poses/CPose3D.h>
 #include <mrpt/utils/TStereoCamera.h>
-#include <mrpt/utils/CConfigFile.h>
 #include <mrpt/system/os.h>
 //#include <mrpt/system/threads.h>
 #include <mrpt/system/filesystem.h>
@@ -52,11 +49,11 @@ typedef double T;
 */
 //class CameraRotTracker : public ExtrinsicCalib<T>
 //template<typename T>
-class CameraRotTracker : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
+class CameraRotTracker : public ExtrinsicCalibLines
 {
 
     /*! Visualization elements */
-    pcl::visualization::CloudViewer viewer;
+    //pcl::visualization::CloudViewer viewer;
     bool b_exit;
     bool b_viz_init;
     bool b_freeze;
@@ -74,46 +71,47 @@ class CameraRotTracker : public ExtrinsicCalibPlanes, public ExtrinsicCalibLines
 
     boost::mutex visualizationMutex;
 
-    /*! The type of features used for calibrate */
-    enum strategy{ PLANES, LINES, PLANES_AND_LINES } s_type;
-
     // Sensor parameters
-    mrpt::utils::TStereoCamera intrinsics;
-    mrpt::poses::CPose3 pose_init;
+    mrpt::utils::TCamera intrinsics;
+    mrpt::poses::CPose3D pose_init;
 
-    // Observation parameters
-    std::vector<cv::Mat> rgb;
-    std::vector<cv::Mat> depth;
-    std::vector<cv::Mat> depth_reg; // Depth image registered to RGB pose
-    std::vector<pcl::PointCloud<PointT>::Ptr> cloud;
+    // Observation parameters (current:0 and previous:1)
+    std::vector<mrpt::obs::CObservation3DRangeScanPtr> obsRGBD;  // The RGBD observation
+    std::vector<cv::Mat> v_rgb;
+    std::vector<cv::Mat> v_depth;
+    //std::vector<cv::Mat> depth_reg; // Depth image registered to RGB pose
+    std::vector<pcl::PointCloud<PointT>::Ptr> v_cloud;
+//    std::vector<mrpt::vision::FeatureList> points;
 
     std::string rawlog_file;
     std::string output_dir;
+
     size_t decimation;
     bool display;
     bool verbose;
 
     CameraRotTracker() :
-        viewer("camera-rot-tracker"),
+        //viewer("camera-rot-tracker"),
         b_exit(false),
         b_viz_init(false),
         b_freeze(true),
-        b_pause(false),
-        s_type(PLANES_AND_LINES),
-        max_diff_sync(0.005)
+        b_pause(false)
     {
-        // Initialize visualizer
-        viewer.runOnVisualizationThread (boost::bind(&CameraRotTracker::viz_cb, this, _1), "viz_cb");
-        viewer.registerKeyboardCallback ( &CameraRotTracker::keyboardEventOccurred, *this );
-        b_show_corresp = false;
+//        // Initialize visualizer
+//        viewer.runOnVisualizationThread (boost::bind(&CameraRotTracker::viz_cb, this, _1), "viz_cb");
+//        viewer.registerKeyboardCallback ( &CameraRotTracker::keyboardEventOccurred, *this );
+//        b_show_corresp = false;
     }
 
     /*! Load a config which indicates the system to calibrate: input rawlog dataset, initial poses with uncertainty, plus other parameters. */
     void loadConfiguration(const std::string & config_file);
 
-    /*! This function encapsulates the main functionality of the calibration process:
-     *  parse the dataset to find geometric correspondences between the sensors, and estimate the calibration */
-    void run();
+    /*! Transfer images and features from observation [0] (current) to [1] (previous). */
+    void setNewFrame();
+
+//    /*! This function encapsulates the main functionality of the calibration process:
+//     *  parse the dataset to find geometric correspondences between the sensors, and estimate the calibration */
+//    void run2();
 
 };
 

@@ -24,6 +24,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/fast_bilateral.h>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 using namespace std;
 using namespace mrpt::utils;

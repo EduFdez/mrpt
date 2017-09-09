@@ -79,7 +79,7 @@ void CDifodoCamera::loadConfiguration(const utils::CConfigFileBase &ini )
         yy_old[i].resize(rows_i, cols_i);
         yy[i].assign(0.0f);
         yy_old[i].assign(0.0f);
-		transformations[i].resize(4,4);
+//		transformations[i].resize(4,4);
 
 		if (cols_i <= cols)
 		{

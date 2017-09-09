@@ -64,19 +64,19 @@ T trace(const Eigen::Matrix<T,N,N> & matrix)
 }
 
 template<typename PointT>
-typename pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Mat & depth_img, const mrpt::utils::TStereoCamera & calib)
+typename pcl::PointCloud<PointT>::Ptr getPointCloud(const cv::Mat & rgb_img, const cv::Mat & depth_img, const mrpt::utils::TCamera & calib)
 {
     const int height = rgb_img.rows;
     const int width = rgb_img.cols;
 
-    const float fx = 525.f;
-    const float fy = 525.f;
-    const float ox = 319.5f;
-    const float oy = 239.5f;
-//    const float fx = calib.rightCamera.fx();
-//    const float fy = calib.rightCamera.fy();
-//    const float ox = calib.rightCamera.cx();
-//    const float oy = calib.rightCamera.cy();
+//    const float fx = 525.f;
+//    const float fy = 525.f;
+//    const float ox = 319.5f;
+//    const float oy = 239.5f;
+    const float fx = calib.fx();
+    const float fy = calib.fy();
+    const float ox = calib.cx();
+    const float oy = calib.cy();
     const float inv_fx = 1.f/fx;
     const float inv_fy = 1.f/fy;
 

@@ -65,19 +65,28 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 //    ExtrinsicCalib<T> * calib;
 
     /*! Constructor */
-    ExtrinsicCalibLines() : min_pixels_line(150)//, b_wait_line_confirm(false) //calib(cal),
+    ExtrinsicCalibLines() : min_pixels_line(150), min_angle_diff(1.2)//, b_wait_line_confirm(false) //calib(cal),
     {
     }
+
+    /*! Extract the normal vectors of the projective planes of the input image segments */
+    static void getProjPlaneNormals(const mrpt::utils::TCamera & cam, const std::vector<cv::Vec4i> & segments2D, std::vector<Eigen::Matrix<T,3,1> > & segments_n);
 
     /*! Extract 3D lines from 2D segments in a RGB-D image.*/
     static void getSegments3D(const mrpt::utils::TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const std::vector<cv::Vec4i> & segments2D,
                               std::vector<Eigen::Matrix<T,3,1> > &segments_n, std::vector<Eigen::Matrix<T,6,1> > & segments3D, std::vector<bool> & line_has3D);
+
+    /*! Match two sets of normal vectors by exhaustive search. A rotation is computed from pairs of candidate matches to find the mapping with the smallest error. */
+    static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2, const T min_angle_diff = 1);
 
     /*! Extract line correspondences between the different sensors.*/
     void getCorrespondences(const std::vector<cv::Mat> & rgb, const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
 
     /*! Extract plane correspondences between the different sensors.*/
     void getCorrespondences(const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
+
+    /*! Store the matches from found observation in a pair of sensors */
+    void addMatches(const size_t sensor1, const size_t sensor2, std::map<size_t, size_t> &matches);
 
     /*! Calculate the angular error of the plane correspondences.*/
     double calcRotationErrorPair(const mrpt::math::CMatrixDouble & correspondences, const Eigen::Matrix<T,3,3> & Rot, bool in_deg = false);
@@ -127,6 +136,9 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 
     /*! Minimum segment length to consider line correspondences */
     size_t min_pixels_line;
+
+    /*! Minimum angle threshold to match two sets of rotated normalized vectors */
+    T min_angle_diff;
 
     /*! Lines segmented in the current observation */
     std::vector< std::vector<cv::Vec4i> > vv_segments2D;

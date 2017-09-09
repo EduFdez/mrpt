@@ -19,6 +19,8 @@
 #include "kinect-rig-calib.h"
 #include "kinect-rig-calib_misc.h"
 //#include "kinect-rig-calib_display.h"
+#include <mrpt/utils/CConfigFile.h>
+#include <mrpt/system/os.h>
 #include <mrpt/pbmap/PbMap.h>
 #include <mrpt/pbmap/colors.h>
 #include <mrpt/pbmap/DisplayCloudPbMap.h>
@@ -134,6 +136,7 @@ void KinectRigCalib::loadConfiguration(const string & config_file)
     display = cfg.read_bool("GLOBAL", "display", 0, true);
     verbose = cfg.read_bool("GLOBAL", "verbose", 0, true);
     min_pixels_line = cfg.read_int("GLOBAL", "min_pixels_line", 100, true);
+    min_angle_diff = cfg.read_float("GLOBAL", "min_angle_diff", 1.2, true);
     th_dist_plane = cfg.read_float("GLOBAL", "th_dist_plane", 0.02, true);
     th_angle_plane = cfg.read_float("GLOBAL", "th_angle_plane", 0.04, true);
 
@@ -185,13 +188,10 @@ void KinectRigCalib::loadConfiguration(const string & config_file)
         cout << Rt_estimated[sensor_id] << endl;
 
         intrinsics[sensor_id].loadFromConfigFile(sensor_labels[sensor_id],cfg);
-//        string calib_path = mrpt::system::extractFileDirectory(rawlog_file) + "asus_" + to_string(sensor_id+1) + "/ini";
 //        mrpt::utils::CConfigFile calib_RGBD(calib_path);
 //        intrinsics[sensor_id].loadFromConfigFile("CAMERA_PARAMS", calib_RGBD);
 //        cout << "right2left_camera_pose \n" << intrinsics[sensor_id].rightCameraPose << endl;
-
 //        cout << sensor_labels[sensor_id] << "RGB params: fx=" << intrinsics[sensor_id].rightCamera.fx() << " fy=" << intrinsics[sensor_id].rightCamera.fy() << " cx=" << intrinsics[sensor_id].rightCamera.cx() << " cy=" << intrinsics[sensor_id].rightCamera.cy() << endl;
-//        cout << sensor_labels[sensor_id] << "RGB params: fx=" << intrinsics2[sensor_id].cam_params.rightCamera.fx() << " fy=" << intrinsics2[sensor_id].cam_params.rightCamera.fy() << " cx=" << intrinsics2[sensor_id].cam_params.rightCamera.cx() << " cy=" << intrinsics2[sensor_id].cam_params.rightCamera.cy() << endl;
     }
 
     cout << "...loadConfiguration\n";
@@ -232,8 +232,10 @@ void KinectRigCalib::calibrate(const bool save_corresp)
     }
 }
 
-void KinectRigCalib::run()
+void KinectRigCalib::run(const string & config_file)
 {
+    loadConfiguration(config_file);
+
     //						Open Rawlog File
     //==================================================================
     mrpt::obs::CRawlog dataset;
@@ -257,26 +259,6 @@ void KinectRigCalib::run()
         undist_rgb[i].setFromCamParams(intrinsics[i].rightCamera);
         undist_depth[i].setFromCamParams(intrinsics[i].leftCamera);
     }
-
-    // Calibration parameters
-    float angle_offset = 20;
-//        float angle_offset = 180;
-    initOffset = Eigen::Matrix<T,4,4>::Identity();
-    initOffset(1,1) = initOffset(2,2) = cos(angle_offset*3.14159/180);
-    initOffset(1,2) = -sin(angle_offset*3.14159/180);
-    initOffset(2,1) = -initOffset(1,2);
-    cout << "initOffset\n" << initOffset << endl;
-
-    // Get the plane and line correspondences
-//    calib_planes = ExtrinsicCalibPlanes<T>(num_sensors);
-//    calib_lines = ExtrinsicCalibLines<T>(num_sensors);
-
-//    CMatrixDouble conditioningFIM(0,6);
-//    Eigen::Matrix<T,3,3> FIMrot = Eigen::Matrix<T,3,3>::Zero();
-//    Eigen::Matrix<T,3,3> FIMtrans = Eigen::Matrix<T,3,3>::Zero();
-
-//    KinectRigCalib calib;
-//    KinectRigCalib_display v3D(calib);
 
     //==============================================================================
     //									Main operation
@@ -340,7 +322,8 @@ void KinectRigCalib::run()
 //            rgb[sensor_id] = cv::Mat(obsRGBD[sensor_id]->intensityImage.getAs<IplImage>());
 //            convertRange_mrpt2cvMat(obsRGBD[sensor_id]->rangeImage, depth[sensor_id]);
             // Image rectification (to reduce radial distortion)
-            cv::Mat src(obsRGBD[sensor_id]->intensityImage.getAs<IplImage>());
+            //cv::Mat src(obsRGBD[sensor_id]->intensityImage.getAs<IplImage>());
+            cv::Mat src = cv::cvarrToMat(obsRGBD[sensor_id]->intensityImage.getAs<IplImage>());
             undist_rgb[sensor_id].undistort(src, rgb[sensor_id]);
             cv::Mat raw_depth;
             convertRange_mrpt2cvMat(obsRGBD[sensor_id]->rangeImage, raw_depth);
@@ -584,7 +567,7 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
                             viz.addPointCloud (planeCloudColoured, name);
                         }
                     }
-            viz.addText (matched_planes.c_str(), 220, 20, "matched_planes");
+            viz.addText (matched_planes.c_str(), 20, 700, "matched_planes");
 
 //            // Draw lines
 //            for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
@@ -610,7 +593,7 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
                 for(map< size_t, map<size_t, size_t> >::iterator it2=it1->second.begin(); it2 != it1->second.end(); it2++)
                     for(map<size_t, size_t>::iterator it3=it2->second.begin(); it3 != it2->second.end(); it3++)
                     {
-                        matched_lines += to_string(it1->first) + "." + to_string(it3->first) + " - " + to_string(it2->first) + "." + to_string(it3->second);
+                        matched_lines += to_string(it1->first) + "." + to_string(it3->first) + " - " + to_string(it2->first) + "." + to_string(it3->second) + "\n";
                         size_t col = it3->first%10; // Colour index
                         array<size_t,2> idx = {it3->first, it3->second};
                         array<size_t,2> sensor = {it1->first, it2->first};
@@ -658,9 +641,10 @@ void KinectRigCalib::viz_cb (pcl::visualization::PCLVisualizer& viz)
                             pcl::PointXYZ pt2_n(pt1); pt2_n.getVector3fMap() += 0.1f*(Rt_estimated[sensor[i]].block<3,3>(0,0)*vv_segment_n[sensor[i]][idx[i]]).cast<float>();
                             sprintf (name, "seg_n_%lu_%lu", sensor[i], idx[i]);
                             viz.addArrow (pt2_n, pt1, ared[col], agrn[col], ablu[col], false, name);
+                            viz.addText3D (to_string(distance(it2->second.begin(),it3)), pt2_n, 0.05, red[col], grn[col], blu[col], string(name)+"_");
                         }
                     }
-            viz.addText (matched_lines.c_str(), 420, 20, "matched_lines");
+            viz.addText (matched_lines.c_str(), 20, 820, "matched_lines");
             b_show_corresp = false;
         }
 

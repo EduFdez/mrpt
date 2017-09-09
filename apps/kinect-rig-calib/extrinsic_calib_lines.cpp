@@ -36,6 +36,7 @@
 #include <mrpt/vision/CFeatureLines.h>
 #include <mrpt/pbmap/PbMap.h>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 #include <iostream>
 
 #define VISUALIZE_SENSOR_DATA 0
@@ -128,6 +129,33 @@ using namespace mrpt::utils;
 //  return false;
 //}
 
+void ExtrinsicCalibLines::getProjPlaneNormals(const TCamera & cam, const vector<cv::Vec4i> & segments2D, vector<Matrix<T,3,1> > & segments_n)
+{
+    cout << "ExtrinsicCalibLines::getSegments3D... \n";
+    size_t n_seg = segments2D.size();
+    segments_n.resize(n_seg);
+    for(size_t i=0; i < n_seg; i++)
+    {
+        // Compute the normal vector to the plane containing the 2D line segment and the optical center (the cross product of the end-point vectors in the 3D image plane)
+        int x1 = segments2D[i][0], y1 = segments2D[i][1], x2 = segments2D[i][2], y2 = segments2D[i][3];
+        Matrix<T,3,1> e1( (x1-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y1-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
+        Matrix<T,3,1> e2( (x2-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y2-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
+        segments_n[i] = e1.cross(e2);
+        segments_n[i].normalize();
+//        // Force the normal vector to be around the 2nd quadrant of X-Y (i.e. positive X and negative Y)
+//        if(fabs(segments_n[i][0]) > fabs(segments_n[i][1]) ) // Larger X component
+//        {
+//            if(segments_n[i][0] < 0.f)
+//                segments_n[i] = -segments_n[i];
+//        }
+//        else
+//        {
+//            if(segments_n[i][1] > 0.f)
+//                segments_n[i] = -segments_n[i];
+//        }
+    }
+}
+
 void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const vector<cv::Vec4i> & segments2D,
                                         vector<Matrix<T,3,1> > & segments_n, vector<Matrix<T,6,1> > & segments3D, vector<bool> & line_has3D)
 {
@@ -140,23 +168,23 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
 
     for(size_t i=0; i < n_seg; i++)
     {
-        // Compute the normal vector to the plane containing the 2D line segment and the optical center
+        // Compute the normal vector to the plane containing the 2D line segment and the optical center (the cross product of the end-point vectors in the 3D image plane)
         int x1 = segments2D[i][0], y1 = segments2D[i][1], x2 = segments2D[i][2], y2 = segments2D[i][3];
-        Matrix<T,3,1> v1( (x1-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y1-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
-        Matrix<T,3,1> v2( (x2-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y2-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
-        segments_n[i] = v1.cross(v2);
-        // Force the normal vector to be around the 2nd quadrant of X-Y (i.e. positive X and negative Y)
-        if(fabs(segments_n[i][0]) > fabs(segments_n[i][1]) ) // Larger X component
-        {
-            if(segments_n[i][0] < 0.f)
-                segments_n[i] = -segments_n[i];
-        }
-        else
-        {
-            if(segments_n[i][1] > 0.f)
-                segments_n[i] = -segments_n[i];
-        }
+        Matrix<T,3,1> e1( (x1-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y1-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
+        Matrix<T,3,1> e2( (x2-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y2-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
+        segments_n[i] = e1.cross(e2);
         segments_n[i].normalize();
+//        // Force the normal vector to be around the 2nd quadrant of X-Y (i.e. positive X and negative Y)
+//        if(fabs(segments_n[i][0]) > fabs(segments_n[i][1]) ) // Larger X component
+//        {
+//            if(segments_n[i][0] < 0.f)
+//                segments_n[i] = -segments_n[i];
+//        }
+//        else
+//        {
+//            if(segments_n[i][1] > 0.f)
+//                segments_n[i] = -segments_n[i];
+//        }
 
         // Check the depth of the end points
         int i1 = x1 + y1*cloud->width, i2 = x2 + y2*cloud->width;
@@ -202,10 +230,10 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
 //                //cout << "m_null_space \n" << m_null_space << endl;
 
                 // Compute the 3D line as the intersection of a line and a plane. The equations are {n*p+d=0; p1+t(p2-p1)=p}, considering p1=(0,0,0) [the optical center] -> t = -d/n.dot(p2)
-                double t1 = - plane.d / plane.v3normal.dot(v1.cast<float>());
-                Matrix<T,3,1> p1 = t1*v1;
-                double t2 = - plane.d / plane.v3normal.dot(v2.cast<float>());
-                Matrix<T,3,1> p2 = t2*v2;
+                double t1 = - plane.d / plane.v3normal.dot(e1.cast<float>());
+                Matrix<T,3,1> p1 = t1*e1;
+                double t2 = - plane.d / plane.v3normal.dot(e2.cast<float>());
+                Matrix<T,3,1> p2 = t2*e2;
                 line_has3D[i] = true;
                 segments3D[i] << p1[0], p1[1], p1[2], p2[0], p2[1], p2[2];
                 //cout << i << " Segment3D (from plane intersection) " << segments3D[i].transpose() << endl;
@@ -214,6 +242,103 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
         }
     }
 }
+
+map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T,3,1> > & n_cam1, const vector<Matrix<T,3,1> > & n_cam2, const T min_angle_diff)
+{
+    // Find line correspondences (in 2D by assuming a known rotation and zero translation)
+    // Select a pair of lines (normal vector of projective plane) and verify rotation
+    CTicTac clock; clock.Tic(); //Clock to measure the runtime
+    Matrix<T,3,3> best_rotation;
+    map<size_t,size_t> best_matches;
+    vector<map<size_t,size_t> > discarded_matches; // with at least 3 matches
+    T best_error = 10e6;
+    const T min_angle_diff_cos = cos(DEG2RAD(min_angle_diff));
+    const T min_conditioning = 0.01;
+    // Exhaustive search
+    for(size_t i1=0; i1 < n_cam1.size(); i1++)
+    {
+        for(size_t i2=i1+1; i2 < n_cam1.size(); i2++)
+        {
+            for(size_t j1=0; j1 < n_cam2.size(); j1++)
+            {
+                for(size_t j2=0; j2 < n_cam2.size(); j2++)
+                {
+                    if( j1 == j2 )
+                        continue;
+                    bool already_checked = false;
+                    for(size_t k=0; k < discarded_matches.size(); k++)
+                        if(discarded_matches[k].count(i1) && discarded_matches[k][i1] == j1 && discarded_matches[k].count(i2) && discarded_matches[k][i2] == j2)
+                        {
+                            already_checked = true;
+                            break;
+                        }
+                    if( already_checked )
+                        continue;
+
+                    // Compute rotation
+                    Matrix<T,3,3> cov = n_cam2[j1]*n_cam1[i1].transpose() + n_cam2[j2]*n_cam1[i2].transpose() + (n_cam2[j1].cross(n_cam2[j2]))*(n_cam1[i1].cross(n_cam1[i2])).transpose();
+                    Matrix<T,3,3> rot;
+                    T conditioning = rotationFromNormals(cov, rot);
+                    if(conditioning < min_conditioning){ //cout << "ExtrinsicCalibLines::matchNormalVectors: JacobiSVD bad conditioning " << conditioning << " < " << min_conditioning << "\n";
+                        continue; }
+                    cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << n_cam1[i1].dot(rot*n_cam2[j1]) << " min_cos " << min_angle_diff_cos << " conditioning " << conditioning << endl;
+                    if( n_cam1[i1].dot(rot*n_cam2[j1]) < min_angle_diff_cos ) // Check if the rotation is consistent
+                        continue;
+
+                    cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << RAD2DEG(acos(n_cam1[i1].dot(rot*n_cam2[j1]))) << " min_cos " << min_angle_diff_cos << " conditioning " << conditioning << endl;
+
+                    // Check how many lines are consistent with this rotation
+                    map<size_t,size_t> matches;
+                    matches[i1] = j1;
+                    matches[i2] = j2;
+                    for(size_t i=0; i < n_cam1.size(); i++)
+                    {
+                        if( i==i1 || i==i2 )
+                            continue;
+                        for(size_t j=0; j < n_cam2.size(); j++)
+                        {
+                            if( j==j1 || j==j2 )
+                                continue;
+                            //cout << "error " << i << " vs " << j << " : " << n_cam1[i].dot(rot*n_cam2[j]) << " min " << min_angle_diff << endl;
+                            if( n_cam1[i].dot(rot*n_cam2[j]) > min_angle_diff_cos )
+                            {
+                                cov += n_cam2[j]*n_cam1[i].transpose();
+                                for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++)
+                                    cov += (n_cam2[j].cross(n_cam2[it->second]))*(n_cam1[i].cross(n_cam1[it->first])).transpose();
+                                matches[i] = j;
+                            }
+                        }
+                    }
+
+                    // Compute the rotation from the inliers
+                    T error = 0;
+                    conditioning = rotationFromNormals(cov, rot);
+                    for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++){ cout << "match " << it->first << " - " << it->second << " error " << RAD2DEG(acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]))) << endl;
+                        error += acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]));}
+
+                    cout << "Num corresp " << matches.size() << " conditioning " << conditioning << " error " << error << " average error " << RAD2DEG(error/matches.size()) << " deg.\n";
+
+                    if(best_matches.size() < matches.size() && matches.size() > 2)
+                    {
+                        //if(matches.size() > 2)
+                            discarded_matches.push_back(matches);
+
+                        best_matches = matches;
+                        best_rotation = rot;
+                        best_error = error;
+                    }
+                }
+            }
+        }
+    }
+    cout << "  matchNormalVectors took " << 1000*clock.Tac() << " ms " << best_matches.size() << " line matches, best_error " << RAD2DEG(best_error) << endl << best_rotation << endl;
+    for(map<size_t,size_t>::iterator it=best_matches.begin(); it != best_matches.end(); it++)
+        cout << "match " << it->first << " - " << it->second << endl;
+
+    return best_matches;
+}
+
+//double ExtrinsicCalibLines::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot, bool in_deg)
 
 void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const vector<pcl::PointCloud<PointT>::Ptr> & cloud)
 {
@@ -241,7 +366,6 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
 //                ++line;
 //        }
 //        cout << sensor_id << " filtered lines " << vv_segments2D[sensor_id].size() << endl;
-        cout << "1ExtrinsicCalibLines::getCorrespondences... \n";
     }
 
     //==============================================================================
@@ -254,6 +378,8 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
         for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
         {
             sensor_pair = {sensor1, sensor2};
+            mmm_line_matches[sensor1][sensor2] = matchNormalVectors(vv_segment_n[sensor1],vv_segment_n[sensor2],min_angle_diff);
+            addMatches(sensor1, sensor2, mmm_line_matches[sensor1][sensor2]);
 
 //            size_t height2 = rgb[sensor2].rows;
 //            cv::Mat rgb_concat;
@@ -280,93 +406,97 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
 //                cv::waitKey(0);
 //            }
 
-//            Matrix<T,4,4> pose_rel = Rt_estimated[sensor1].inverse() * Rt_estimated[sensor2];
-            double thres_rot_cos = 1 - pow(sin(DEG2RAD(max(v_approx_rot[sensor1], v_approx_rot[sensor2]))),2);
 
-//            cout << " sensor1 " << sensor1 << " " << vv_segments2D[sensor1].size() << " sensor2 " << sensor2 << " " << vv_segments2D[sensor2].size() << endl;
+//            //cout << " sensor1 " << sensor1 << " " << vv_segments2D[sensor1].size() << " sensor2 " << sensor2 << " " << vv_segments2D[sensor2].size() << endl;
+//            double thres_rot_cos = 1 - pow(sin(DEG2RAD(max(v_approx_rot[sensor1], v_approx_rot[sensor2]))),2); // Threshold to prune line candidates based on an initial rotation
+//            // Find line correspondences (in 2D by assuming a known rotation and zero translation)
+//            for(size_t i=0; i < vv_segments2D[sensor1].size(); i++)
+//            {
+//                //cv::Vec4i &l1 = vv_segments2D[sensor1][i];
+////                line_match1 = vv_segments2D[sensor1][i];
+//                if(b_confirm_visually)
+//                {
+//                    cv::Mat img_line1;
+//                    rgb[sensor1].copyTo(img_line1);
+//                    cv::line(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), cv::Scalar(255, 0, 255), 1);
+//                    cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), 3, cv::Scalar(0, 0, 200), 3);
+//                    cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), 3, cv::Scalar(0, 0, 200), 3);
+//                    cv::putText(img_line1, string(to_string(i)+"/"+to_string(vv_segments2D[sensor1].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
+//                    cv::imshow("img_line1", img_line1); cv::moveWindow("img_line1", 20,60);
+//                }
 
-            // Find line correspondences (in 2D by assuming a known rotation and zero translation)
-//            Vector2f offset2(intrinsics[sensor2].rightCamera.intrinsicParams(0,2), intrinsics[sensor2].rightCamera.intrinsicParams(1,2));
-            for(size_t i=0; i < vv_segments2D[sensor1].size(); i++)
-            {
-                //cv::Vec4i &l1 = vv_segments2D[sensor1][i];
-//                line_match1 = vv_segments2D[sensor1][i];
-                if(b_confirm_visually)
-                {
-                    cv::Mat img_line1;
-                    rgb[sensor1].copyTo(img_line1);
-                    cv::line(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), cv::Scalar(255, 0, 255), 1);
-                    cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), 3, cv::Scalar(0, 0, 200), 3);
-                    cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), 3, cv::Scalar(0, 0, 200), 3);
-                    cv::putText(img_line1, string(to_string(i)+"/"+to_string(vv_segments2D[sensor1].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
-                    cv::imshow("img_line1", img_line1); cv::moveWindow("img_line1", 20,60);
-                }
+//                for(size_t j=0; j < vv_segments2D[sensor2].size(); j++)
+//                {
+////                    // 3D constraint (when the 3D line parameters are observable)
+////                    if( vv_line_has3D[sensor1][i] &&vv_line_has3D[sensor2][j] )
+////                    {
+////                        Matrix<T,3,1> v1 = vv_segments3D[sensor1][i].block<3,1>(3,0) - vv_segments3D[sensor1][i].block<3,1>(0,0); v1.normalize();
+////                        Matrix<T,3,1> v2 = vv_segments3D[sensor2][j].block<3,1>(3,0) - vv_segments3D[sensor2][j].block<3,1>(0,0); v2.normalize();
+////                        if( fabs((Rt_estimated[sensor1].block<3,3>(0,0)*v1) .dot (Rt_estimated[sensor2].block<3,3>(0,0)*v2)) > thres_rot_cos )
 
-                for(size_t j=0; j < vv_segments2D[sensor2].size(); j++)
-                {
-//                    // 3D constraint (when the 3D line parameters are observable)
-//                    if( vv_line_has3D[sensor1][i] &&vv_line_has3D[sensor2][j] )
+//                    // 2D constraint (under the hypothesis of zero translation, valid when the optical centers are closeby wrt the observed scene)
+//                    if( fabs((Rt_estimated[sensor1].block<3,3>(0,0)*vv_segment_n[sensor1][i]) .dot (Rt_estimated[sensor2].block<3,3>(0,0)*vv_segment_n[sensor2][j])) > thres_rot_cos )
 //                    {
-//                        Matrix<T,3,1> v1 = vv_segments3D[sensor1][i].block<3,1>(3,0) - vv_segments3D[sensor1][i].block<3,1>(0,0); v1.normalize();
-//                        Matrix<T,3,1> v2 = vv_segments3D[sensor2][j].block<3,1>(3,0) - vv_segments3D[sensor2][j].block<3,1>(0,0); v2.normalize();
-//                        if( fabs((Rt_estimated[sensor1].block<3,3>(0,0)*v1) .dot (Rt_estimated[sensor2].block<3,3>(0,0)*v2)) > thres_rot_cos )
+//                        if(b_confirm_visually) // TODO: Add optional 3D visualization
+//                        {
+////                            // Interactive 3D visualization
+////                            b_wait_line_confirm = true;
+////                            line_candidate = {i,j};
+////                            confirm_corresp = 0;
+////                            while(confirm_corresp == 0)
+////                                mrpt::system::sleep(10);
+//                            cv::Mat img_line2;
+//                            rgb[sensor2].copyTo(img_line2);
+//                            cv::line(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), cv::Scalar(255, 0, 255), 1);
+//                            cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), 3, cv::Scalar(0, 0, 200), 3);
+//                            cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), 3, cv::Scalar(0, 0, 200), 3);
+//                            cv::putText(img_line2, string(to_string(j)+"/"+to_string(vv_segments2D[sensor2].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
+//                            cv::imshow("img_line2", img_line2); cv::moveWindow("img_line2", 20,100+500);
+//                            char key = 'a';
+//                            while( key != 'k' && key != 'K' && key != 'l' && key != 'L' )
+//                                key = cv::waitKey(0);
+//                            if( key != 'k' && key != 'K' )
+//                                continue;
 
-                    // 2D constraint (under the hypothesis of zero translation, valid when the optical centers are closeby wrt the observed scene)
-                    if( fabs((Rt_estimated[sensor1].block<3,3>(0,0)*vv_segment_n[sensor1][i]) .dot (Rt_estimated[sensor2].block<3,3>(0,0)*vv_segment_n[sensor2][j])) > thres_rot_cos )
-                    {
-                        if(b_confirm_visually) // TODO: Add optional 3D visualization
-                        {
-//                            // Interactive 3D visualization
-//                            b_wait_line_confirm = true;
-//                            line_candidate = {i,j};
-//                            confirm_corresp = 0;
-//                            while(confirm_corresp == 0)
-//                                mrpt::system::sleep(10);
-                            cv::Mat img_line2;
-                            rgb[sensor2].copyTo(img_line2);
-                            cv::line(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), cv::Scalar(255, 0, 255), 1);
-                            cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), 3, cv::Scalar(0, 0, 200), 3);
-                            cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), 3, cv::Scalar(0, 0, 200), 3);
-                            cv::putText(img_line2, string(to_string(j)+"/"+to_string(vv_segments2D[sensor2].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
-                            cv::imshow("img_line2", img_line2); cv::moveWindow("img_line2", 20,100+500);
-                            char key = 'a';
-                            while( key != 'k' && key != 'K' && key != 'l' && key != 'L' )
-                                key = cv::waitKey(0);
-                            if( key != 'k' && key != 'K' )
-                                continue;
-
-                            mmm_line_matches[sensor1][sensor2][i] = j;
-
-                            // Store the parameters of the matched lines
-                            size_t prevSize = lines.mm_corresp[sensor1][sensor2].getRowCount();
-                            lines.mm_corresp[sensor1][sensor2].setSize(prevSize+1, lines.mm_corresp[sensor1][sensor2].getColCount());
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 0) = vv_segment_n[sensor1][i][0];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 1) = vv_segment_n[sensor1][i][1];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 2) = vv_segment_n[sensor1][i][2];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 3) = vv_segments3D[sensor1][i][0];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 4) = vv_segments3D[sensor1][i][1];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 5) = vv_segments3D[sensor1][i][2];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 6) = vv_segments3D[sensor1][i][3];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 7) = vv_segments3D[sensor1][i][4];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 8) = vv_segments3D[sensor1][i][5];
-
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 9) = vv_segment_n[sensor2][j][0];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 10) = vv_segment_n[sensor2][j][1];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 11) = vv_segment_n[sensor2][j][2];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 12) = vv_segments3D[sensor2][j][0];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 13) = vv_segments3D[sensor2][j][1];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 14) = vv_segments3D[sensor2][j][2];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 15) = vv_segments3D[sensor2][j][3];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 16) = vv_segments3D[sensor2][j][4];
-                            lines.mm_corresp[sensor1][sensor2](prevSize, 17) = vv_segments3D[sensor2][j][5];
-                        }
-                    }
-                }
-            }
+//                            cout << "Add line match " << i << " " << j << endl;
+//                            mmm_line_matches[sensor1][sensor2][i] = j;
+//                        }
+//                    }
+//                }
+//            }
+//            addMatches(sensor1, sensor2, mmm_line_matches[sensor1][sensor2]);
         }
     }
 }
 
+void ExtrinsicCalibLines::addMatches(const size_t sensor1, const size_t sensor2, map<size_t, size_t> & matches)
+{
+    // Store the parameters of the matched lines
+    size_t prevSize = lines.mm_corresp[sensor1][sensor2].getRowCount();
+    lines.mm_corresp[sensor1][sensor2].setSize(prevSize+matches.size(), lines.mm_corresp[sensor1][sensor2].getColCount());
+    for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++)
+    {
+        lines.mm_corresp[sensor1][sensor2](prevSize, 0) = vv_segment_n[sensor1][it->first][0];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 1) = vv_segment_n[sensor1][it->first][1];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 2) = vv_segment_n[sensor1][it->first][2];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 3) = vv_segments3D[sensor1][it->first][0];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 4) = vv_segments3D[sensor1][it->first][1];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 5) = vv_segments3D[sensor1][it->first][2];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 6) = vv_segments3D[sensor1][it->first][3];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 7) = vv_segments3D[sensor1][it->first][4];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 8) = vv_segments3D[sensor1][it->first][5];
+
+        lines.mm_corresp[sensor1][sensor2](prevSize, 9) = vv_segment_n[sensor2][it->second][0];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 10) = vv_segment_n[sensor2][it->second][1];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 11) = vv_segment_n[sensor2][it->second][2];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 12) = vv_segments3D[sensor2][it->second][0];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 13) = vv_segments3D[sensor2][it->second][1];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 14) = vv_segments3D[sensor2][it->second][2];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 15) = vv_segments3D[sensor2][it->second][3];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 16) = vv_segments3D[sensor2][it->second][4];
+        lines.mm_corresp[sensor1][sensor2](prevSize, 17) = vv_segments3D[sensor2][it->second][5];
+    }
+}
 
 double ExtrinsicCalibLines::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot, bool in_deg)
 {
@@ -475,7 +605,8 @@ double ExtrinsicCalibLines::calcTranslationError(const vector<Matrix<T,4,4>, ali
 
 Matrix<T,3,3> ExtrinsicCalibLines::ApproximateRotationZeroTrans(const size_t sensor1, const size_t sensor2, const bool weight_uncertainty)
 {
-    cout << "ExtrinsicCalibLines::ApproximateRotationZeroTrans... " << lines.mm_corresp[sensor1][sensor2].rows() << " correspondences\n";
+    cout << "ExtrinsicCalibLines::ApproximateRotationZeroTrans... " << lines.mm_corresp[sensor1][sensor2].rows() << " correspondences\n";    
+    CTicTac clock; clock.Tic(); //Clock to measure the runtime
 
     mm_covariance[sensor1][sensor2] = Matrix<T,3,3>::Zero();
 //    Matrix<T,3,3> cov = Matrix<T,3,3>::Zero();
@@ -507,12 +638,13 @@ Matrix<T,3,3> ExtrinsicCalibLines::ApproximateRotationZeroTrans(const size_t sen
 
     // Calculate Rotation
     // cout << "Solve rotation";
-    Matrix<T,3,3> rotation = rotationFromNormals(mm_covariance[sensor1][sensor2], threshold_conditioning);
-
-    cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], rotation) << endl;
+    Matrix<T,3,3> rotation;
+    T conditioning = rotationFromNormals(mm_covariance[sensor1][sensor2], rotation);
+    cout << "conditioning " << conditioning << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], rotation) << endl;
     cout << "average error: "
               << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0).transpose()*Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "
               << calcRotationErrorPair(lines.mm_corresp[sensor1][sensor2], rotation, true) << " degrees\n";
+    cout << "  Estimation took " << 1000*clock.Tac() << " ms.\n";
 
     return rotation;
 }

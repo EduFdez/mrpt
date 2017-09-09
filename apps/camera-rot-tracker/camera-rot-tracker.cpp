@@ -18,7 +18,9 @@
 
 #include "camera-rot-tracker.h"
 #include "camera-rot-tracker_misc.h"
+#include "DifOdometry_Datasets_RGBD.h"
 //#include "camera-rot-tracker_display.h"
+#include <mrpt/utils/CConfigFile.h>
 #include <mrpt/obs/CRawlog.h>
 #include <mrpt/obs/CObservation3DRangeScan.h>
 #include <boost/thread/mutex.hpp>
@@ -31,7 +33,6 @@ using namespace mrpt::system;
 using namespace mrpt::math;
 using namespace mrpt::poses;
 using namespace mrpt::utils;
-using namespace mrpt::pbmap;
 using namespace std;
 using namespace Eigen;
 
@@ -40,54 +41,11 @@ void CameraRotTracker::displayObservation()
 {
     cout << "CameraRotTracker::displayObservation...\n";
 
-    // Note that the RGB-D camera is in a vertical configuration in the rig RGBD360
-    cv::Mat img_transposed, img_rotated;
-    cv::transpose(rgb[0], img_transposed);
-    cv::flip(img_transposed, img_rotated, 0);
-    cv::Mat rgb_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_8UC3, cv::Scalar(155,100,255));
-    cv::Mat tmp = rgb_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
-    img_rotated.copyTo(tmp);
-    cv::transpose(rgb[1], img_transposed);
-    cv::flip(img_transposed, img_rotated, 0);
-    tmp = rgb_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
-    img_rotated.copyTo(tmp);
-    //cv::circle(rgb_concat, cv::Point(240,320),5,cv::Scalar(0, 0, 200));
-    //cout << "Pixel values " << rgb_concat.at<cv::Vec3b>(5,5) << " " << rgb_concat.at<cv::Vec3b>(5,475) << " " << rgb_concat.at<cv::Vec3b>(5,485) << " " << endl;
-    cv::imshow("rgb", rgb_concat ); cv::moveWindow("rgb", 20,20);
-
-//            // Show depth
-//            cv::transpose(depth[0], img_transposed);
-//            cv::flip(img_transposed, img_rotated, 0);
-//            cv::Mat depth_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_32FC1, cv::Scalar(0.f));
-//            tmp = depth_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
-//            img_rotated.copyTo(tmp);
-//            cv::transpose(depth[1], img_transposed);
-//            cv::flip(img_transposed, img_rotated, 0);
-//            tmp = depth_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
-//            img_rotated.copyTo(tmp);
-//            cv::Mat img_depth_display;
-//            depth_concat.convertTo(img_depth_display, CV_32FC1, 0.3 );
-//            cv::Mat depth_display = cv::Mat(depth_concat.rows, depth_concat.cols, depth_concat.type(), cv::Scalar(1.f)) - img_depth_display;
-//            depth_display.setTo(cv::Scalar(0.f), depth_concat < 0.1f);
-//            cv::imshow("depth", depth_display ); cv::moveWindow("depth", 20,100+640);
-//            //cout << "Some depth values: " << depth_concat.at<float>(200, 320) << " " << depth_concat.at<float>(50, 320) << " " << depth[0].at<float>(200, 320) << " " << depth[0].at<float>(50, 320) << " " << depth[1].at<float>(430, 320) << " " << depth[1].at<float>(280, 320) << "\n";
-
-    // Show registered depth
-    cv::transpose(depth_reg[0], img_transposed);
-    cv::flip(img_transposed, img_rotated, 0);
-    cv::Mat depth_reg_concat(img_transposed.rows, 2*img_transposed.cols+20, CV_32FC1, cv::Scalar(0.f));
-    tmp = depth_reg_concat(cv::Rect(0, 0, img_transposed.cols, img_transposed.rows));
-    img_rotated.copyTo(tmp);
-    cv::transpose(depth_reg[1], img_transposed);
-    cv::flip(img_transposed, img_rotated, 0);
-    tmp = depth_reg_concat(cv::Rect(img_transposed.cols+20, 0, img_transposed.cols, img_transposed.rows));
-    img_rotated.copyTo(tmp);
-    cv::Mat img_depth_display;
-    depth_reg_concat.convertTo(img_depth_display, CV_32FC1, 0.3 );
-    cv::Mat depth_reg_display = cv::Mat(depth_reg_concat.rows, depth_reg_concat.cols, depth_reg_concat.type(), cv::Scalar(1.f)) - img_depth_display;
-    depth_reg_display.setTo(cv::Scalar(0.f), depth_reg_concat < 0.1f);
-    cv::imshow("depth_reg", depth_reg_display ); cv::moveWindow("depth_reg", 20,100+640);
-
+    for(size_t i=1; i < num_sensors; i++)
+    {
+//        string win_name = format("rgb_%lu",v_rgb[i]);
+        cv::imshow(mrpt::format("rgb_%lu",i), v_rgb[i] ); //cv::moveWindow("rgb", 20,20);
+    }
     cv::waitKey(0);
 }
 
@@ -98,32 +56,45 @@ void CameraRotTracker::loadConfiguration(const string & config_file)
     utils::CConfigFile cfg(config_file);
     rawlog_file = cfg.read_string("GLOBAL", "rawlog_file", "no file", true);
     output_dir = cfg.read_string("GLOBAL", "output_dir", "no dir", true);
-    decimation = cfg.read_int("GLOBAL", "decimation", 0, true);
+
     display = cfg.read_bool("GLOBAL", "display", 0, true);
     verbose = cfg.read_bool("GLOBAL", "verbose", 0, true);
     min_pixels_line = cfg.read_int("GLOBAL", "min_pixels_line", 100, true);
+    min_angle_diff = cfg.read_float("GLOBAL", "min_angle_diff", 1.2, true);
 
     if(verbose)
         cout << "loadConfiguration -> dataset: " << rawlog_file << "\toutput: " << output_dir << "\tdecimation: " << decimation << endl;
 
-    intrinsics.loadFromConfigFile(sensor_labels],cfg);
-    init_poses = CPose3D(
-                            cfg.read_double(sensor_labels],"pose_x",0,true),
-                            cfg.read_double(sensor_labels],"pose_y",0,true),
-                            cfg.read_double(sensor_labels],"pose_z",0,true),
-                            DEG2RAD( cfg.read_double(sensor_labels],"pose_yaw",0,true) ),
-                            DEG2RAD( cfg.read_double(sensor_labels],"pose_pitch",0,true) ),
-                            DEG2RAD( cfg.read_double(sensor_labels],"pose_roll",0,true) ) );
-    v_approx_trans] = cfg.read_double(sensor_labels],"approx_translation",0.f,true);
-    v_approx_rot] = cfg.read_double(sensor_labels],"approx_rotation",0.f,true);
+    //string sensor_label = "RGBD";
+    intrinsics.loadFromConfigFile("GLOBAL", cfg);
 
+    num_sensors = 2;
+    v_rgb.resize(num_sensors);
+    v_depth.resize(num_sensors);
+    //depth_reg.resize(num_sensors); // Depth image registered to RGB pose
+    v_cloud.resize(num_sensors);
+    v_pbmap.resize(num_sensors);
+    vv_segments2D.resize(num_sensors);
+    vv_segment_n.resize(num_sensors);
 
-
-    cout << "...loadConfiguration\n";
+    cout << "...CameraRotTracker::loadConfiguration\n";
 }
 
+void CameraRotTracker::setNewFrame()
+{
+    for(size_t i=1; i < num_sensors; i++)
+    {
+        obsRGBD[i] = obsRGBD[i-1];
+        v_rgb[i] = v_rgb[i-1];
+        v_depth[i] = v_depth[i-1];
+        v_cloud[i] = v_cloud[i-1];
+        vv_segments2D[i] = vv_segments2D[i-1];
+        vv_segment_n[i] = vv_segment_n[i-1];
+    }
+}
 
-void CameraRotTracker::run()
+/*
+void CameraRotTracker::run2()
 {
     //						Open Rawlog File
     //==================================================================
@@ -138,36 +109,12 @@ void CameraRotTracker::run()
     cout << "dataset size " << dataset.size() << "\n";
 
     // Observation parameters
-    vector<mrpt::obs::CObservation3DRangeScanPtr> obsRGBD(num_sensors);  // The RGBD observation
-    vector<bool> obs_sensor(num_sensors,false);
-    vector<double> obs_sensor_time(num_sensors);
-    vector<mrpt::vision::CUndistortMap> undist_rgb(num_sensors);
-    vector<mrpt::vision::CUndistortMap> undist_depth(num_sensors);
-    for(size_t i=0; i < num_sensors; i++)
-    {
-        undist_rgb[i].setFromCamParams(intrinsics[i].rightCamera);
-        undist_depth[i].setFromCamParams(intrinsics[i].leftCamera);
-    }
-
-    // Calibration parameters
-    float angle_offset = 20;
-//        float angle_offset = 180;
-    initOffset = Eigen::Matrix<T,4,4>::Identity();
-    initOffset(1,1) = initOffset(2,2) = cos(angle_offset*3.14159/180);
-    initOffset(1,2) = -sin(angle_offset*3.14159/180);
-    initOffset(2,1) = -initOffset(1,2);
-    cout << "initOffset\n" << initOffset << endl;
-
-    // Get the plane and line correspondences
-//    calib_planes = ExtrinsicCalibPlanes<T>(num_sensors);
-//    calib_lines = ExtrinsicCalibLines<T>(num_sensors);
-
-//    CMatrixDouble conditioningFIM(0,6);
-//    Eigen::Matrix<T,3,3> FIMrot = Eigen::Matrix<T,3,3>::Zero();
-//    Eigen::Matrix<T,3,3> FIMtrans = Eigen::Matrix<T,3,3>::Zero();
-
-//    CameraRotTracker calib;
-//    CameraRotTracker_display v3D(calib);
+    bool first_frame = true;
+    mrpt::obs::CObservation3DRangeScanPtr obsRGBD[2];  // The RGBD observation
+    mrpt::vision::CUndistortMap undist_rgb;
+    mrpt::vision::CUndistortMap undist_depth;
+    undist_rgb.setFromCamParams(intrinsics.rightCamera);
+    undist_depth.setFromCamParams(intrinsics.leftCamera);
 
     //==============================================================================
     //									Main operation
@@ -194,49 +141,22 @@ void CameraRotTracker::run()
         if(sensor_id == 10e6) // This RGBD sensor is not taken into account for calibration
             continue;
 
-        obs_sensor] = true;
-        obs_sensor_time] = timestampTotime_t(observation->timestamp);
-        //cout << sensor_id << " diff " << timestampTotime_t(observation->timestamp)-obs_sensor_time] << endl;
-        obsRGBD] = CObservation3DRangeScanPtr(observation);
-        obsRGBD]->load();
-
-
-        // Get synchronized observations (aproximate synchronization)
-        if( !accumulate(begin(obs_sensor), end(obs_sensor), true, logical_and<bool>()) )
-            continue;
-        vector<double>::iterator max_time = max_element(obs_sensor_time.begin(), obs_sensor_time.end());
-        vector<double>::iterator min_time = min_element(obs_sensor_time.begin(), obs_sensor_time.end());
-        if(verbose)
-        {
-            cout << "max diff " << (*max_time - *min_time)*1e3 << endl;
-//                for(size_t i=1; i < num_sensors; i++)
-//                    cout << i << " time diff to ref (sensor_id=0) " << (obs_sensor_time[i]-obs_sensor_time[0])*1e3 << " ms." << endl;
-        }
-        if( (*max_time - *min_time) > max_diff_sync ) // maximum de-synchronization in seconds
-            continue;
-        ++n_frame_sync;
-        cout << n_frame_sync << " frames sync\n";
-        fill(obs_sensor.begin(), obs_sensor.end(), false);
-
-        // Apply decimation
-        if( n_frame_sync % decimation != 0)
-            continue;
-        cout << n_obs << " use this sync frames \n";
+        obsRGBD[0] = CObservation3DRangeScanPtr(observation);
+        obsRGBD->load();
 
 
         // Get the rgb and depth images, and the point clouds
-        for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
         {
             boost::mutex::scoped_lock updateLock(visualizationMutex);
 //            rgb] = cv::Mat(obsRGBD]->intensityImage.getAs<IplImage>());
 //            convertRange_mrpt2cvMat(obsRGBD]->rangeImage, depth]);
             // Image rectification (to reduce radial distortion)
-            cv::Mat src(obsRGBD]->intensityImage.getAs<IplImage>());
-            undist_rgb].undistort(src, rgb]);
+            cv::Mat src(obsRGBD->intensityImage.getAs<IplImage>());
+            undist_rgb.undistort(src, rgb[0]);
             cv::Mat raw_depth;
-            convertRange_mrpt2cvMat(obsRGBD]->rangeImage, raw_depth);
-            undist_depth].undistort(raw_depth, depth]);
-            cloud] = getPointCloudRegistered<PointT>(rgb], depth], intrinsics], depth_reg]);
+            convertRange_mrpt2cvMat(obsRGBD->rangeImage, raw_depth);
+            undist_depth.undistort(raw_depth, depth[0]);
+//            cloud = getPointCloudRegistered<PointT>(rgb, depth, intrinsics, depth_reg);
 //            pcl::visualization::CloudViewer viewer ("Simple Cloud Viewer");
 //            viewer.showCloud(cloud]);
 //            while (!viewer.wasStopped ())
@@ -246,19 +166,15 @@ void CameraRotTracker::run()
         b_freeze = false; // Update 3D visualization
 
         // Display color and depth images
-        //displayObservation();
+        displayObservation();
 
-        //						Segment local planes
+        //						Segment features
         //==================================================================
-        // #pragma omp parallel num_threads(num_sensors)
-        for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
-        {
-            //boost::mutex::scoped_lock updateLock(visualizationMutex);
-            PbMap::pbMapFromPCloud(cloud], v_pbmap], th_dist_plane, th_angle_plane, min_inliers);
-            //DisplayCloudPbMap::displayAndPause(cloud], v_pbmap]); // This 3D visualization is not compatible with CameraRotTracker's one
-            //PbMap::displayImagePbMap(cloud], rgb], v_pbmap]);
-            //updateLock.unlock();
-        }
+        //PbMap::pbMapFromPCloud(cloud], v_pbmap], th_dist_plane, th_angle_plane, min_inliers);
+        CFeatureLines featLines;
+        featLines.extractLines(rgb[sensor_id], vv_segments2D[sensor_id], min_pixels_line); //, true);
+        cout << sensor_id << " lines " << vv_segments2D[sensor_id].size() << endl;
+        ExtrinsicCalibLines::getSegments3D(intrinsics[sensor_id].rightCamera, cloud[sensor_id], v_pbmap[sensor_id], vv_segments2D[sensor_id], vv_segment_n[sensor_id], vv_segments3D[sensor_id], vv_line_has3D[sensor_id]);
 
         //==============================================================================
         //								Get Correspondences
@@ -266,6 +182,9 @@ void CameraRotTracker::run()
         cout << "Get Correspondences\n";
         b_freeze = false; // Update 3D visualization
         getCorrespondences(); // Both planes and lines according to s_type strategy
+
+        if(first_frame)
+            obsRGBD_prev = obsRGBD;
 
         b_show_corresp = true;
         b_freeze = false; // Update 3D visualization
@@ -322,7 +241,7 @@ void CameraRotTracker::viz_cb (pcl::visualization::PCLVisualizer& viz)
         for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
             if (!viz.updatePointCloud (cloud], sensor_labels]))
             {
-                Rt.matrix() = Rt_estimated].cast<float>();
+                Rt.matrix() = Rt_estimated.cast<float>();
                 viz.addCoordinateSystem(0.2, Rt);
                 viz.addPointCloud (cloud], sensor_labels]);
                 viz.updatePointCloudPose(sensor_labels], Rt);
@@ -339,7 +258,7 @@ void CameraRotTracker::viz_cb (pcl::visualization::PCLVisualizer& viz)
                 {
                     // Draw camera system
                     sprintf (name, "ref_%lu", i);
-                    Rt.matrix() = Rt_estimated[sensor_pair[i]].cast<float>();
+                    Rt.matrix() = Rt_estimated[sensor_pair[i].cast<float>();
                     viz.removeCoordinateSystem();
                     viz.addCoordinateSystem(0.05, Rt);
 
@@ -390,7 +309,7 @@ void CameraRotTracker::viz_cb (pcl::visualization::PCLVisualizer& viz)
 
             //        //                size_t p1 = vv_segments2D[sensor1][i][0] + vv_segments2D[sensor1][i][1] * cloud[sensor1]->width;
             //                    size_t p1 = line_match1[0] + line_match1[1] * cloud[sensor1]->width;
-            //                    if(cloud[sensor1]->points[p1].z > 0.3f && cloud[sensor1]->points[p1].z < 10.f)
+            //                    if(cloud[sensor1]->points[p1.z > 0.3f && cloud[sensor1]->points[p1.z < 10.f)
             //                    {
             //                        viz.removeShape("sp1");
             //                        viz.addSphere<PointT>(cloud[sensor1]->points[p1], 0.02, ared[i%10], agrn[i%10], ablu[i%10], "sp1");
@@ -409,14 +328,14 @@ void CameraRotTracker::viz_cb (pcl::visualization::PCLVisualizer& viz)
             //            size_t sensor2 = 1;
             //            Rt.matrix() = Rt_estimated[sensor2];
             //            size_t p1 = line_match2[0] + line_match2[1] * cloud[sensor2]->width;
-            //            if(cloud[sensor2]->points[p1].z > 0.3f && cloud[sensor2]->points[p1].z < 10.f)
+            //            if(cloud[sensor2]->points[p1.z > 0.3f && cloud[sensor2]->points[p1.z < 10.f)
             //            {
             //                viz.removeShape("l2_sp1");
             //                viz.addSphere<PointT>(cloud[sensor2]->points[p1], 0.02, ared[1], agrn[1], ablu[1], "l2_sp1");
             //                viz.updateShapePose("l2_sp1", Rt);
             //            }
             //            size_t p2 = line_match2[2] + line_match2[3] * cloud[sensor2]->width;
-            //            if(cloud[sensor2]->points[p2].z > 0.3f && cloud[sensor2]->points[p2].z < 10.f)
+            //            if(cloud[sensor2]->points[p2.z > 0.3f && cloud[sensor2]->points[p2.z < 10.f)
             //            {
             //                viz.removeShape("l2_sp2");
             //                viz.addSphere<PointT>(cloud[sensor2]->points[p2], 0.02, ared[1], agrn[1], ablu[1], "l2_sp2");
@@ -480,12 +399,12 @@ void CameraRotTracker::viz_cb (pcl::visualization::PCLVisualizer& viz)
 //            // Draw lines
 //            for(size_t sensor_id=0; sensor_id < num_sensors; sensor_id++)
 //            {
-//                for(size_t i=0; i < vv_segments3D].size(); i++)
+//                for(size_t i=0; i < vv_segments3D.size(); i++)
 //                    //for(size_t sensor2=sensor1+1; sensor2 < num_sensors; sensor2++)
 //                {
 //                    //vector<mrpt::math::TLine3D> seg3D = vv_segments3D];
-//                    Matrix<T,3,1> seg3D_1(Rt_estimated].block<3,3>(0,0)*vv_segments3D][i].block<3,1>(0,0) + Rt_estimated].block<3,1>(0,3));
-//                    Matrix<T,3,1> seg3D_2(Rt_estimated].block<3,3>(0,0)*vv_segments3D][i].block<3,1>(3,0) + Rt_estimated].block<3,1>(0,3));
+//                    Matrix<T,3,1> seg3D_1(Rt_estimated.block<3,3>(0,0)*vv_segments3D][i.block<3,1>(0,0) + Rt_estimated.block<3,1>(0,3));
+//                    Matrix<T,3,1> seg3D_2(Rt_estimated.block<3,3>(0,0)*vv_segments3D][i.block<3,1>(3,0) + Rt_estimated.block<3,1>(0,3));
 //                    pcl::PointXYZ pt1(seg3D_1[0], seg3D_1[1], seg3D_1[2]);
 //                    pcl::PointXYZ pt2(seg3D_2[0], seg3D_2[1], seg3D_2[2]);
 //                    sprintf (name, "line_%lu_%lu", sensor_id, i);
@@ -507,13 +426,13 @@ void CameraRotTracker::viz_cb (pcl::visualization::PCLVisualizer& viz)
                         array<size_t,2> sensor = {it1->first, it2->first};
                         for(size_t i=0; i < 2; i++)
                         {
-                            //cout << i << " line " << vv_segments3D[sensor[i]][idx[i]].transpose() << endl;
-                            if(drawn_lines[sensor[i]].count(idx[i]))
+                            //cout << i << " line " << vv_segments3D[sensor[i]][idx[i].transpose() << endl;
+                            if(drawn_lines[sensor[i].count(idx[i]))
                                 continue;
-                            drawn_lines[sensor[i]].insert(idx[i]);
+                            drawn_lines[sensor[i].insert(idx[i]);
 
-                            Matrix<T,3,1> seg3D_1(Rt_estimated[sensor[i]].block<3,3>(0,0)*vv_segments3D[sensor[i]][idx[i]].block<3,1>(0,0) + Rt_estimated[sensor[i]].block<3,1>(0,3));
-                            Matrix<T,3,1> seg3D_2(Rt_estimated[sensor[i]].block<3,3>(0,0)*vv_segments3D[sensor[i]][idx[i]].block<3,1>(3,0) + Rt_estimated[sensor[i]].block<3,1>(0,3));
+                            Matrix<T,3,1> seg3D_1(Rt_estimated[sensor[i].block<3,3>(0,0)*vv_segments3D[sensor[i]][idx[i].block<3,1>(0,0) + Rt_estimated[sensor[i].block<3,1>(0,3));
+                            Matrix<T,3,1> seg3D_2(Rt_estimated[sensor[i].block<3,3>(0,0)*vv_segments3D[sensor[i]][idx[i].block<3,1>(3,0) + Rt_estimated[sensor[i].block<3,1>(0,3));
                             pcl::PointXYZ pt1(seg3D_1[0], seg3D_1[1], seg3D_1[2]);
                             pcl::PointXYZ pt2(seg3D_2[0], seg3D_2[1], seg3D_2[2]);
                             sprintf (name, "line_%lu_%lu", sensor[i], idx[i]);
@@ -528,7 +447,7 @@ void CameraRotTracker::viz_cb (pcl::visualization::PCLVisualizer& viz)
                             sprintf (name, "virtual_plane_%lu_%lu", sensor[i], idx[i]);
                             pcl::PointCloud<pcl::PointXYZ>::Ptr triangle(new pcl::PointCloud<pcl::PointXYZ>());
                             triangle->points.resize(3);
-                            triangle->points[0].getVector3fMap() = Rt_estimated[sensor[i]].block<3,1>(0,3).cast<float>(); // Set the optical center of the camera
+                            triangle->points[0.getVector3fMap() = Rt_estimated[sensor[i].block<3,1>(0,3).cast<float>(); // Set the optical center of the camera
                             triangle->points[1] = pt1;
                             triangle->points[2] = pt2;
                             viz.addPolygon<pcl::PointXYZ> (triangle, red[col], grn[col], blu[col], name);
@@ -545,8 +464,8 @@ void CameraRotTracker::viz_cb (pcl::visualization::PCLVisualizer& viz)
 //                            //viz.setShapeRenderingProperties (pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, name, 0);
 
 //                            pcl::PointXYZ pt1_n(triangle->points[0]); // Begin and end points of normal's arrow for visualization
-//                            pt1_n.getVector3fMap() += triangle->points[1].getVector3fMap() + triangle->points[2].getVector3fMap(); pt1_n.getVector3fMap() /= 3.f;
-                            pcl::PointXYZ pt2_n(pt1); pt2_n.getVector3fMap() += 0.1f*(Rt_estimated[sensor[i]].block<3,3>(0,0)*vv_segment_n[sensor[i]][idx[i]]).cast<float>();
+//                            pt1_n.getVector3fMap() += triangle->points[1.getVector3fMap() + triangle->points[2.getVector3fMap(); pt1_n.getVector3fMap() /= 3.f;
+                            pcl::PointXYZ pt2_n(pt1); pt2_n.getVector3fMap() += 0.1f*(Rt_estimated[sensor[i].block<3,3>(0,0)*vv_segment_n[sensor[i]][idx[i]]).cast<float>();
                             sprintf (name, "seg_n_%lu_%lu", sensor[i], idx[i]);
                             viz.addArrow (pt2_n, pt1, ared[col], agrn[col], ablu[col], false, name);
                         }
@@ -584,3 +503,4 @@ void CameraRotTracker::keyboardEventOccurred (const pcl::visualization::Keyboard
         }
     }
 }
+*/

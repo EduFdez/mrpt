@@ -16,10 +16,13 @@ PROJECT(camera-rot-tracker)
 # Define the executable target:
 ADD_EXECUTABLE(${PROJECT_NAME}
                 camera-rot-tracker_main.cpp
-                camera-rot-tracker.h
-                camera-rot-tracker.cpp
+                camera-rot-tracker.cpp      camera-rot-tracker.h
                 camera-rot-tracker_misc.h
                 #camera-rot-tracker_misc.cpp
+                DifOdometry_Datasets_RGBD.cpp   DifOdometry_Datasets_RGBD.h
+                ../kinect-rig-calib/extrinsic_calib.h
+                ../kinect-rig-calib/feat_corresp.cpp            ../kinect-rig-calib/feat_corresp.h
+                ../kinect-rig-calib/extrinsic_calib_lines.cpp   ../kinect-rig-calib/extrinsic_calib_lines.h
 )
 
 

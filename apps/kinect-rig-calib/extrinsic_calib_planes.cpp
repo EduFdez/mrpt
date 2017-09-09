@@ -44,6 +44,7 @@
 using namespace std;
 using namespace Eigen;
 using namespace mrpt::math;
+using namespace mrpt::utils;
 using namespace mrpt::pbmap;
 
 // Obtain the rigid transformation from 3 matched planes
@@ -499,6 +500,7 @@ double ExtrinsicCalibPlanes::calcTranslationError(const vector<Matrix<T,4,4>, al
 Matrix<T,3,3> ExtrinsicCalibPlanes::CalibrateRotationPair(const size_t sensor1, const size_t sensor2)//, const bool weight_uncertainty)
 {
     cout << "ExtrinsicCalibPlanes::CalibrateRotationPair... " << planes.mm_corresp[sensor1][sensor2].rows() << " correspondences\n";
+    CTicTac clock; clock.Tic(); //Clock to measure the runtime
 
     mm_covariance[sensor1][sensor2] = Matrix<T,3,3>::Zero();
 //    Matrix<T,3,3> cov = Matrix<T,3,3>::Zero();
@@ -529,12 +531,13 @@ Matrix<T,3,3> ExtrinsicCalibPlanes::CalibrateRotationPair(const size_t sensor1, 
 
     // Calculate Rotation
     // cout << "Solve rotation";
-    Matrix<T,3,3> rotation = rotationFromNormals(mm_covariance[sensor1][sensor2], threshold_conditioning);
-
-    cout << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], rotation) << endl;
+    Matrix<T,3,3> rotation;
+    T conditioning = rotationFromNormals(mm_covariance[sensor1][sensor2], rotation);
+    cout << "conditioning " << conditioning << "accum_rot_error2 " << accum_error2 << " " << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], rotation) << endl;
     cout << "average error: "
               << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], Rt_estimated[sensor1].block<3,3>(0,0).transpose()*Rt_estimated[sensor2].block<3,3>(0,0), true) << " vs "
               << calcRotationErrorPair(planes.mm_corresp[sensor1][sensor2], rotation, true) << " degrees\n";
+    cout << "  Estimation took " << 1000*clock.Tac() << " ms.\n";
 
     return rotation;
 }

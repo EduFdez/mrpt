@@ -17,7 +17,7 @@
 /*! Constructor */
 FeatCorresp::FeatCorresp(const size_t sensors, const size_t length) : n_sensors(sensors)
 {
-    std::cout << "PlaneCorresp... n_sensors " << n_sensors << std::endl;
+    //std::cout << "FeatCorresp... n_sensors " << n_sensors << std::endl;
     for(size_t sensor1=0; sensor1 < n_sensors; sensor1++)
     {
         mm_corresp[sensor1] = std::map<size_t, mrpt::math::CMatrixDouble>();
@@ -37,7 +37,7 @@ void FeatCorresp::saveCorrespondences(const std::string & dir, const std::string
             it_pair2 != it_pair1->second.end(); it_pair2++)
         {
             if(it_pair2->second.rows() > 0)
-                it_pair2->second.saveToTextFile( mrpt::format("%s/corresp_%s_%u_%u.txt", dir.c_str(), name.c_str(), it_pair1->first, it_pair2->first) );
+                it_pair2->second.saveToTextFile( mrpt::format("%s/corresp_%s_%lu_%lu.txt", dir.c_str(), name.c_str(), it_pair1->first, it_pair2->first) );
         }
     }
 }
@@ -51,7 +51,7 @@ void FeatCorresp::loadCorrespondences(const std::string dir, const std::string n
         mm_corresp[sensor1] = std::map<size_t, mrpt::math::CMatrixDouble>();
         for(size_t sensor2 = sensor1+1; sensor2 < n_sensors; sensor2++)
         {
-            std::string fileCorresp = mrpt::format("%s/corresp_%s_%u_%u.txt", dir.c_str(), name.c_str(), sensor1, sensor2);
+            std::string fileCorresp = mrpt::format("%s/corresp_%s_%lu_%lu.txt", dir.c_str(), name.c_str(), sensor1, sensor2);
             if( mrpt::system::fileExists(fileCorresp) )
             {
                 mrpt::math::CMatrixDouble correspMat;
