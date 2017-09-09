@@ -32,7 +32,7 @@ namespace mrpt
                                 size_t threshold , const bool display = false);
 
             void extractLines_CannyHough(const cv::Mat & canny_image,
-                                         const cv::vector<cv::Vec2f> lines,
+                                         const std::vector<cv::Vec2f> lines,
                                          std::vector<cv::Vec4i> & segments,
                                          size_t threshold );
         }; // end of class
