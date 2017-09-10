@@ -77,9 +77,11 @@ void CameraRotTracker::setNewFrame()
     for(size_t i=1; i < num_sensors; i++)
     {
         obsRGBD[i] = obsRGBD[i-1];
+//        cv::swap(v_rgb[i], v_rgb[i-1]);
+//        cv::swap(v_depth[i], v_depth[i-1]);
 //        v_rgb[i] = cv::Mat(obsRGBD[i]->intensityImage.getAs<IplImage>());
 //        convertRange_mrpt2cvMat(obsRGBD[i]->rangeImage, v_depth[i]);
-        v_cloud[i] = v_cloud[i-1];
+//        v_cloud[i].swap(v_cloud[i-1]);
         vv_segments2D[i] = vv_segments2D[i-1];
         vv_segment_n[i] = vv_segment_n[i-1];
     }

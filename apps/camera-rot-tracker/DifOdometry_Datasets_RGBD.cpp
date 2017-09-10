@@ -364,7 +364,7 @@ void CDifodoDatasets_RGBD::loadFrame()
 	const unsigned int width = range.getColCount();
     //v_rgb[0] = cv::Mat(obsRGBD[0]->intensityImage.getAs<IplImage>());
     //convertRange_mrpt2cvMat(obsRGBD[0]->rangeImage, v_depth[0]);
-    v_cloud[0] = getPointCloud<PointT>(obsRGBD[0]->intensityImage.getAs<IplImage>(), v_depth[0], intrinsics);
+//    v_cloud[0] = getPointCloud<PointT>(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), v_depth[0], intrinsics);
 //    cv::imshow("rgb", v_rgb[0]);
 //    cv::waitKey();
 
@@ -524,7 +524,7 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
     bool display = true;
 
     CFeatureLines featLines;
-    featLines.extractLines(obsRGBD[0]->intensityImage.getAs<IplImage>(), vv_segments2D[0], min_pixels_line, true);
+    featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, true);
     cout << "CDifodoDatasets_RGBD initialize. lines " << vv_segments2D[0].size() << endl;
     ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
 
@@ -568,7 +568,7 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
                 cv::imshow("rgb00", cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()));
                 cv::imshow("rgb11", cv::cvarrToMat(obsRGBD[1]->intensityImage.getAs<IplImage>()));
                 cv::waitKey();
-                featLines.extractLines(obsRGBD[0]->intensityImage.getAs<IplImage>(), vv_segments2D[0], min_pixels_line, true);
+                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, true);
                 cout << "CDifodoDatasets_RGBD. lines " << vv_segments2D[0].size() << endl;
                 ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
                 map<size_t,size_t> line_matches = matchNormalVectors(vv_segment_n[0], vv_segment_n[1]);
