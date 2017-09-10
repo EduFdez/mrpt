@@ -30,7 +30,7 @@ void CFeatureLines::extractLines(const cv::Mat & image,
                                 size_t threshold,
                                 const bool display )
 {
-    //cout << "CFeatureLines::extractLines... threshold " << threshold << endl;
+    cout << "CFeatureLines::extractLines... threshold " << threshold << endl;
     CTicTac clock; clock.Tic(); //Clock to measure the runtime
 
     // Canny edge detector
@@ -66,7 +66,7 @@ void CFeatureLines::extractLines(const cv::Mat & image,
     // Extracting segments (pairs of points) from the filtered Canny detector
     // And using the line parameters from lines
     extractLines_CannyHough(filteredCanny, lines, segments, threshold);
-    cout << "  CFeatureLines::extractLines took " << 1000*clock.Tac() << " ms \n";
+    cout << "  CFeatureLines::extractLines " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
 
     // Force the segments to have a predefined order (e1y <= e2y)
     for(auto line = begin(segments); line != end(segments); ++line)

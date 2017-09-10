@@ -97,6 +97,16 @@ class CameraRotTracker : public ExtrinsicCalibLines
         b_freeze(true),
         b_pause(false)
     {
+        num_sensors = 2;
+        obsRGBD.resize(num_sensors);
+        v_rgb.resize(num_sensors);
+        v_depth.resize(num_sensors);
+        //depth_reg.resize(num_sensors); // Depth image registered to RGB pose
+        v_cloud.resize(num_sensors);
+        v_pbmap.resize(num_sensors);
+        vv_segments2D.resize(num_sensors);
+        vv_segment_n.resize(num_sensors);
+
 //        // Initialize visualizer
 //        viewer.runOnVisualizationThread (boost::bind(&CameraRotTracker::viz_cb, this, _1), "viz_cb");
 //        viewer.registerKeyboardCallback ( &CameraRotTracker::keyboardEventOccurred, *this );
@@ -106,7 +116,7 @@ class CameraRotTracker : public ExtrinsicCalibLines
     /*! Load a config which indicates the system to calibrate: input rawlog dataset, initial poses with uncertainty, plus other parameters. */
     void loadConfiguration(const std::string & config_file);
 
-    /*! Transfer images and features from observation [0] (current) to [1] (previous). */
+    /*! Swap images and features from observation [0] (current) to [1] (previous). */
     void setNewFrame();
 
 //    /*! This function encapsulates the main functionality of the calibration process:

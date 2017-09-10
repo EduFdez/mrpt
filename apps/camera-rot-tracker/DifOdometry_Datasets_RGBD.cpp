@@ -136,7 +136,7 @@ void CDifodoDatasets_RGBD::loadConfiguration(const string & config_file)
     }
 
 	//Resize matrix that store the original depth image
-	depth_wf.setSize(height,width);
+    depth_wf.setSize(height,width);
 }
 
 void CDifodoDatasets_RGBD::CreateResultsFile()
@@ -343,6 +343,7 @@ void CDifodoDatasets_RGBD::updateScene()
 */
 void CDifodoDatasets_RGBD::loadFrame()
 {
+    cout << "CDifodoDatasets_RGBD::loadFrame...\n";
     CObservationPtr observation = dataset.getAsObservation(rawlog_count);
 
     while (!IS_CLASS(observation, CObservation3DRangeScan))
@@ -361,9 +362,11 @@ void CDifodoDatasets_RGBD::loadFrame()
     const CMatrix range = obsRGBD[0]->rangeImage;
 	const unsigned int height = range.getRowCount();
 	const unsigned int width = range.getColCount();
-    v_rgb[0] = cv::Mat(obsRGBD[0]->intensityImage.getAs<IplImage>());
-    convertRange_mrpt2cvMat(obsRGBD[0]->rangeImage, v_depth[0]);
-    v_cloud[0] = getPointCloud<PointT>(v_rgb[0], v_depth[0], intrinsics);
+    //v_rgb[0] = cv::Mat(obsRGBD[0]->intensityImage.getAs<IplImage>());
+    //convertRange_mrpt2cvMat(obsRGBD[0]->rangeImage, v_depth[0]);
+    v_cloud[0] = getPointCloud<PointT>(obsRGBD[0]->intensityImage.getAs<IplImage>(), v_depth[0], intrinsics);
+//    cv::imshow("rgb", v_rgb[0]);
+//    cv::waitKey();
 
 	for (unsigned int j = 0; j<cols; j++)
 		for (unsigned int i = 0; i<rows; i++)
@@ -504,12 +507,12 @@ void CDifodoDatasets_RGBD::loadFrame()
 
 	if (dataset.size() <= rawlog_count)
 		dataset_finished = true;
+
+    cout << "...CDifodoDatasets_RGBD::loadFrame\n";
 }
 
 void CDifodoDatasets_RGBD::run(const string & config_file)
 {
-    cout << "CDifodoDatasets_RGBD::run...\n";
-
     int pushed_key = 0;
     bool working = 0, stop = 0;
 
@@ -521,17 +524,17 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
     bool display = true;
 
     CFeatureLines featLines;
-    featLines.extractLines(v_rgb[0], vv_segments2D[0], min_pixels_line, true);
+    featLines.extractLines(obsRGBD[0]->intensityImage.getAs<IplImage>(), vv_segments2D[0], min_pixels_line, true);
     cout << "CDifodoDatasets_RGBD initialize. lines " << vv_segments2D[0].size() << endl;
     ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
 
     CFeatureExtraction featPoints;
     CFeatureList points1, points2;
-    CMatchedFeatureList match_points;
-    featPoints.options.featsType = featORB;
-    IplImage ipl_img = v_rgb[0];
-    CImage im1(&ipl_img), im2;
-    featPoints.detectFeatures( im1, points1 );
+    CMatchedFeatureList point_matches;
+    featPoints.options.featsType = featFAST;// featORB;
+    //IplImage ipl_img = v_rgb[0]; CImage im1(&ipl_img), im2;
+    featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );
+    cout << "CDifodoDatasets_RGBD initialize. points " << points1.size() << endl;
 
     while (!stop)
     {
@@ -541,6 +544,8 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 //        else
 //            pushed_key = 0;
 
+        cout << "Pause until getchar (n,s,q): ";
+        pushed_key = getchar();
 
         switch (pushed_key) {
 
@@ -555,25 +560,29 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
             }
             else
             {
+                cout << "CDifodoDatasets_RGBD. process frame \n";
                 setNewFrame();
                 loadFrame();
-                featLines.extractLines(v_rgb[0], vv_segments2D[0], min_pixels_line, true);
+//                cv::imshow("rgb1", v_rgb[1]);
+//                cv::imshow("rgb0", v_rgb[0]);
+                cv::imshow("rgb00", cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()));
+                cv::imshow("rgb11", cv::cvarrToMat(obsRGBD[1]->intensityImage.getAs<IplImage>()));
+                cv::waitKey();
+                featLines.extractLines(obsRGBD[0]->intensityImage.getAs<IplImage>(), vv_segments2D[0], min_pixels_line, true);
                 cout << "CDifodoDatasets_RGBD. lines " << vv_segments2D[0].size() << endl;
                 ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
                 map<size_t,size_t> line_matches = matchNormalVectors(vv_segment_n[0], vv_segment_n[1]);
                 cout << "line_matches " << line_matches.size() << endl;
 
-                im2 = im1;
                 points2 = points1;
-                ipl_img = v_rgb[0];
-                im1 = CImage(&ipl_img);
-                featPoints.detectFeatures( im1, points1 );//
-                matchFeatures( points1, points2, match_points );
+                featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );//
+                matchFeatures( points1, points2, point_matches );
+                cout << "point_matches " << point_matches.size() << endl;
 //                if( display )
 //                {
 //                    CDisplayWindow feature_matches;
 //                    feature_matches.setWindowTitle("feature_matches");
-//                    feature_matches.showImagesAndMatchedPoints( im1, im2, match_points, TColor(0,0,255) );
+//                    feature_matches.showImagesAndMatchedPoints( obsRGBD[0]->intensityImage, obsRGBD[1]->intensityImage, point_matches, TColor(0,0,255) );
 //                    mrpt::system::pause();
 //                }
 

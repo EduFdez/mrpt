@@ -5,7 +5,7 @@ INCLUDE(../../cmakemodules/AssureCMakeRootFile.cmake) # Avoid user mistake in CM
 #
 #  Run with "cmake ." at the root directory
 #
-#  January 2017, Eduardo Fernández-Moral <efernandezmoral@gmail.com>
+#  August 2017, Eduardo Fernández-Moral <efernandezmoral@gmail.com>
 #-----------------------------------------------------------------
 PROJECT(camera-rot-tracker)
 
@@ -17,8 +17,6 @@ PROJECT(camera-rot-tracker)
 ADD_EXECUTABLE(${PROJECT_NAME}
                 camera-rot-tracker_main.cpp
                 camera-rot-tracker.cpp      camera-rot-tracker.h
-                camera-rot-tracker_misc.h
-                #camera-rot-tracker_misc.cpp
                 DifOdometry_Datasets_RGBD.cpp   DifOdometry_Datasets_RGBD.h
                 ../kinect-rig-calib/extrinsic_calib.h
                 ../kinect-rig-calib/feat_corresp.cpp            ../kinect-rig-calib/feat_corresp.h

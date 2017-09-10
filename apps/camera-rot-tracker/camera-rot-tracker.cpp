@@ -17,9 +17,8 @@
   ---------------------------------------------------------------*/
 
 #include "camera-rot-tracker.h"
-#include "camera-rot-tracker_misc.h"
+#include "../kinect-rig-calib/kinect-rig-calib_misc.h"
 #include "DifOdometry_Datasets_RGBD.h"
-//#include "camera-rot-tracker_display.h"
 #include <mrpt/utils/CConfigFile.h>
 #include <mrpt/obs/CRawlog.h>
 #include <mrpt/obs/CObservation3DRangeScan.h>
@@ -57,6 +56,7 @@ void CameraRotTracker::loadConfiguration(const string & config_file)
     rawlog_file = cfg.read_string("GLOBAL", "rawlog_file", "no file", true);
     output_dir = cfg.read_string("GLOBAL", "output_dir", "no dir", true);
 
+    decimation = cfg.read_int("GLOBAL", "decimation", 0, true);
     display = cfg.read_bool("GLOBAL", "display", 0, true);
     verbose = cfg.read_bool("GLOBAL", "verbose", 0, true);
     min_pixels_line = cfg.read_int("GLOBAL", "min_pixels_line", 100, true);
@@ -68,25 +68,17 @@ void CameraRotTracker::loadConfiguration(const string & config_file)
     //string sensor_label = "RGBD";
     intrinsics.loadFromConfigFile("GLOBAL", cfg);
 
-    num_sensors = 2;
-    v_rgb.resize(num_sensors);
-    v_depth.resize(num_sensors);
-    //depth_reg.resize(num_sensors); // Depth image registered to RGB pose
-    v_cloud.resize(num_sensors);
-    v_pbmap.resize(num_sensors);
-    vv_segments2D.resize(num_sensors);
-    vv_segment_n.resize(num_sensors);
-
     cout << "...CameraRotTracker::loadConfiguration\n";
 }
 
 void CameraRotTracker::setNewFrame()
 {
+    cout << "CameraRotTracker::setNewFrame..." << num_sensors << endl;
     for(size_t i=1; i < num_sensors; i++)
     {
         obsRGBD[i] = obsRGBD[i-1];
-        v_rgb[i] = v_rgb[i-1];
-        v_depth[i] = v_depth[i-1];
+//        v_rgb[i] = cv::Mat(obsRGBD[i]->intensityImage.getAs<IplImage>());
+//        convertRange_mrpt2cvMat(obsRGBD[i]->rangeImage, v_depth[i]);
         v_cloud[i] = v_cloud[i-1];
         vv_segments2D[i] = vv_segments2D[i-1];
         vv_segment_n[i] = vv_segment_n[i-1];
