@@ -1129,18 +1129,6 @@ void PbMapMaker::viz_cb (pcl::visualization::PCLVisualizer& viz)
                     //          pcl::visualization::PointCloudColorHandlerCustom <PointT> color2 (plane_i.contourPtr, 255, 255, 255);
                     //          viz.addPointCloud (plane_i.contourPtr, color2, name);// contourPtr, planePointCloudPtr, polygonContourPtr
 
-                    //          //Edges
-                    //          if(mPbMap.edgeCloudPtr->size() > 0)
-                    //          {
-                    //            sprintf (name, "planeEdge_%02u", static_cast<unsigned>(i));
-                    //            pcl::visualization::PointCloudColorHandlerCustom <PointT> color4 (mPbMap.edgeCloudPtr, 255, 255, 0);
-                    //            viz.addPointCloud (mPbMap.edgeCloudPtr, color4, name);// contourPtr, planePointCloudPtr, polygonContourPtr
-                    //            viz.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 5, name);
-                    //
-                    //            sprintf (name, "edge%u", static_cast<unsigned>(i));
-                    //            viz.addLine (mPbMap.edgeCloudPtr->points.front(), mPbMap.edgeCloudPtr->points.back(), ared[3], agrn[3], ablu[3], name);
-                    //          }
-
                     sprintf (name, "approx_plane_%02d", int (i));
                     viz.addPolygon<PointT> (plane_i.polygonContourPtr, 0.5 * red[i%10], 0.5 * grn[i%10], 0.5 * blu[i%10], name);
                 }

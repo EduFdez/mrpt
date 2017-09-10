@@ -106,11 +106,13 @@ namespace maps
 	  *		- mrpt::maps::CMetricMap::internal_insertObservation()
 	  *		- Serialization methods: writeToStream() and readFromStream()
 	  *
+	  * [GMRF only] A custom connectivity pattern between cells can be defined by calling setCellsConnectivity().
+	  *
 	  * \sa mrpt::maps::CGasConcentrationGridMap2D, mrpt::maps::CWirelessPowerGridMap2D, mrpt::maps::CMetricMap, mrpt::utils::CDynamicGrid, The application icp-slam, mrpt::maps::CMultiMetricMap
 	  * \ingroup mrpt_maps_grp
 	  */
-	class CRandomFieldGridMap2D : 
-		public mrpt::maps::CMetricMap, 
+	class CRandomFieldGridMap2D :
+		public mrpt::maps::CMetricMap,
 		public mrpt::utils::CDynamicGrid<TRandomFieldCell>,
 		public mrpt::utils::COutputLogger
 	{
@@ -214,8 +216,8 @@ namespace maps
 			double GMRF_lambdaPrior;		//!< The information (Lambda) of fixed map constraints
 			double GMRF_lambdaObs;			//!< The initial information (Lambda) of each observation (this information will decrease with time)
 			double GMRF_lambdaObsLoss;		//!< The loss of information of the observations with each iteration
-			
-			bool GMRF_use_occupancy_information;	//!< whether to use information of an occupancy_gridmap map for buidling the GMRF
+
+			bool GMRF_use_occupancy_information;	//!< whether to use information of an occupancy_gridmap map for building the GMRF
 			std::string GMRF_simplemap_file;		//!< simplemap_file name of the occupancy_gridmap
 			std::string GMRF_gridmap_image_file;	//!< image name of the occupancy_gridmap
 			double GMRF_gridmap_image_res;			//!< occupancy_gridmap resolution: size of each pixel (m)
@@ -230,8 +232,33 @@ namespace maps
 		/** Changes the size of the grid, maintaining previous contents. \sa setSize */
 		virtual void  resize(double new_x_min, double new_x_max, double new_y_min, double new_y_max, const TRandomFieldCell& defaultValueNewCells, double additionalMarginMeters = 1.0f ) MRPT_OVERRIDE;
 
-		/** Changes the size of the grid, erasing previous contents. \sa resize */
+		/** Changes the size of the grid, erasing previous contents.
+		  *  \param[in] connectivity_descriptor Optional user-supplied object that will visit all grid cells to define their connectivity with neighbors and the strength of existing edges. If present, it overrides all options in insertionOptions
+		  * \sa resize
+		  */
 		virtual void setSize(const double x_min, const double x_max, const double y_min, const double y_max, const double resolution, const TRandomFieldCell * fill_value = NULL);
+
+		/** Base class for user-supplied objects capable of describing cells connectivity, used to build prior factors of the MRF graph. \sa setCellsConnectivity() */
+		struct MAPS_IMPEXP ConnectivityDescriptor
+		{
+			ConnectivityDescriptor();
+			virtual ~ConnectivityDescriptor();
+			
+			/** Implement the check of whether node i=(icx,icy) is connected with node j=(jcx,jcy).
+			  * This visitor method will be called only for immediate neighbors.
+			  * \return true if connected (and the "information" value should be also updated in out_edge_information), false otherwise.
+			  */
+			virtual bool getEdgeInformation(
+				const CRandomFieldGridMap2D *parent,  //!< The parent map on which we are running
+				size_t icx, size_t icy,               //!< (cx,cy) for node "i"
+				size_t jcx, size_t jcy,               //!< (cx,cy) for node "j"
+				double &out_edge_information          //!< Must output here the inverse of the variance of the constraint edge.
+			) = 0;
+		};
+		typedef stlplus::smart_ptr<ConnectivityDescriptor> ConnectivityDescriptorPtr;
+
+		/** Sets a custom object to define the connectivity between cells. Must call clear() or setSize() afterwards for the changes to take place. */
+		void setCellsConnectivity(const ConnectivityDescriptorPtr &new_connectivity_descriptor);
 
 		/** See docs in base class: in this class this always returns 0 */
 		float compute3DMatchingRatio(const mrpt::maps::CMetricMap *otherMap, const mrpt::poses::CPose3D &otherMapPose, const TMatchingRatioParams &params) const MRPT_OVERRIDE;
@@ -256,7 +283,7 @@ namespace maps
 
 		TMapRepresentation	 getMapType(); //!< Return the type of the random-field grid map, according to parameters passed on construction.
 
-		/** Direct update of the map with a reading in a given position of the map, using 
+		/** Direct update of the map with a reading in a given position of the map, using
 		  *  the appropriate method according to mapType passed in the constructor.
 		  *
 		  * This is a direct way to update the map, an alternative to the generic insertObservation() method which works with mrpt::obs::CObservation objects.
@@ -271,7 +298,7 @@ namespace maps
 
 		enum TGridInterpolationMethod {
 			gimNearest = 0,
-			gimBilinear 
+			gimBilinear
 		};
 
 		/** Returns the prediction of the measurement at some (x,y) coordinates, and its certainty (in the form of the expected variance).  */
@@ -297,6 +324,9 @@ namespace maps
 
 		void enableVerbose(bool enable_verbose) { this->setMinLoggingLevel(mrpt::utils::LVL_DEBUG); }
 		bool isEnabledVerbose() const { return this->getMinLoggingLevel()== mrpt::utils::LVL_DEBUG; }
+
+		void enableProfiler(bool enable = true) { this->m_gmrf.enableProfiler(enable); }
+		bool isProfilerEnabled() const { return this->m_gmrf.isProfilerEnabled() ; }
 
 	protected:
 		bool m_rfgm_run_update_upon_clear;
@@ -326,6 +356,8 @@ namespace maps
 		size_t              m_average_normreadings_count;
 		/** @} */
 
+		ConnectivityDescriptorPtr m_gmrf_connectivity; //!< Empty: default
+
 		mrpt::graphs::ScalarFactorGraph  m_gmrf;
 
 		struct TObservationGMRF : public mrpt::graphs::ScalarFactorGraph::UnaryFactorVirtualBase
@@ -350,7 +382,7 @@ namespace maps
 			double evaluateResidual() const MRPT_OVERRIDE;
 			double getInformation() const MRPT_OVERRIDE;
 			void evalJacobian(double &dr_dx_i, double &dr_dx_j) const MRPT_OVERRIDE;
-			
+
 			TPriorFactorGMRF(CRandomFieldGridMap2D &parent) : Lambda(.0), m_parent(&parent) {}
 		private:
 			CRandomFieldGridMap2D *m_parent;
@@ -415,13 +447,13 @@ namespace maps
 		/** Check if two cells of the gridmap (m_map) are connected, based on the provided occupancy gridmap*/
 		bool exist_relation_between2cells(
 			const mrpt::maps::COccupancyGridMap2D *m_Ocgridmap,
-			size_t cxo_min, 
-			size_t cxo_max, 
-			size_t cyo_min, 
-			size_t cyo_max, 
-			const size_t seed_cxo, 
-			const size_t seed_cyo, 
-			const size_t objective_cxo, 
+			size_t cxo_min,
+			size_t cxo_max,
+			size_t cyo_min,
+			size_t cyo_max,
+			const size_t seed_cxo,
+			const size_t seed_cyo,
+			const size_t objective_cxo,
 			const size_t objective_cyo);
 	};
 	DEFINE_SERIALIZABLE_POST_CUSTOM_BASE_LINKAGE( CRandomFieldGridMap2D , CMetricMap, MAPS_IMPEXP )

@@ -14,6 +14,20 @@
 #include <mrpt/utils/CTicTac.h>
 #include <mrpt/utils/CFileOutputStream.h>
 
+#include <mrpt/config.h>
+
+#if MRPT_HAS_VTK
+ #include <vtkStructuredGrid.h>
+ #include <vtkDoubleArray.h>
+ #include <vtkPointData.h>
+ #include <vtkVersion.h>
+ #include <vtkCellArray.h>
+ #include <vtkPoints.h>
+ #include <vtkXMLStructuredGridWriter.h>
+ #include <vtkStructuredGrid.h>
+ #include <vtkSmartPointer.h>
+#endif
+
 using namespace mrpt;
 using namespace mrpt::maps;
 using namespace mrpt::utils;
@@ -97,7 +111,7 @@ void CRandomFieldGridMap3D::internal_initialize(bool erase_prev_contents)
 	}
 	m_mrf_factors_priors.clear();
 
-	// Initiating prior (fully connected)
+	// Initiating prior:
 	const size_t nodeCount = m_map.size();
 	ASSERT_EQUAL_(nodeCount, m_size_x*m_size_y*m_size_z);
 	ASSERT_EQUAL_(m_size_x_times_y, m_size_x*m_size_y);
@@ -108,6 +122,8 @@ void CRandomFieldGridMap3D::internal_initialize(bool erase_prev_contents)
 
 	m_mrf_factors_activeObs.resize(nodeCount); // Alloc space for obs
 	m_gmrf.initialize(nodeCount);
+
+	ConnectivityDescriptor * custom_connectivity = m_gmrf_connectivity.pointer(); // Use a raw ptr to avoid the cost in the inner loops
 
 	size_t cx = 0, cy = 0, cz = 0;
 	for (size_t j = 0; j<nodeCount; j++)
@@ -129,10 +145,27 @@ void CRandomFieldGridMap3D::internal_initialize(bool erase_prev_contents)
 			const size_t i = j + c_neighbor_idx_incr[dir];
 			ASSERT_(i<nodeCount);
 
+			double edge_lamdba = .0;
+			if (custom_connectivity != NULL)
+			{
+				const bool is_connected = custom_connectivity->getEdgeInformation(
+					this,
+					cx, cy,cz,
+					cx + (dir == 0 ? 1 : 0), cy + (dir == 1 ? 1 : 0), cz+ (dir==2 ? 1:0),
+					edge_lamdba
+				);
+				if (!is_connected)
+					continue;
+			}
+			else
+			{
+				edge_lamdba = insertionOptions.GMRF_lambdaPrior;
+			}
+
 			TPriorFactorGMRF new_prior(*this);
 			new_prior.node_id_i = i;
 			new_prior.node_id_j = j;
-			new_prior.Lambda = insertionOptions.GMRF_lambdaPrior;
+			new_prior.Lambda = edge_lamdba;
 
 			m_mrf_factors_priors.push_back(new_prior);
 			m_gmrf.addConstraint(*m_mrf_factors_priors.rbegin()); // add to graph
@@ -174,17 +207,53 @@ void  CRandomFieldGridMap3D::TInsertionOptions::loadFromConfigFile(
 	GMRF_skip_variance = iniFile.read_bool(section.c_str(),"GMRF_skip_variance", GMRF_skip_variance);
 }
 
+/** Save the current estimated grid to a VTK file (.vts) as a "structured grid". \sa saveAsCSV */
+bool CRandomFieldGridMap3D::saveAsVtkStructuredGrid(const std::string &fil) const
+{
+MRPT_START;
+#if MRPT_HAS_VTK
+
+	vtkStructuredGrid *vtkGrid = vtkStructuredGrid::New();
+	this->getAsVtkStructuredGrid(vtkGrid);
+
+	// Write file
+	vtkSmartPointer<vtkXMLStructuredGridWriter> writer = vtkSmartPointer<vtkXMLStructuredGridWriter>::New();
+	writer->SetFileName( fil.c_str() );
+
+#if VTK_MAJOR_VERSION <= 5
+	writer->SetInput(vtkGrid);
+#else
+	writer->SetInputData(vtkGrid);
+#endif
+
+	int ret = writer->Write();
+
+	vtkGrid->Delete();
+
+	return ret==0;
+#else
+	THROW_EXCEPTION("This method requires building MRPT against VTK!");
+#endif
+MRPT_END
+}
+
 
 bool mrpt::maps::CRandomFieldGridMap3D::saveAsCSV(const std::string & filName_mean, const std::string & filName_stddev) const
 {
 	CFileOutputStream f_mean, f_stddev;
 
-	if (!f_mean.open(filName_mean))
+	if (!f_mean.open(filName_mean)) {
 		return false;
+	} else {
+		f_mean.printf("x coord, y coord, z coord, scalar\n");
+	}
 
 	if (!filName_stddev.empty()) {
-		if (!f_stddev.open(filName_stddev))
+		if (!f_stddev.open(filName_stddev)) {
 			return false;
+		} else {
+			f_mean.printf("x coord, y coord, z coord, scalar\n");
+		}
 	}
 
 	const size_t nodeCount = m_map.size();
@@ -195,10 +264,10 @@ bool mrpt::maps::CRandomFieldGridMap3D::saveAsCSV(const std::string & filName_me
 		const double mean_val = m_map[j].mean_value;
 		const double stddev_val = m_map[j].stddev_value;
 
-		f_mean.printf("%f %f %f %e\n", x, y, z, mean_val);
+		f_mean.printf("%f, %f, %f, %e\n", x, y, z, mean_val);
 
 		if (f_stddev.is_open())
-			f_stddev.printf("%f %f %f %e\n", x, y, z, stddev_val);
+			f_stddev.printf("%f, %f, %f, %e\n", x, y, z, stddev_val);
 
 		// Increment coordinates:
 		if (++cx >= m_size_x) {
@@ -229,6 +298,11 @@ void CRandomFieldGridMap3D::updateMapEstimation()
 		m_map[j].mean_value += x_incr[j];
 		m_map[j].stddev_value = insertionOptions.GMRF_skip_variance ? .0 : std::sqrt(x_var[j]);
 	}
+}
+
+void mrpt::maps::CRandomFieldGridMap3D::setVoxelsConnectivity(const ConnectivityDescriptorPtr & new_connectivity_descriptor)
+{
+	m_gmrf_connectivity = new_connectivity_descriptor;
 }
 
 bool CRandomFieldGridMap3D::insertIndividualReading(
@@ -331,6 +405,76 @@ void CRandomFieldGridMap3D::readFromStream(mrpt::utils::CStream &in, int version
 
 }
 
+void CRandomFieldGridMap3D::getAsVtkStructuredGrid(vtkStructuredGrid* output, const std::string &label_mean, const std::string &label_stddev ) const
+{
+	MRPT_START;
+#if MRPT_HAS_VTK
+
+	const size_t nx = this->getSizeX(), ny = this->getSizeY(), nz = this->getSizeZ();
+
+	const int num_values = nx*ny*nz;
+
+	vtkPoints* newPoints = vtkPoints::New();
+
+	vtkDoubleArray* newData = vtkDoubleArray::New();
+	newData->SetNumberOfComponents(3);
+	newData->SetNumberOfTuples(num_values);
+
+	vtkDoubleArray* mean_arr = vtkDoubleArray::New();
+	mean_arr->SetNumberOfComponents(1);
+	mean_arr->SetNumberOfTuples(num_values);
+
+	vtkDoubleArray* std_arr = vtkDoubleArray::New();
+	std_arr->SetNumberOfComponents(1);
+	std_arr->SetNumberOfTuples(num_values);
+
+	vtkIdType numtuples = newData->GetNumberOfTuples();
+
+	{
+		size_t cx = 0, cy = 0, cz = 0;
+		for (vtkIdType cc = 0; cc < numtuples; cc++)
+		{
+			const double x = idx2x(cx), y = idx2y(cy), z = idx2z(cz);
+
+			newData->SetComponent(cc, 0, x);
+			newData->SetComponent(cc, 1, y);
+			newData->SetComponent(cc, 2, z);
+
+			mean_arr->SetComponent(cc, 0, m_map[cc].mean_value);
+			std_arr->SetComponent(cc, 0, m_map[cc].stddev_value);
+
+			// Increment coordinates:
+			if (++cx >= m_size_x) {
+				cx = 0;
+				if (++cy >= m_size_y) {
+					cy = 0;
+					cz++;
+				}
+			}
+		}
+		ASSERT_( size_t( m_map.size() ) == size_t( numtuples ) );
+	}
+
+	newPoints->SetData(newData);
+	newData->Delete();
+
+	output->SetExtent(0,nx-1, 0, ny-1, 0,nz-1);
+	output->SetPoints(newPoints);
+	newPoints->Delete();
+
+	mean_arr->SetName(label_mean.c_str());
+	std_arr->SetName(label_stddev.c_str());
+	output->GetPointData()->AddArray(mean_arr);
+	output->GetPointData()->AddArray(std_arr);
+
+	mean_arr->Delete();
+	std_arr->Delete();
+
+#else
+	THROW_EXCEPTION("This method requires building MRPT against VTK!");
+#endif // VTK
+	MRPT_END;
+}
 
 // ============ TObservationGMRF ===========
 double CRandomFieldGridMap3D::TObservationGMRF::evaluateResidual() const

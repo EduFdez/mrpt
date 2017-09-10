@@ -62,10 +62,6 @@ namespace mrpt {
             /*!Registered point cloud from the RGB-D or Depth frames and visual odometry.*/
             pcl::PointCloud<PointT>::Ptr globalMapPtr;
 
-            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr edgeCloudPtr;
-            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr outEdgeCloudPtr;
-            unsigned background, foreground, groundplane;
-
             /*!Static function to compute a normal image from an organized point cloud.*/
             static pcl::PointCloud<pcl::Normal>::Ptr computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor);
 

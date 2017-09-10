@@ -38,9 +38,7 @@ IMPLEMENTS_SERIALIZABLE(PbMap, CSerializable, mrpt::pbmap)
   ---------------------------------------------------------------*/
 PbMap::PbMap() :
     FloorPlane(-1),
-    globalMapPtr( new pcl::PointCloud<pcl::PointXYZRGBA>() ),
-    edgeCloudPtr(new pcl::PointCloud<pcl::PointXYZRGBA>),
-    outEdgeCloudPtr(new pcl::PointCloud<pcl::PointXYZRGBA>)
+    globalMapPtr( new pcl::PointCloud<pcl::PointXYZRGBA>() )
 {
 }
 

@@ -19,6 +19,9 @@
 
 #include <mrpt/maps/link_pragmas.h>
 
+// Fwdr decl:
+class vtkStructuredGrid;
+
 namespace mrpt
 {
 namespace maps
@@ -60,6 +63,8 @@ namespace maps
 	  *  - Initialize the map with `initialize()`. This resets the contents of the map, so previously-added observations will be lost.
 	  *  - Add observations of 3D voxels with `insertIndividualReading()`
 	  *
+	  * Custom connectivity patterns can be defined with setVoxelsConnectivity().
+	  *
 	  * \sa mrpt::maps::CRandomFieldGridMap3D
 	  * \ingroup mrpt_maps_grp
 	  * \note [New in MRPT 1.5.0]
@@ -91,11 +96,15 @@ namespace maps
 		/** Erases all added observations and start again with an empty gridmap. */
 		void clear() MRPT_OVERRIDE;
 
-		/** Save the current estimated mean values to a CSV file with fields `x y z mean_value`.
+		/** Save the current estimated mean values to a CSV file (compatible with Paraview) with fields `x y z mean_value`.
 		  * Optionally, std deviations can be also saved to another file with fields `x y z stddev_value`, if `filName_stddev` is provided.
 		  * \return false on error writing to file
+		  * \sa saveAsVtkStructuredGrid
 		  */
 		bool saveAsCSV(const std::string  &filName_mean, const std::string  &filName_stddev = std::string() ) const;
+
+		/** Save the current estimated grid to a VTK file (.vts) as a "structured grid". \sa saveAsCSV */
+		bool saveAsVtkStructuredGrid(const std::string &fil) const;
 
 		/** Parameters common to any derived class.
 		  *  Derived classes should derive a new struct from this one, plus "public utils::CLoadableOptions",
@@ -127,7 +136,7 @@ namespace maps
 			double new_x_min, double new_x_max,
 			double new_y_min, double new_y_max,
 			double new_z_min, double new_z_max,
-			const TRandomFieldVoxel& defaultValueNewCells, double additionalMarginMeters = 2.0) MRPT_OVERRIDE;
+			const TRandomFieldVoxel& defaultValueNewvoxels, double additionalMarginMeters = 2.0) MRPT_OVERRIDE;
 
 		/** Changes the size of the grid, erasing previous contents.If `resolution_z`<0, the same resolution will be used for all dimensions x,y,z as given in `resolution_xy` \sa resize.*/
 		virtual void setSize(
@@ -136,6 +145,27 @@ namespace maps
 			const double z_min, const double z_max,
 			const double resolution_xy, const double resolution_z = -1.0,
 			const  TRandomFieldVoxel* fill_value = NULL) MRPT_OVERRIDE;
+
+		/** Base class for user-supplied objects capable of describing voxels connectivity, used to build prior factors of the MRF graph. \sa setvoxelsConnectivity() */
+		struct MAPS_IMPEXP ConnectivityDescriptor
+		{
+			//Virtual destructor for polymorphic type.
+			virtual ~ConnectivityDescriptor() {}
+			/** Implement the check of whether node i=(icx,icy,icz) is connected with node j=(jcx,jcy,jcy).
+			* This visitor method will be called only for immediate neighbors.
+			* \return true if connected (and the "information" value should be also updated in out_edge_information), false otherwise.
+			*/
+			virtual bool getEdgeInformation(
+				const CRandomFieldGridMap3D *parent,  //!< The parent map on which we are running
+				size_t icx, size_t icy, size_t icz,   //!< (cx,cy,cz) for node "i"
+				size_t jcx, size_t jcy, size_t jcz,   //!< (cx,cy,cz) for node "j"
+				double &out_edge_information          //!< Must output here the inverse of the variance of the constraint edge.
+			) = 0;
+		};
+		typedef stlplus::smart_ptr<ConnectivityDescriptor> ConnectivityDescriptorPtr;
+
+		/** Sets a custom object to define the connectivity between voxels. Must call clear() or setSize() afterwards for the changes to take place. */
+		void setVoxelsConnectivity(const ConnectivityDescriptorPtr &new_connectivity_descriptor);
 
 		enum TVoxelInterpolationMethod  {
 			gimNearest = 0,
@@ -155,9 +185,14 @@ namespace maps
 
 		void updateMapEstimation(); //!< Run the method-specific procedure required to ensure that the mean & variances are up-to-date with all inserted observations, using parameters in insertionOptions
 
+		/** Returns the 3D grid contents as an VTK grid. */
+		void getAsVtkStructuredGrid(vtkStructuredGrid* output, const std::string &label_mean = std::string("mean"), const std::string &label_stddev = std::string("stddev") ) const;
+
 	protected:
 		/** Internal: called called after each change of resolution, size, etc. to build the prior factor information */
 		void internal_initialize(bool erase_prev_contents = true);
+
+		ConnectivityDescriptorPtr m_gmrf_connectivity; //!< Empty: default
 
 		mrpt::graphs::ScalarFactorGraph  m_gmrf;
 

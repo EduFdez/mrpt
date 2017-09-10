@@ -55,15 +55,7 @@ namespace mrpt
 		CHolonomicFullEval( const mrpt::utils::CConfigFileBase *INI_FILE = NULL );
 
 		// See base class docs
-		void  navigate(
-			const mrpt::math::TPoint2D &target,
-			const std::vector<double>	&obstacles,
-			double			maxRobotSpeed,
-			double			&desiredDirection,
-			double			&desiredSpeed,
-			CHolonomicLogFileRecordPtr &logRecord,
-			const double    max_obstacle_dist,
-			const mrpt::nav::ClearanceDiagram *clearance = NULL) MRPT_OVERRIDE;
+		void navigate(const NavInput & ni, NavOutput &no) MRPT_OVERRIDE;
 
 		void initialize(const mrpt::utils::CConfigFileBase &INI_FILE) MRPT_OVERRIDE; // See base class docs
 
@@ -76,8 +68,10 @@ namespace mrpt
 			double HYSTERESIS_SECTOR_COUNT; //!< Range of "sectors" (directions) for hysteresis over succesive timesteps
 			std::vector<double>   factorWeights;  //!< See docs above
 			std::vector<int32_t>  factorNormalizeOrNot; //!< 0/1 to normalize factors.
-			std::vector<int32_t>  PHASE1_FACTORS, PHASE2_FACTORS; //!< Factor indices [0,4] for the factors to consider in each phase of the movement decision (Defaults: `PHASE1_FACTORS=0 1 2`, `PHASE2_FACTORS=`3 4`)
-			double                PHASE1_THRESHOLD;   //!< Phase1 scores must be above this relative range threshold [0,1] to be considered in phase 2 (Default:`0.75`)
+			std::vector<std::vector<int32_t> >  PHASE_FACTORS; //!< Factor indices [0,4] for the factors to consider in each phase 1,2,...N of the movement decision (Defaults: `PHASE1_FACTORS=0 1 2`, `PHASE2_FACTORS=`3 4`)
+			std::vector<double>                 PHASE_THRESHOLDS;   //!< Phase 1,2,N-1... scores must be above this relative range threshold [0,1] to be considered in phase 2 (Default:`0.75`)
+
+			bool LOG_SCORE_MATRIX; //!< (default:false, to save space)
 
 			TOptions();
 			void loadFromConfigFile(const mrpt::utils::CConfigFileBase &source,const std::string &section) MRPT_OVERRIDE; // See base docs
@@ -104,7 +98,6 @@ namespace mrpt
 		DEFINE_SERIALIZABLE( CLogFileRecord_FullEval )
 	public:
 		 /** Member data */
-		std::vector<double>  dirs_eval; //!< Evaluation of each direction, in the same order of TP-Obstacles.
 		int32_t              selectedSector;
 		double               evaluation;
 		mrpt::math::CMatrixD dirs_scores; //!< Individual scores for each direction: (i,j), i (row) are directions, j (cols) are scores. Not all directions may have evaluations, in which case a "-1" value will be found.
