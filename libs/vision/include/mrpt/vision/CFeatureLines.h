@@ -27,14 +27,28 @@ namespace mrpt
         class VISION_IMPEXP CFeatureLines
         {
           public:
-            void extractLines (const cv::Mat & image,
-                                std::vector<cv::Vec4i> & segments,
-                                size_t threshold , const bool display = false);
+
+            /*! This function calls the functions defined below according the the parameter "method" */
+            void extractLines ( const cv::Mat & image,
+                                std::vector<cv::Vec4f> & segments,
+                                size_t th_length,
+                                const int method = 0,
+                                const bool display = false);
+
+            /*! Extract lines using OpenCV methods: LSD, or BinaryDescriptor */
+            void extractLines_cv2 ( const cv::Mat & image,
+                                    std::vector<cv::Vec4f> & segments,
+                                    const float min_length = 10, const int method = 0, const bool display = false);
+
+            /*! Extract lines by applying sequentially the methods of Canny, Hough and Bresenham */
+            void extractLines_CHB ( const cv::Mat & image,
+                                    std::vector<cv::Vec4f> & segments,
+                                    size_t th_length , const bool display = false);
 
             void extractLines_CannyHough(const cv::Mat & canny_image,
                                          const std::vector<cv::Vec2f> lines,
-                                         std::vector<cv::Vec4i> & segments,
-                                         size_t threshold );
+                                         std::vector<cv::Vec4f> & segments,
+                                         size_t th_length );
         }; // end of class
 
     } // end of namespace

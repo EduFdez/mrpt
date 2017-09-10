@@ -14,8 +14,8 @@
 #include <mrpt/utils/CImage.h>
 #include <mrpt/obs/CRawlog.h>
 #include <mrpt/obs/CObservation3DRangeScan.h>
-#include <mrpt/opengl/COpenGLScene.h>
-#include <mrpt/gui.h>
+//#include <mrpt/opengl/COpenGLScene.h>
+//#include <mrpt/gui.h>
 #include <iostream>
 
 class CDifodoDatasets_RGBD : public CameraRotTracker, mrpt::vision::CDifodo {
@@ -23,6 +23,9 @@ public:
 
 	mrpt::poses::CPose3D gt_pose;		//!< Groundtruth camera pose
 	mrpt::poses::CPose3D gt_oldpose;	//!< Groundtruth camera previous pose
+    mrpt::poses::CPose3D gt_rel_pose;   //!< Groundtruth of the relative camera pose wrt its previous observation
+    mrpt::poses::CPose3D gt_rel_pose_TUM;   //!< Groundtruth of the relative camera pose wrt its previous observation
+    mrpt::poses::CPose3D transf;        //!< The relative pose between TUM and MRPT reference frames
 
 //	mrpt::opengl::COpenGLScenePtr scene;	//!< Opengl scene
 //	mrpt::gui::CDisplayWindow3D	window;
@@ -42,6 +45,7 @@ public:
 		save_results = 0;
 		first_pose = false;
 		dataset_finished = false;
+        transf.setFromValues(0,0,0,0.5*M_PI, -0.5*M_PI, 0);
 	}
 
 	/** Initialize the visual odometry method and loads the rawlog file */

@@ -17,29 +17,147 @@
 
 #if MRPT_HAS_OPENCV
 
+#include <opencv2/line_descriptor.hpp>
+#include <opencv2/core/utility.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/features2d.hpp>
+#include <opencv2/highgui.hpp>
+
 using namespace mrpt::vision;
 using namespace mrpt::utils;
 using namespace std;
+//using namespace cv;
+using namespace cv::line_descriptor;
 
-
-/************************************************************************************************
-*								extractLines											*
-************************************************************************************************/
 void CFeatureLines::extractLines(const cv::Mat & image,
-                                std::vector<cv::Vec4i> & segments,
-                                size_t threshold,
-                                const bool display )
+                                std::vector<cv::Vec4f> & segments,
+                                size_t th_length,
+                                const int method,
+                                const bool display)
 {
-    cout << "CFeatureLines::extractLines... threshold " << threshold << endl;
+    if( method < 0 || method > 2)
+        throw std::runtime_error("MRPT ERROR: CFeatureLines::extractLines called with \'method\'' parameter.\n");
+
+    cout << "CFeatureLines::extractLines... method " << method << " th_length " << th_length << endl;
     CTicTac clock; clock.Tic(); //Clock to measure the runtime
+
+    if(method == 0 || method == 1)
+        extractLines_cv2(image, segments, th_length, method, false);
+    else if(method == 2) // This if condition is set just for readability
+        extractLines_CHB(image, segments, th_length, false);
+
+    // Force the segments to have a predefined order (e1y <= e2y)
+    for(auto line = begin(segments); line != end(segments); ++line)
+        if((*line)[1] < (*line)[3])
+            *line = cv::Vec4f((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
+        else if((*line)[1] == (*line)[3] && (*line)[0] > (*line)[1])
+            *line = cv::Vec4f((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
+
+    cout << "  CFeatureLines::extractLines.v" << method << " lines " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
+
+    // Display 2D segments
+    if(display)
+    {
+        cv::Mat image_lines = image.clone();
+        if( image_lines.channels() == 1 )
+            cv::cvtColor( image_lines, image_lines, cv::COLOR_GRAY2BGR );
+        for(auto line = begin(segments); line != end(segments); ++line)
+        {
+            /* get a random color */
+            int R = ( rand() % (int) ( 255 + 1 ) );
+            int G = ( rand() % (int) ( 255 + 1 ) );
+            int B = ( rand() % (int) ( 255 + 1 ) );
+//            cout << "line " << (*line)[0] << " " << (*line)[1] << endl;
+//            cout << "line " << cv::Point(cv::Point2f((*line)[0], (*line)[1])) << endl;
+//            cv::Point pt1 = cv::Point2f( (*line)[0], (*line)[1] );
+//            cv::Point pt2 = cv::Point2f( (*line)[2], (*line)[3] );
+//            cv::line( image_lines, pt1, pt2, cv::Scalar(B,G,R), 3 );
+//            cv::circle(image_lines, pt1, 3, cv::Scalar(B,G,R), 3);
+//            cv::putText(image_lines, string(to_string(distance(begin(segments),line))), pt1, 0, 1.2, cv::Scalar(B,G,R), 3 );
+            cv::line( image_lines, cv::Point(cv::Point2f((*line)[0], (*line)[1])), cv::Point2f(cv::Point((*line)[2], (*line)[3])), cv::Scalar(B,G,R), 3 );
+            cv::circle(image_lines, cv::Point(cv::Point2f((*line)[0], (*line)[1])), 3, cv::Scalar(B,G,R), 3);
+//            cv::putText(image_lines, string(to_string(distance(begin(segments),line))), cv::Point(cv::Point2f(((*line)[0]+(*line)[2])/2,((*line)[1]+(*line)[3])/2)), 0, 1.2, cv::Scalar(B,G,R), 3 );
+
+        }
+        cv::imshow( "lines", image_lines );
+        cv::waitKey();
+    }
+}
+
+void CFeatureLines::extractLines_cv2(const cv::Mat & image,
+                                     std::vector<cv::Vec4f> & segments,
+                                     const float th_length,
+                                     const int method,
+                                     const bool display )
+{
+    //cout << "CFeatureLines::extractLines_cv2... method " << method << " th_length " << th_length << endl;
+    //CTicTac clock; clock.Tic(); //Clock to measure the runtime
+
+    /* extract lines */
+    vector<KeyLine> lines;                                      /* create a structure to store extracted lines */
+    cv::Mat mask = cv::Mat::ones( image.size(), CV_8UC1 );      /* create a random binary mask */
+    if(method == 0)
+    {
+        cv::Ptr<LSDDetector> bd = LSDDetector::createLSDDetector(); /* create a pointer to a BinaryDescriptor object with deafult parameters */
+        bd->detect( image, lines, 2, 1, mask );                     /* extract lines */
+    }
+    else if(method == 1)
+    {
+        cv::Ptr<BinaryDescriptor> bd = BinaryDescriptor::createBinaryDescriptor();
+        bd->detect( image, lines, mask );
+    }
+    //cout << "  CFeatureLines::extractLines_cv2 " << lines.size() << " took " << 1000*clock.Tac() << " ms \n";
+
+    segments.resize( lines.size() );
+    size_t j = 0;
+    for( auto line = begin(lines); line != end(lines); ++line ){ //cout << " line " << line->lineLength << " " << line->numOfPixels << " " << th_length << endl;
+        if( line->octave == 0 && line->lineLength > th_length )
+            segments[j++] = cv::Vec4f(line->startPointX, line->startPointY, line->endPointX, line->endPointY); }
+    segments.resize(j);
+    //cout << "  CFeatureLines::extractLines_cv2 " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
+
+    /* draw lines extracted from octave 0 */
+    if(display)
+    {
+        cv::Mat image_lines = image.clone();
+        if( image_lines.channels() == 1 )
+            cv::cvtColor( image_lines, image_lines, cv::COLOR_GRAY2BGR );
+        for ( size_t i = 0; i < lines.size(); i++ )
+        {
+            KeyLine kl = lines[i];
+            if( kl.octave == 0)
+            {
+                /* get a random color */
+                int R = ( rand() % (int) ( 255 + 1 ) );
+                int G = ( rand() % (int) ( 255 + 1 ) );
+                int B = ( rand() % (int) ( 255 + 1 ) );
+                /* get extremes of line */
+                cv::Point pt1 = cv::Point2f( kl.startPointX, kl.startPointY );
+                cv::Point pt2 = cv::Point2f( kl.endPointX, kl.endPointY );
+                /* draw line */
+                cv::line( image_lines, pt1, pt2, cv::Scalar( B, G, R ), 3 );
+            }
+        }
+        cv::imshow( "extractLines_cv2", image_lines );
+        cv::waitKey();
+    }
+}
+
+void CFeatureLines::extractLines_CHB(const cv::Mat & image,
+                                    std::vector<cv::Vec4f> & segments,
+                                    size_t th_length,
+                                    const bool display )
+{
+//    cout << "CFeatureLines::extractLines... th_length " << th_length << endl;
+//    CTicTac clock; clock.Tic(); //Clock to measure the runtime
 
     // Canny edge detector
     cv::Mat canny_img;
-    int lowThreshold = 150;
-    //int const max_lowThreshold = 100;
+    int lowth_length = 150;
+    //int const max_lowth_length = 100;
     int ratio = 3;
     int kernel_size = 3;
-    cv::Canny(image, canny_img, lowThreshold, lowThreshold*ratio, kernel_size); // 250, 600 // CAUTION: Both thresholds depend on the input image, they might be a bit hard to set because they depend on the strength of the gradients
+    cv::Canny(image, canny_img, lowth_length, lowth_length*ratio, kernel_size); // 250, 600 // CAUTION: Both th_lengths depend on the input image, they might be a bit hard to set because they depend on the strength of the gradients
     //            cv::namedWindow("Canny detector", cv::WINDOW_AUTOSIZE);
     //            cv::imshow("Canny detector", canny_img);
     //            cv::waitKey(0);
@@ -47,9 +165,9 @@ void CFeatureLines::extractLines(const cv::Mat & image,
 
     // Get lines through the Hough transform
     std::vector<cv::Vec2f> lines;
-    cv::HoughLines(canny_img, lines, 1, CV_PI / 180.0, threshold); // CAUTION: The last parameter depends on the input image, it's the smallest number of pixels to consider a line in the accumulator
+    cv::HoughLines(canny_img, lines, 1, CV_PI / 180.0, th_length); // CAUTION: The last parameter depends on the input image, it's the smallest number of pixels to consider a line in the accumulator
     //    double minLineLength=50, maxLineGap=5;
-    //    cv::HoughLinesP(canny_img, lines, 1, CV_PI / 180.0, threshold, minLineLength, maxLineGap); // CAUTION: The last parameter depends on the input image, it's the smallest number of pixels to consider a line in the accumulator
+    //    cv::HoughLinesP(canny_img, lines, 1, CV_PI / 180.0, th_length, minLineLength, maxLineGap); // CAUTION: The last parameter depends on the input image, it's the smallest number of pixels to consider a line in the accumulator
     //std::cout << lines.size() << " lines detected" << std::endl;
 
     // Possible dilatation of the canny detector
@@ -65,17 +183,8 @@ void CFeatureLines::extractLines(const cv::Mat & image,
 
     // Extracting segments (pairs of points) from the filtered Canny detector
     // And using the line parameters from lines
-    extractLines_CannyHough(filteredCanny, lines, segments, threshold);
-    cout << "  CFeatureLines::extractLines " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
-
-    // Force the segments to have a predefined order (e1y <= e2y)
-    for(auto line = begin(segments); line != end(segments); ++line)
-        if((*line)[1] == (*line)[3]){
-            if((*line)[0] > (*line)[1])
-                *line = cv::Vec4i((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
-        }
-        else if((*line)[1] < (*line)[3])
-            *line = cv::Vec4i((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
+    extractLines_CannyHough(filteredCanny, lines, segments, th_length);
+    //cout << "  CFeatureLines::extractLines " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
 
     // Display 2D segments
     if(display)
@@ -92,7 +201,6 @@ void CFeatureLines::extractLines(const cv::Mat & image,
             //cv::imshow("lines", image_lines); cv::moveWindow("lines", 20,100+700);
             //cv::waitKey(0);
         }
-        cv::imwrite("/home/efernand/lines.png", image_lines);
         cv::imshow("lines", image_lines); cv::moveWindow("lines", 20,100+700);
         cv::waitKey(0);
     }
@@ -100,8 +208,8 @@ void CFeatureLines::extractLines(const cv::Mat & image,
 
 void CFeatureLines::extractLines_CannyHough( const cv::Mat & canny_image,
                                              const std::vector<cv::Vec2f> lines,
-                                             std::vector<cv::Vec4i> & segments,
-                                             size_t threshold )
+                                             std::vector<cv::Vec4f> & segments,
+                                             size_t th_length )
 {
     // Some variables to change the coordinate system from polar to cartesian
     double rho, theta;
@@ -250,8 +358,8 @@ void CFeatureLines::extractLines_CannyHough( const cv::Mat & canny_image,
                 {
                     // We are leaving a segment
                     onSegment = false;
-                    if (nbPixels >= threshold) {
-                        segments.push_back(cv::Vec4i(memoryX, memoryY, xPrev, yPrev));
+                    if (nbPixels >= th_length) {
+                        segments.push_back(cv::Vec4f(memoryX, memoryY, xPrev, yPrev));
                         //cout << "new segment " << segments.back() << endl;
                     }
                 }

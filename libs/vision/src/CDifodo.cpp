@@ -748,7 +748,8 @@ void CDifodo::odometryCalculation(const Matrix4f & init)
 	poseUpdate();
 
 	//Save runtime
-	execution_time = 1000.f*clock.Tac();   
+    execution_time = 1000.f*clock.Tac();
+    cout << "...CDifodo::odometryCalculation took " << execution_time << endl;
 }
 
 void CDifodo::filterLevelSolution()
@@ -852,8 +853,8 @@ void CDifodo::poseUpdate()
 	//-------------------------------------------------------	
 	cam_oldpose = cam_pose;
 	CMatrixDouble44 aux_acu = acu_trans;
-	poses::CPose3D pose_aux(aux_acu);
-	cam_pose = cam_pose + pose_aux;
+    rel_pose = poses::CPose3D(aux_acu);
+    cam_pose = cam_pose + rel_pose;
 
 
 	//Compute the velocity estimate in the new ref frame (to be used by the filter in the next iteration)

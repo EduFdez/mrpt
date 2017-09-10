@@ -129,7 +129,7 @@ using namespace mrpt::utils;
 //  return false;
 //}
 
-void ExtrinsicCalibLines::getProjPlaneNormals(const TCamera & cam, const vector<cv::Vec4i> & segments2D, vector<Matrix<T,3,1> > & segments_n)
+void ExtrinsicCalibLines::getProjPlaneNormals(const TCamera & cam, const vector<cv::Vec4f> & segments2D, vector<Matrix<T,3,1> > & segments_n)
 {
     cout << "ExtrinsicCalibLines::getSegments3D... \n";
     size_t n_seg = segments2D.size();
@@ -156,7 +156,7 @@ void ExtrinsicCalibLines::getProjPlaneNormals(const TCamera & cam, const vector<
     }
 }
 
-void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const vector<cv::Vec4i> & segments2D,
+void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const vector<cv::Vec4f> & segments2D,
                                         vector<Matrix<T,3,1> > & segments_n, vector<Matrix<T,6,1> > & segments3D, vector<bool> & line_has3D)
 {
     cout << "ExtrinsicCalibLines::getSegments3D... \n";
@@ -169,7 +169,7 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
     for(size_t i=0; i < n_seg; i++)
     {
         // Compute the normal vector to the plane containing the 2D line segment and the optical center (the cross product of the end-point vectors in the 3D image plane)
-        int x1 = segments2D[i][0], y1 = segments2D[i][1], x2 = segments2D[i][2], y2 = segments2D[i][3];
+        T x1 = segments2D[i][0], y1 = segments2D[i][1], x2 = segments2D[i][2], y2 = segments2D[i][3];
         Matrix<T,3,1> e1( (x1-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y1-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
         Matrix<T,3,1> e2( (x2-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y2-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
         segments_n[i] = e1.cross(e2);
@@ -243,12 +243,11 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
     }
 }
 
-map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T,3,1> > & n_cam1, const vector<Matrix<T,3,1> > & n_cam2, Matrix<T,3,3> & rot, T & conditioning, const T min_angle_diff)
+map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T,3,1> > & n_cam1, const vector<Matrix<T,3,1> > & n_cam2, Matrix<T,3,3> & rotation, T & conditioning, const T min_angle_diff)
 {
     // Find line correspondences (in 2D by assuming a known rotation and zero translation)
     // Select a pair of lines (normal vector of projective plane) and verify rotation
     CTicTac clock; clock.Tic(); //Clock to measure the runtime
-    Matrix<T,3,3> best_rotation;
     map<size_t,size_t> best_matches;
     vector<map<size_t,size_t> > discarded_matches; // with at least 3 matches
     T best_error = 10e6;
@@ -276,15 +275,16 @@ map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T
                         continue;
 
                     // Compute rotation
+                    Matrix<T,3,3> rot;
                     Matrix<T,3,3> cov = n_cam2[j1]*n_cam1[i1].transpose() + n_cam2[j2]*n_cam1[i2].transpose() + (n_cam2[j1].cross(n_cam2[j2]))*(n_cam1[i1].cross(n_cam1[i2])).transpose();
-                    T conditioning = rotationFromNormals(cov, rot);
-                    if(conditioning < min_conditioning){ //cout << "ExtrinsicCalibLines::matchNormalVectors: JacobiSVD bad conditioning " << conditioning << " < " << min_conditioning << "\n";
+                    T cond = rotationFromNormals(cov, rot);
+                    if(cond < min_conditioning){ //cout << "ExtrinsicCalibLines::matchNormalVectors: JacobiSVD bad conditioning " << cond << " < " << min_conditioning << "\n";
                         continue; }
-                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << n_cam1[i1].dot(rot*n_cam2[j1]) << " min_cos " << min_angle_diff_cos << " conditioning " << conditioning << endl;
+                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << n_cam1[i1].dot(rot*n_cam2[j1]) << " min_cos " << min_angle_diff_cos << " conditioning " << cond << endl;
                     if( n_cam1[i1].dot(rot*n_cam2[j1]) < min_angle_diff_cos ) // Check if the rotation is consistent
                         continue;
 
-                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << RAD2DEG(acos(n_cam1[i1].dot(rot*n_cam2[j1]))) << " min_cos " << min_angle_diff_cos << " conditioning " << conditioning << endl;
+                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << RAD2DEG(acos(n_cam1[i1].dot(rot*n_cam2[j1]))) << " min_cos " << min_angle_diff_cos << " conditioning " << cond << endl;
 
                     // Check how many lines are consistent with this rotation
                     map<size_t,size_t> matches;
@@ -311,11 +311,11 @@ map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T
 
                     // Compute the rotation from the inliers
                     T error = 0;
-                    conditioning = rotationFromNormals(cov, rot);
-                    for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++){ cout << "match " << it->first << " - " << it->second << " error " << RAD2DEG(acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]))) << endl;
+                    cond = rotationFromNormals(cov, rot);
+                    for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++){ //cout << "match " << it->first << " - " << it->second << " error " << RAD2DEG(acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]))) << endl;
                         error += acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]));}
 
-                    cout << "Num corresp " << matches.size() << " conditioning " << conditioning << " error " << error << " average error " << RAD2DEG(error/matches.size()) << " deg.\n";
+                    //cout << "Num corresp " << matches.size() << " conditioning " << cond << " error " << error << " average error " << RAD2DEG(error/matches.size()) << " deg.\n";
 
                     if(best_matches.size() < matches.size() && matches.size() > 2)
                     {
@@ -323,14 +323,15 @@ map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T
                             discarded_matches.push_back(matches);
 
                         best_matches = matches;
-                        best_rotation = rot;
                         best_error = error;
+                        rotation = rot;
+                        conditioning = cond;
                     }
                 }
             }
         }
     }
-    cout << "  matchNormalVectors took " << 1000*clock.Tac() << " ms " << best_matches.size() << " line matches, best_error " << RAD2DEG(best_error) << endl << best_rotation << endl;
+    cout << " ...matchNormalVectors took " << 1000*clock.Tac() << " ms " << best_matches.size() << " matches, best_error " << RAD2DEG(best_error) << " conditioning " << conditioning << endl << rotation << endl;
     for(map<size_t,size_t>::iterator it=best_matches.begin(); it != best_matches.end(); it++)
         cout << "match " << it->first << " - " << it->second << endl;
 
@@ -351,7 +352,7 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
         // sensor_id = omp_get_thread_num();
         cout << sensor_id << " cloud " << cloud[sensor_id]->height << "x" << cloud[sensor_id]->width << endl;
         CFeatureLines featLines;
-        featLines.extractLines(rgb[sensor_id], vv_segments2D[sensor_id], min_pixels_line); //, true);
+        featLines.extractLines(rgb[sensor_id], vv_segments2D[sensor_id], min_pixels_line, line_extraction); //, true);
         cout << sensor_id << " lines " << vv_segments2D[sensor_id].size() << endl;
         ExtrinsicCalibLines::getSegments3D(intrinsics[sensor_id].rightCamera, cloud[sensor_id], v_pbmap[sensor_id], vv_segments2D[sensor_id], vv_segment_n[sensor_id], vv_segments3D[sensor_id], vv_line_has3D[sensor_id]);
         //ExtrinsicCalibLines::getSegments3D(rgb[sensor_id], cloud[sensor_id], intrinsics[sensor_id].rightCamera, vv_segments2D[sensor_id], vv_segment_n[sensor_id], vv_segments3D[sensor_id], vv_line_has3D[sensor_id]);
@@ -411,7 +412,7 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
 //            // Find line correspondences (in 2D by assuming a known rotation and zero translation)
 //            for(size_t i=0; i < vv_segments2D[sensor1].size(); i++)
 //            {
-//                //cv::Vec4i &l1 = vv_segments2D[sensor1][i];
+//                //cv::Vec4f &l1 = vv_segments2D[sensor1][i];
 ////                line_match1 = vv_segments2D[sensor1][i];
 //                if(b_confirm_visually)
 //                {

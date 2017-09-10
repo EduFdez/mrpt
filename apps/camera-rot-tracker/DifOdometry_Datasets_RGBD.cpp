@@ -13,14 +13,14 @@
 #include <mrpt/vision/CFeatureLines.h>
 #include <mrpt/vision/CFeatureExtraction.h>
 #include <mrpt/vision/tracking.h>
-#include <mrpt/opengl/CFrustum.h>
-#include <mrpt/opengl/CGridPlaneXY.h>
-#include <mrpt/opengl/CBox.h>
-#include <mrpt/opengl/CPointCloudColoured.h>
-#include <mrpt/opengl/CPointCloud.h>
-#include <mrpt/opengl/CSetOfLines.h>
-#include <mrpt/opengl/CEllipsoid.h>
-#include <mrpt/opengl/stock_objects.h>
+//#include <mrpt/opengl/CFrustum.h>
+//#include <mrpt/opengl/CGridPlaneXY.h>
+//#include <mrpt/opengl/CBox.h>
+//#include <mrpt/opengl/CPointCloudColoured.h>
+//#include <mrpt/opengl/CPointCloud.h>
+//#include <mrpt/opengl/CSetOfLines.h>
+//#include <mrpt/opengl/CEllipsoid.h>
+//#include <mrpt/opengl/stock_objects.h>
 #include "../DifOdometry-Datasets/legend.xpm"
 #include "../kinect-rig-calib/kinect-rig-calib_misc.h"
 
@@ -29,7 +29,7 @@ using namespace std;
 using namespace mrpt;
 using namespace mrpt::opengl;
 
-using namespace mrpt::gui;
+//using namespace mrpt::gui;
 using namespace mrpt::obs;
 using namespace mrpt::maps;
 using namespace mrpt::math;
@@ -344,18 +344,21 @@ void CDifodoDatasets_RGBD::updateScene()
 void CDifodoDatasets_RGBD::loadFrame()
 {
     cout << "CDifodoDatasets_RGBD::loadFrame...\n";
-    CObservationPtr observation = dataset.getAsObservation(rawlog_count);
-
-    while (!IS_CLASS(observation, CObservation3DRangeScan))
-	{
-		rawlog_count++;
-		if (dataset.size() <= rawlog_count)
-		{
-			dataset_finished = true;
-			return;
-		}
+    CObservationPtr observation; // = dataset.getAsObservation(rawlog_count);
+    for(size_t step = 0; step < decimation; step++ )
+    {
         observation = dataset.getAsObservation(rawlog_count);
-	}
+        while (!IS_CLASS(observation, CObservation3DRangeScan))
+        {
+            rawlog_count++;
+            if (dataset.size() <= rawlog_count)
+            {
+                dataset_finished = true;
+                return;
+            }
+            observation = dataset.getAsObservation(rawlog_count);
+        }
+    }
 
     obsRGBD[0] = CObservation3DRangeScanPtr(observation);
     obsRGBD[0]->load();
@@ -480,10 +483,9 @@ void CDifodoDatasets_RGBD::loadFrame()
 		mat(2,1) = 2*(qy*qz + w*qx);
 		mat(2,2) = 1 - 2*qx*qx - 2*qy*qy;
 
-		CPose3D gt, transf;
+        CPose3D gt;
 		gt.setFromValues(x,y,z,0,0,0);
 		gt.setRotationMatrix(mat);
-		transf.setFromValues(0,0,0,0.5*M_PI, -0.5*M_PI, 0);
 
 		//Alternative - directly quaternions
 		//vector<float> quat;
@@ -499,6 +501,8 @@ void CDifodoDatasets_RGBD::loadFrame()
 		}
 
 		gt_pose = gt + transf;
+        gt_rel_pose = -gt_oldpose + gt_pose;
+        gt_rel_pose_TUM = -transf + gt_rel_pose + transf;
 		groundtruth_ok = 1;
 	}
 
@@ -524,17 +528,20 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
     bool display = true;
 
     CFeatureLines featLines;
-    featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, true);
+    featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, 1, display);
     cout << "CDifodoDatasets_RGBD initialize. lines " << vv_segments2D[0].size() << endl;
     ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
 
-    CFeatureExtraction featPoints;
-    CFeatureList points1, points2;
-    CMatchedFeatureList point_matches;
-    featPoints.options.featsType = featFAST;// featORB;
-    //IplImage ipl_img = v_rgb[0]; CImage im1(&ipl_img), im2;
-    featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );
-    cout << "CDifodoDatasets_RGBD initialize. points " << points1.size() << endl;
+//    CFeatureExtraction featPoints;
+//    CFeatureList points1, points2;
+//    CMatchedFeatureList point_matches;
+//    featPoints.options.featsType = featFAST;// featORB;
+//    //IplImage ipl_img = v_rgb[0]; CImage im1(&ipl_img), im2;
+//    featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );
+//    cout << "CDifodoDatasets_RGBD initialize. points " << points1.size() << endl;
+
+    // Relative poses for comparison
+    Eigen::Matrix<T,4,4> gt_rel_pose_, rel_pose_diff_difodo, approx_rot = Eigen::Matrix<T,4,4>::Identity();
 
     while (!stop)
     {
@@ -544,9 +551,10 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 //        else
 //            pushed_key = 0;
 
-        cout << "Pause until getchar (n,s,q): ";
-        pushed_key = getchar();
+//        cout << "Pause until getchar (n,s,q): ";
+//        pushed_key = getchar();
 
+        pushed_key = 'n';
         switch (pushed_key) {
 
         //Capture 1 new frame and calculate odometry
@@ -563,21 +571,18 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
                 cout << "CDifodoDatasets_RGBD. process frame \n";
                 setNewFrame();
                 loadFrame();
-//                cv::imshow("rgb1", v_rgb[1]);
-//                cv::imshow("rgb0", v_rgb[0]);
-                cv::imshow("rgb00", cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()));
-                cv::imshow("rgb11", cv::cvarrToMat(obsRGBD[1]->intensityImage.getAs<IplImage>()));
-                cv::waitKey();
-                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, true);
+                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, 1, display);
                 cout << "CDifodoDatasets_RGBD. lines " << vv_segments2D[0].size() << endl;
                 ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
-                map<size_t,size_t> line_matches = matchNormalVectors(vv_segment_n[0], vv_segment_n[1]);
+                T condition;
+                Matrix<T,3,3> rot;
+                map<size_t,size_t> line_matches = matchNormalVectors(vv_segment_n[1], vv_segment_n[0], rot, condition);
                 cout << "line_matches " << line_matches.size() << endl;
 
-                points2 = points1;
-                featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );//
-                matchFeatures( points1, points2, point_matches );
-                cout << "point_matches " << point_matches.size() << endl;
+//                points2 = points1;
+//                featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );//
+//                matchFeatures( points1, points2, point_matches );
+//                cout << "point_matches " << point_matches.size() << endl;
 //                if( display )
 //                {
 //                    CDisplayWindow feature_matches;
@@ -591,7 +596,27 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
                 if (save_results == 1)
                     writeTrajectoryFile();
 
-                cout << endl << "Difodo runtime(ms): " << execution_time;
+                cout << endl << "Difodo runtime(ms): " << execution_time << endl;
+                cout << "groundtruth TUM \n" << gt_rel_pose_TUM.getHomogeneousMatrixVal() << endl;
+                gt_rel_pose_ = gt_rel = getPoseEigen<T>(gt_rel_pose_TUM);
+                cout << "Approx rotation \n" << rot << endl;
+                cout << "ROTATION diff " << RAD2DEG(acos( (trace<T,3>(rot * gt_rel_pose_TUM.getHomogeneousMatrixVal().block<3,3>(0,0).transpose()) - 1) / 2)) << endl;
+                //rel_pose_diff_difodo = getPoseEigen<T>(-gt_rel_pose+rel_pose);
+                cout << "groundtruth \n" << gt_rel_pose.getHomogeneousMatrixVal() << endl;
+                cout << "DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
+                cout << "DifOdo ROTATION diff " << RAD2DEG(acos( (trace<T,3>((-gt_rel_pose+rel_pose).getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
+
+                approx_rot.block<3,3>(0,0) = rot;
+                approx_rot = transf.getHomogeneousMatrixVal().inverse() * approx_rot * transf.getHomogeneousMatrixVal();
+                odometryCalculation(approx_rot.cast<float>());
+                cout << endl << "Difodo runtime(ms): " << execution_time << endl;
+                cout << "groundtruth TUM \n" << gt_rel_pose_TUM.getHomogeneousMatrixVal() << endl;
+                cout << "Approx rotation \n" << rot << endl;
+                cout << "ROTATION diff " << RAD2DEG(acos( (trace<T,3>(rot * gt_rel.block<3,3>(0,0).transpose()) - 1) / 2)) << endl;
+                cout << "groundtruth \n" << gt_rel_pose.getHomogeneousMatrixVal() << endl;
+                cout << "DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
+                cout << "DifOdo ROTATION diff " << RAD2DEG(acos( (trace<T,3>((-gt_rel_pose+rel_pose).getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
+
 //                updateScene();
             }
 

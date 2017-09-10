@@ -185,6 +185,7 @@ namespace mrpt
 			/** Camera poses */
 			mrpt::poses::CPose3D cam_pose;		//!< Last camera pose
 			mrpt::poses::CPose3D cam_oldpose;	//!< Previous camera pose
+            mrpt::poses::CPose3D rel_pose;		//!< Relative camera pose
 
 			/** This method performs all the necessary steps to estimate the camera velocity once the new image is read,
 			    and updates the camera pose */

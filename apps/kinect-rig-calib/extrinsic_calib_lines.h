@@ -70,14 +70,15 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
     }
 
     /*! Extract the normal vectors of the projective planes of the input image segments */
-    static void getProjPlaneNormals(const mrpt::utils::TCamera & cam, const std::vector<cv::Vec4i> & segments2D, std::vector<Eigen::Matrix<T,3,1> > & segments_n);
+    static void getProjPlaneNormals(const mrpt::utils::TCamera & cam, const std::vector<cv::Vec4f> & segments2D, std::vector<Eigen::Matrix<T,3,1> > & segments_n);
 
     /*! Extract 3D lines from 2D segments in a RGB-D image.*/
-    static void getSegments3D(const mrpt::utils::TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const std::vector<cv::Vec4i> & segments2D,
+    static void getSegments3D(const mrpt::utils::TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const std::vector<cv::Vec4f> & segments2D,
                               std::vector<Eigen::Matrix<T,3,1> > &segments_n, std::vector<Eigen::Matrix<T,6,1> > & segments3D, std::vector<bool> & line_has3D);
 
     /*! Match two sets of normal vectors by exhaustive search. A rotation is computed from pairs of candidate matches to find the mapping with the smallest error. */
-    static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2, Eigen::Matrix<T,3,3> & rot, T & conditioning, const T min_angle_diff = 1);
+    static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2,
+                                                       Eigen::Matrix<T,3,3> & rotation, T & conditioning, const T min_angle_diff = 1);
 
     /*! oveload */
     static inline std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2, const T min_angle_diff = 1)
@@ -142,6 +143,9 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 
   protected:
 
+    /*! Line segmentation method (0: LSD, 1: Binary: 2 Canny+Hough+Bresenham) */
+    size_t line_extraction;
+
     /*! Minimum segment length to consider line correspondences */
     size_t min_pixels_line;
 
@@ -149,7 +153,7 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
     T min_angle_diff;
 
     /*! Lines segmented in the current observation */
-    std::vector< std::vector<cv::Vec4i> > vv_segments2D;
+    std::vector< std::vector<cv::Vec4f> > vv_segments2D;
     std::vector< std::vector<Eigen::Matrix<T,3,1> > > vv_segment_n; // The normal vector to the plane containing the 2D line segment and the optical center
     std::vector< std::vector<mrpt::math::TLine3D> > vv_lines3D;
     std::vector< std::vector<Eigen::Matrix<T,6,1> > > vv_segments3D;
@@ -165,7 +169,7 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 //    std::array<size_t,2> line_candidate;
 
 //    /*! Indices of the candidate correspondences (for visualization) */
-//    cv::Vec4i line_match1, line_match2;
+//    cv::Vec4f line_match1, line_match2;
 
     /*! The plane correspondences between the different sensors */
 //    LineCorresp<T> lines;
