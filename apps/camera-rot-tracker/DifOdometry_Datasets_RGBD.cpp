@@ -23,6 +23,7 @@
 //#include <mrpt/opengl/stock_objects.h>
 #include "../DifOdometry-Datasets/legend.xpm"
 #include "../kinect-rig-calib/kinect-rig-calib_misc.h"
+#include "pinhole_model_warp.h"
 
 using namespace Eigen;
 using namespace std;
@@ -347,16 +348,15 @@ void CDifodoDatasets_RGBD::loadFrame()
     CObservationPtr observation; // = dataset.getAsObservation(rawlog_count);
     for(size_t step = 0; step < decimation; step++ )
     {
-        observation = dataset.getAsObservation(rawlog_count);
+        observation = dataset.getAsObservation(rawlog_count++);
         while (!IS_CLASS(observation, CObservation3DRangeScan))
         {
-            rawlog_count++;
             if (dataset.size() <= rawlog_count)
             {
                 dataset_finished = true;
                 return;
             }
-            observation = dataset.getAsObservation(rawlog_count);
+            observation = dataset.getAsObservation(rawlog_count++);
         }
     }
 
@@ -365,8 +365,9 @@ void CDifodoDatasets_RGBD::loadFrame()
     const CMatrix range = obsRGBD[0]->rangeImage;
 	const unsigned int height = range.getRowCount();
 	const unsigned int width = range.getColCount();
-    //v_rgb[0] = cv::Mat(obsRGBD[0]->intensityImage.getAs<IplImage>());
-    //convertRange_mrpt2cvMat(obsRGBD[0]->rangeImage, v_depth[0]);
+    v_rgb[0] = cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>());
+    cv::cvtColor( v_rgb[0], v_gray[0], cv::COLOR_BGR2GRAY );
+    convertRange_mrpt2cvMat(obsRGBD[0]->rangeImage, v_depth[0]);
 //    v_cloud[0] = getPointCloud<PointT>(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), v_depth[0], intrinsics);
 //    cv::imshow("rgb", v_rgb[0]);
 //    cv::waitKey();
@@ -388,7 +389,6 @@ void CDifodoDatasets_RGBD::loadFrame()
 	{
 		groundtruth_ok = 0;
         obsRGBD[0]->unload();
-		rawlog_count++;
 		return;
 	}
 
@@ -502,12 +502,11 @@ void CDifodoDatasets_RGBD::loadFrame()
 
 		gt_pose = gt + transf;
         gt_rel_pose = -gt_oldpose + gt_pose;
-        gt_rel_pose_TUM = -transf + gt_rel_pose + transf;
-		groundtruth_ok = 1;
+        gt_rel_pose_TUM = transf + gt_rel_pose - transf;
+        groundtruth_ok = 1;
 	}
 
-    obsRGBD[0]->unload();
-	rawlog_count++;
+    //obsRGBD[0]->unload();
 
 	if (dataset.size() <= rawlog_count)
 		dataset_finished = true;
@@ -525,7 +524,7 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 //    initializeScene();
     reset();
 
-    bool display = true;
+    bool display = false;
 
     CFeatureLines featLines;
     featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, 1, display);
@@ -541,7 +540,7 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 //    cout << "CDifodoDatasets_RGBD initialize. points " << points1.size() << endl;
 
     // Relative poses for comparison
-    Eigen::Matrix<T,4,4> gt_rel_pose_, rel_pose_diff_difodo, approx_rot = Eigen::Matrix<T,4,4>::Identity();
+    Eigen::Matrix<T,4,4> approx_rot = Eigen::Matrix<T,4,4>::Identity(), approx_rot_tf = Eigen::Matrix<T,4,4>::Identity(); //rel_pose_diff_difodo
 
     while (!stop)
     {
@@ -598,25 +597,48 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 
                 cout << endl << "Difodo runtime(ms): " << execution_time << endl;
                 cout << "groundtruth TUM \n" << gt_rel_pose_TUM.getHomogeneousMatrixVal() << endl;
-                gt_rel_pose_ = gt_rel = getPoseEigen<T>(gt_rel_pose_TUM);
+//                gt_rel_pose_ = ;
                 cout << "Approx rotation \n" << rot << endl;
-                cout << "ROTATION diff " << RAD2DEG(acos( (trace<T,3>(rot * gt_rel_pose_TUM.getHomogeneousMatrixVal().block<3,3>(0,0).transpose()) - 1) / 2)) << endl;
+                cout << "ROTATION diff " << RAD2DEG(acos( (trace<T,3>(rot * gt_rel_pose_TUM.getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
                 //rel_pose_diff_difodo = getPoseEigen<T>(-gt_rel_pose+rel_pose);
                 cout << "groundtruth \n" << gt_rel_pose.getHomogeneousMatrixVal() << endl;
                 cout << "DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
                 cout << "DifOdo ROTATION diff " << RAD2DEG(acos( (trace<T,3>((-gt_rel_pose+rel_pose).getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
-
                 approx_rot.block<3,3>(0,0) = rot;
-                approx_rot = transf.getHomogeneousMatrixVal().inverse() * approx_rot * transf.getHomogeneousMatrixVal();
+
+//                getPoseEigen<T>(gt_rel_pose_TUM).cast<float>()
+                cv::Mat gray_diff;
+                cv::Mat gray_warped1, gray_diff1;
+                cv::Mat gray_warped2, gray_diff2;
+                cv::Mat gray_warped3, gray_diff3;
+                //cv::cvtColor( cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), gray, cv::COLOR_BGR2GRAY );
+                sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(-gt_rel_pose_TUM), gray_warped1);
+                sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, approx_rot.cast<float>(), gray_warped2);
+                sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(gt_rel_pose_TUM), gray_warped3);
+
+                cv::absdiff(v_gray[0], v_gray[1], gray_diff);
+                cv::absdiff(v_gray[1], gray_warped1, gray_diff1);
+                cv::absdiff(v_gray[1], gray_warped2, gray_diff2);
+                cv::absdiff(v_gray[1], gray_warped3, gray_diff3);
+                cv::imshow("gray0", v_gray[0]);             cv::moveWindow("gray0", 100, 50);
+                cv::imshow("gray1", v_gray[1]);             cv::moveWindow("gray1", 750, 50);
+                cv::imshow("gray_diff", gray_diff);         cv::moveWindow("gray_diff", 1400, 50);
+                cv::imshow("gray_warped1", gray_warped1);   cv::moveWindow("gray_warped1", 100, 550);
+                cv::imshow("gray_warped2", gray_warped2);   cv::moveWindow("gray_warped2", 750, 550);
+                cv::imshow("gray_warped3", gray_warped3);   cv::moveWindow("gray_warped3", 1400, 550);
+                cv::imshow("gray_diff1", gray_diff1);       cv::moveWindow("gray_diff1", 100, 1050);
+                cv::imshow("gray_diff2", gray_diff2);       cv::moveWindow("gray_diff2", 750, 1050);
+                cv::imshow("gray_diff3", gray_diff3);       cv::moveWindow("gray_diff3", 1400, 1050);
+                cv::waitKey();
+
+                approx_rot_tf = transf.getHomogeneousMatrixVal() * approx_rot * (-transf).getHomogeneousMatrixVal();
                 odometryCalculation(approx_rot.cast<float>());
                 cout << endl << "Difodo runtime(ms): " << execution_time << endl;
-                cout << "groundtruth TUM \n" << gt_rel_pose_TUM.getHomogeneousMatrixVal() << endl;
-                cout << "Approx rotation \n" << rot << endl;
-                cout << "ROTATION diff " << RAD2DEG(acos( (trace<T,3>(rot * gt_rel.block<3,3>(0,0).transpose()) - 1) / 2)) << endl;
                 cout << "groundtruth \n" << gt_rel_pose.getHomogeneousMatrixVal() << endl;
-                cout << "DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
-                cout << "DifOdo ROTATION diff " << RAD2DEG(acos( (trace<T,3>((-gt_rel_pose+rel_pose).getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
+                cout << "init DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
+                cout << "init DifOdo ROTATION diff " << RAD2DEG(acos( (trace<T,3>((-gt_rel_pose+rel_pose).getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
 
+                cv::waitKey();
 //                updateScene();
             }
 

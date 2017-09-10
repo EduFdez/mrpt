@@ -18,6 +18,7 @@ ADD_EXECUTABLE(${PROJECT_NAME}
                 camera-rot-tracker_main.cpp
                 camera-rot-tracker.cpp      camera-rot-tracker.h
                 DifOdometry_Datasets_RGBD.cpp   DifOdometry_Datasets_RGBD.h
+                pinhole_model_warp.h
                 ../kinect-rig-calib/extrinsic_calib.h
                 ../kinect-rig-calib/feat_corresp.cpp            ../kinect-rig-calib/feat_corresp.h
                 ../kinect-rig-calib/extrinsic_calib_lines.cpp   ../kinect-rig-calib/extrinsic_calib_lines.h

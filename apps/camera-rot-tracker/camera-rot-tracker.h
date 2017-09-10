@@ -78,6 +78,7 @@ class CameraRotTracker : public ExtrinsicCalibLines
     // Observation parameters (current:0 and previous:1)
     std::vector<mrpt::obs::CObservation3DRangeScanPtr> obsRGBD;  // The RGBD observation
     std::vector<cv::Mat> v_rgb;
+    std::vector<cv::Mat> v_gray;
     std::vector<cv::Mat> v_depth;
     //std::vector<cv::Mat> depth_reg; // Depth image registered to RGB pose
     std::vector<pcl::PointCloud<PointT>::Ptr> v_cloud;
@@ -100,6 +101,7 @@ class CameraRotTracker : public ExtrinsicCalibLines
         num_sensors = 2;
         obsRGBD.resize(num_sensors);
         v_rgb.resize(num_sensors);
+        v_gray.resize(num_sensors);
         v_depth.resize(num_sensors);
         //depth_reg.resize(num_sensors); // Depth image registered to RGB pose
         v_cloud.resize(num_sensors);

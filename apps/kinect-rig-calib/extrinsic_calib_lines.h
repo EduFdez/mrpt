@@ -76,7 +76,7 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
     static void getSegments3D(const mrpt::utils::TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const std::vector<cv::Vec4f> & segments2D,
                               std::vector<Eigen::Matrix<T,3,1> > &segments_n, std::vector<Eigen::Matrix<T,6,1> > & segments3D, std::vector<bool> & line_has3D);
 
-    /*! Match two sets of normal vectors by exhaustive search. A rotation is computed from pairs of candidate matches to find the mapping with the smallest error. */
+    /*! Match two sets of normal vectors by exhaustive search. A rotation (R12: n1=R12*n2) is computed from pairs of candidate matches to find the mapping with the smallest error. */
     static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2,
                                                        Eigen::Matrix<T,3,3> & rotation, T & conditioning, const T min_angle_diff = 1);
 
