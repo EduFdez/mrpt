@@ -77,7 +77,15 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
                               std::vector<Eigen::Matrix<T,3,1> > &segments_n, std::vector<Eigen::Matrix<T,6,1> > & segments3D, std::vector<bool> & line_has3D);
 
     /*! Match two sets of normal vectors by exhaustive search. A rotation is computed from pairs of candidate matches to find the mapping with the smallest error. */
-    static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2, const T min_angle_diff = 1);
+    static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2, Eigen::Matrix<T,3,3> & rot, T & conditioning, const T min_angle_diff = 1);
+
+    /*! oveload */
+    static inline std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2, const T min_angle_diff = 1)
+    {
+        Eigen::Matrix<T,3,3> rot;
+        T conditioning;
+        return matchNormalVectors(n_cam1, n_cam2, rot, conditioning, min_angle_diff);
+    }
 
     /*! Extract line correspondences between the different sensors.*/
     void getCorrespondences(const std::vector<cv::Mat> & rgb, const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);

@@ -243,7 +243,7 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
     }
 }
 
-map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T,3,1> > & n_cam1, const vector<Matrix<T,3,1> > & n_cam2, const T min_angle_diff)
+map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T,3,1> > & n_cam1, const vector<Matrix<T,3,1> > & n_cam2, Matrix<T,3,3> & rot, T & conditioning, const T min_angle_diff)
 {
     // Find line correspondences (in 2D by assuming a known rotation and zero translation)
     // Select a pair of lines (normal vector of projective plane) and verify rotation
@@ -277,15 +277,14 @@ map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T
 
                     // Compute rotation
                     Matrix<T,3,3> cov = n_cam2[j1]*n_cam1[i1].transpose() + n_cam2[j2]*n_cam1[i2].transpose() + (n_cam2[j1].cross(n_cam2[j2]))*(n_cam1[i1].cross(n_cam1[i2])).transpose();
-                    Matrix<T,3,3> rot;
                     T conditioning = rotationFromNormals(cov, rot);
                     if(conditioning < min_conditioning){ //cout << "ExtrinsicCalibLines::matchNormalVectors: JacobiSVD bad conditioning " << conditioning << " < " << min_conditioning << "\n";
                         continue; }
-                    cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << n_cam1[i1].dot(rot*n_cam2[j1]) << " min_cos " << min_angle_diff_cos << " conditioning " << conditioning << endl;
+                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << n_cam1[i1].dot(rot*n_cam2[j1]) << " min_cos " << min_angle_diff_cos << " conditioning " << conditioning << endl;
                     if( n_cam1[i1].dot(rot*n_cam2[j1]) < min_angle_diff_cos ) // Check if the rotation is consistent
                         continue;
 
-                    cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << RAD2DEG(acos(n_cam1[i1].dot(rot*n_cam2[j1]))) << " min_cos " << min_angle_diff_cos << " conditioning " << conditioning << endl;
+                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << RAD2DEG(acos(n_cam1[i1].dot(rot*n_cam2[j1]))) << " min_cos " << min_angle_diff_cos << " conditioning " << conditioning << endl;
 
                     // Check how many lines are consistent with this rotation
                     map<size_t,size_t> matches;
