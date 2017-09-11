@@ -46,6 +46,7 @@ public:
 		first_pose = false;
 		dataset_finished = false;
         transf.setFromValues(0,0,0,0.5*M_PI, -0.5*M_PI, 0);
+        std::cout << "transf \n" << transf.getHomogeneousMatrixVal() << std::endl;
 	}
 
 	/** Initialize the visual odometry method and loads the rawlog file */

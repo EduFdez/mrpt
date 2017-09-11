@@ -717,9 +717,9 @@ void CDifodo::odometryCalculation(const Matrix4f & init)
         image_level = ctf_levels - i + round(log(float(width/cols))/log(2.f)) - 1;
 
 		//1. Perform warping
-        //if (i == 0)
-        if (transformations[i].isApprox(identity,1e-6))
+        if (i == 0 && transformations[i].isApprox(identity,1e-6))
         {
+            //cout << "Perform 1st warping \n";
 			depth_warped[image_level] = depth[image_level];
 			xx_warped[image_level] = xx[image_level];
 			yy_warped[image_level] = yy[image_level];
@@ -855,7 +855,8 @@ void CDifodo::poseUpdate()
 	CMatrixDouble44 aux_acu = acu_trans;
     rel_pose = poses::CPose3D(aux_acu);
     cam_pose = cam_pose + rel_pose;
-
+//    for (unsigned int i=0; i<ctf_levels; i++)
+//        cout << i << " level " << depth_warped[i].rows() << " Pose \n" << transformations[i] << endl;
 
 	//Compute the velocity estimate in the new ref frame (to be used by the filter in the next iteration)
 	//---------------------------------------------------------------------------------------------------
