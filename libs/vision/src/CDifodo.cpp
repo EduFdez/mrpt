@@ -754,7 +754,7 @@ void CDifodo::odometryCalculation(const Matrix4f & init, const int levels)
 
 	//Save runtime
     execution_time = 1000.f*clock.Tac();
-    cout << "...CDifodo::odometryCalculation took " << execution_time << endl;
+    //cout << "...CDifodo::odometryCalculation took " << execution_time << endl;
 }
 
 void CDifodo::filterLevelSolution()

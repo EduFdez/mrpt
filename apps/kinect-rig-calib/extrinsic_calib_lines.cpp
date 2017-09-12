@@ -331,9 +331,9 @@ map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T
             }
         }
     }
-    cout << " ...matchNormalVectors took " << 1000*clock.Tac() << " ms " << best_matches.size() << " matches, best_error " << RAD2DEG(best_error) << " conditioning " << conditioning << endl << rotation << endl;
-    for(map<size_t,size_t>::iterator it=best_matches.begin(); it != best_matches.end(); it++)
-        cout << "match " << it->first << " - " << it->second << endl;
+//    cout << " ...matchNormalVectors took " << 1000*clock.Tac() << " ms " << best_matches.size() << " matches, best_error " << RAD2DEG(best_error) << " conditioning " << conditioning << endl << rotation << endl;
+//    for(map<size_t,size_t>::iterator it=best_matches.begin(); it != best_matches.end(); it++)
+//        cout << "match " << it->first << " - " << it->second << endl;
 
     return best_matches;
 }

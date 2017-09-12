@@ -28,6 +28,9 @@ namespace mrpt
         {
           public:
 
+            /** Execution time (ms) */
+            float time;
+
             /*! This function calls the functions defined below according the the parameter "method" */
             void extractLines ( const cv::Mat & image,
                                 std::vector<cv::Vec4f> & segments,

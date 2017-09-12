@@ -53,7 +53,8 @@ void CFeatureLines::extractLines(const cv::Mat & image,
         else if((*line)[1] == (*line)[3] && (*line)[0] > (*line)[1])
             *line = cv::Vec4f((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
 
-    cout << "  CFeatureLines::extractLines.v" << method << " lines " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
+    time = 1000*clock.Tac();
+    //cout << "  CFeatureLines::extractLines.v" << method << " lines " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
 
     // Display 2D segments
     if(display)

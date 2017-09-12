@@ -543,7 +543,7 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
     Eigen::Matrix<T,4,4> approx_rot = Eigen::Matrix<T,4,4>::Identity(), approx_rot_tf = Eigen::Matrix<T,4,4>::Identity(); //rel_pose_diff_difodo
     vector<float> v_rot, v_trans;
     vector<float> v_rot_error, v_rot_error_difodo, v_rot_error_difodo_init;
-    vector<float> v_time_difodo, v_time_difodo_init;
+    vector<float> v_time_lines, v_time_rot, v_time_difodo, v_time_difodo_init;
     vector<float> v_median_depth;
     size_t n_frames(0), n_success_rot(0), n_success_rot_difodo(0), n_success_rot_init(0);
     float th_good_rot_deg = 4;
@@ -583,11 +583,15 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
                 cout << "groundtruth TUM : " << v_trans.back() << " " << v_rot.back() << " rotation " << gt_rel_pose_TUM.yaw() << " " << gt_rel_pose_TUM.pitch() << " " << gt_rel_pose_TUM.roll() << endl;
 
                 featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, line_extraction, display);
+                v_time_lines.push_back(featLines.time);
                 cout << "CDifodoDatasets_RGBD. lines " << vv_segments2D[0].size() << endl;
-                ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
                 T condition;
                 Matrix<T,3,3> rot;
+                CTicTac clock; clock.Tic(); //Clock to measure the runtime
+                ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
                 map<size_t,size_t> line_matches = matchNormalVectors(vv_segment_n[1], vv_segment_n[0], rot, condition);
+                v_time_rot.push_back(1000*clock.Tac());
+
                 cout << "line_matches " << line_matches.size() << endl;
                 cout << "Approx rotation \n" << rot << endl;
                 approx_rot.block<3,3>(0,0) = rot;
@@ -601,8 +605,8 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
                     v_rot_error.push_back(rot_error);
                     ++n_success_rot;
 
-                    approx_rot_tf = (-transf).getHomogeneousMatrixVal() * approx_rot.transpose() * (transf).getHomogeneousMatrixVal();
-                    odometryCalculation( approx_rot.cast<float>(), 2 ); // 2 pyr levels
+                    approx_rot_tf = (-transf).getHomogeneousMatrixVal() * approx_rot * (transf).getHomogeneousMatrixVal();
+                    odometryCalculation( approx_rot_tf.cast<float>(), 1 ); // 2 pyr levels
                     v_time_difodo_init.push_back(execution_time);
                     rot_error = RAD2DEG(acos( (trace<T,3>((rel_pose - gt_rel_pose).getRotationMatrix()) - 1) / 2));
                     if( rot_error < th_good_rot_deg)
@@ -718,7 +722,8 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 
     // Show results
     cout << "Sequence " << rawlog_file << " decimation " << decimation << " av median depth " << mean(v_median_depth)
-         << " rot " << mean(v_rot) << " " << stdev(v_rot) << " " << median(v_rot) << " trans " << mean(v_trans) << " " << stdev(v_trans) << " " << median(v_trans) << endl;
+         << " rot " << mean(v_rot) << " " << stdev(v_rot) << " " << median(v_rot) << " trans " << mean(v_trans) << " " << stdev(v_trans) << " " << median(v_trans)
+         << " time lines " << mean(v_time_lines) << " " << median(v_time_lines) << " time rot " << mean(v_time_rot) << " " << median(v_time_rot) << endl;
     cout << " Approx ROT error " << mean(v_rot_error) << " " << stdev(v_rot_error) << " " << median(v_rot_error) << " success rate " << n_success_rot / float(n_frames) << endl;
     cout << " DifOdo-init ROT error " << mean(v_rot_error_difodo_init) << " " << stdev(v_rot_error_difodo_init) << " " << median(v_rot_error_difodo_init) << " success rate " << n_success_rot_init / float(n_frames)
          << " time " << mean(v_time_difodo_init) << " " << median(v_time_difodo_init) << endl;
