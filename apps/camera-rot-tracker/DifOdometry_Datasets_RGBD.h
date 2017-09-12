@@ -26,6 +26,7 @@ public:
     mrpt::poses::CPose3D gt_rel_pose;   //!< Groundtruth of the relative camera pose wrt its previous observation
     mrpt::poses::CPose3D gt_rel_pose_TUM;   //!< Groundtruth of the relative camera pose wrt its previous observation
     mrpt::poses::CPose3D transf;        //!< The relative pose between TUM and MRPT reference frames
+    mrpt::poses::CPose3D rel_pose_TUM;	//!< Estimated relative camera pose in the camera reference frame
 
 //	mrpt::opengl::COpenGLScenePtr scene;	//!< Opengl scene
 //	mrpt::gui::CDisplayWindow3D	window;

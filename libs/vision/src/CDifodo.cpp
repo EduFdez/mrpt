@@ -690,11 +690,15 @@ void CDifodo::solveOneLevel()
 	kai_loc_level = Var;
 }
 
-void CDifodo::odometryCalculation(const Matrix4f & init)
+void CDifodo::odometryCalculation(const Matrix4f & init, const int levels)
 {
 	//Clock to measure the runtime
 	utils::CTicTac clock;
 	clock.Tic();
+
+    unsigned int ctf_levels_back = ctf_levels;
+    if(levels >= 0)
+        ctf_levels = levels;
 
 	//Build the gaussian pyramid
 	if (fast_pyramid)	buildCoordinatesPyramidFast();
@@ -746,6 +750,7 @@ void CDifodo::odometryCalculation(const Matrix4f & init)
 
 	//Update poses
 	poseUpdate();
+    ctf_levels = ctf_levels_back;
 
 	//Save runtime
     execution_time = 1000.f*clock.Tac();

@@ -189,7 +189,7 @@ namespace mrpt
 
 			/** This method performs all the necessary steps to estimate the camera velocity once the new image is read,
 			    and updates the camera pose */
-            void odometryCalculation(const Eigen::Matrix4f & init = Eigen::Matrix4f::Identity());
+            void odometryCalculation(const Eigen::Matrix4f & init = Eigen::Matrix4f::Identity(), const int levels = -1);
 
 			/** Get the rows and cols of the depth image that are considered by the visual odometry method. */
 			inline void getRowsAndCols(unsigned int &num_rows, unsigned int &num_cols) const {num_rows = rows; num_cols = cols;}

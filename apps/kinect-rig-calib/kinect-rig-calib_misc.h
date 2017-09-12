@@ -17,6 +17,7 @@
   ---------------------------------------------------------------*/
 
 #include <numeric>
+#include <algorithm>
 #include <mrpt/poses/CPose3D.h>
 #include <opencv2/core/eigen.hpp>
 //#include <pcl/point_types.h>
@@ -61,6 +62,52 @@ T trace(const Eigen::Matrix<T,N,N> & matrix)
     for(size_t i=0; i < N; i++)
         trace += matrix(i,i);
     return trace;
+}
+
+template<typename T>
+T mean(std::vector<T> & v)
+{
+    double sum = std::accumulate(v.begin(), v.end(), 0.0);
+    double mean = sum / v.size();
+    return mean;
+}
+
+template<typename T>
+T stdev(std::vector<T> & v)
+{
+    double m = mean(v);
+    double sq_sum = std::inner_product(v.begin(), v.end(), v.begin(), 0.0);
+    double stdev = std::sqrt(sq_sum / v.size() - m * m);
+    return stdev;
+}
+
+template<typename T>
+T median(std::vector<T> & v)
+{
+    std::nth_element(v.begin(), v.begin() + v.size()/2, v.end());
+    return v[v.size()/2];
+}
+
+
+template<typename T> // implemented only for float
+T getMatMedian(cv::Mat & img, const T min = 0, const T max = 1000)
+{
+//    if(img.type() != ) // check that the img type is the same as the return type
+
+    size_t i(0);
+    std::vector<T> v(img.rows*img.cols);
+    for( int y = 0; y < img.rows; y++ )
+    {
+        T *_depth = img.ptr<T>(0) + y*img.cols;
+        for( int x = 0; x < img.cols; x++, _depth++ )
+        {
+            if(*_depth > min && *_depth < max)
+                v[i++] = *_depth;
+        }
+    }
+    v.resize(i);
+
+    return median(v);
 }
 
 template<typename PointT>

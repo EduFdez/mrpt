@@ -527,7 +527,7 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
     bool display = false;
 
     CFeatureLines featLines;
-    featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, 1, display);
+    featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, line_extraction, display);
     cout << "CDifodoDatasets_RGBD initialize. lines " << vv_segments2D[0].size() << endl;
     ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
 
@@ -539,8 +539,14 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 //    featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );
 //    cout << "CDifodoDatasets_RGBD initialize. points " << points1.size() << endl;
 
-    // Relative poses for comparison
+    // Results
     Eigen::Matrix<T,4,4> approx_rot = Eigen::Matrix<T,4,4>::Identity(), approx_rot_tf = Eigen::Matrix<T,4,4>::Identity(); //rel_pose_diff_difodo
+    vector<float> v_rot, v_trans;
+    vector<float> v_rot_error, v_rot_error_difodo, v_rot_error_difodo_init;
+    vector<float> v_time_difodo, v_time_difodo_init;
+    vector<float> v_median_depth;
+    size_t n_frames(0), n_success_rot(0), n_success_rot_difodo(0), n_success_rot_init(0);
+    float th_good_rot_deg = 4;
 
     while (!stop)
     {
@@ -570,13 +576,45 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
                 cout << "CDifodoDatasets_RGBD. process frame \n";
                 setNewFrame();
                 loadFrame();
-                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, 1, display);
+                ++n_frames;
+                v_median_depth.push_back( getMatMedian<float>(v_depth[0], 0.4, 10) );
+                v_rot.push_back( RAD2DEG(acos( (trace<T,3>(gt_rel_pose_TUM.getRotationMatrix()) - 1) / 2)) );
+                v_trans.push_back( 1000*sqrt(gt_rel_pose_TUM.m_coords[0]*gt_rel_pose_TUM.m_coords[0] + gt_rel_pose_TUM.m_coords[2]*gt_rel_pose_TUM.m_coords[1] + gt_rel_pose_TUM.m_coords[2]*gt_rel_pose_TUM.m_coords[2]) );
+                cout << "groundtruth TUM : " << v_trans.back() << " " << v_rot.back() << " rotation " << gt_rel_pose_TUM.yaw() << " " << gt_rel_pose_TUM.pitch() << " " << gt_rel_pose_TUM.roll() << endl;
+
+                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, line_extraction, display);
                 cout << "CDifodoDatasets_RGBD. lines " << vv_segments2D[0].size() << endl;
                 ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
                 T condition;
                 Matrix<T,3,3> rot;
                 map<size_t,size_t> line_matches = matchNormalVectors(vv_segment_n[1], vv_segment_n[0], rot, condition);
                 cout << "line_matches " << line_matches.size() << endl;
+                cout << "Approx rotation \n" << rot << endl;
+                approx_rot.block<3,3>(0,0) = rot;
+                T rot_error = RAD2DEG(acos( (trace<T,3>(rot.transpose() * gt_rel_pose_TUM.getRotationMatrix()) - 1) / 2));
+                cout << "ROTATION diff " << rot_error << endl;
+                rel_pose_TUM.setRotationMatrix(rot);
+                cout << "Approx rotation : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
+
+                if( rot_error < th_good_rot_deg)
+                {
+                    v_rot_error.push_back(rot_error);
+                    ++n_success_rot;
+
+                    approx_rot_tf = (-transf).getHomogeneousMatrixVal() * approx_rot.transpose() * (transf).getHomogeneousMatrixVal();
+                    odometryCalculation( approx_rot.cast<float>(), 2 ); // 2 pyr levels
+                    v_time_difodo_init.push_back(execution_time);
+                    rot_error = RAD2DEG(acos( (trace<T,3>((rel_pose - gt_rel_pose).getRotationMatrix()) - 1) / 2));
+                    if( rot_error < th_good_rot_deg)
+                    {
+                        v_rot_error_difodo_init.push_back(rot_error);
+                        ++n_success_rot_init;
+                    }
+                    cout << endl << "Difodo runtime(ms): " << execution_time << endl;
+                    cout << "DifOdo-init ROT diff " << rot_error << endl;
+                }
+                rel_pose_TUM = transf + rel_pose + (-transf);
+                cout << "init DifOdo : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
 
 //                points2 = points1;
 //                featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );//
@@ -592,32 +630,30 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 
 //                cout << "odometryCalculation \n";
                 odometryCalculation();
+                v_time_difodo.push_back(execution_time);
+                rot_error = RAD2DEG(acos( (trace<T,3>((rel_pose - gt_rel_pose).getRotationMatrix()) - 1) / 2));
+                if( rot_error < th_good_rot_deg)
+                {
+                    v_rot_error_difodo.push_back(rot_error);
+                    ++n_success_rot_difodo;
+                }
+                cout << endl << "Difodo runtime(ms): " << execution_time << endl;
+                cout << "DifOdo ROT diff " << rot_error << endl;
+                rel_pose_TUM = transf + rel_pose + (-transf);
+                cout << "DifOdo : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
+
                 if (save_results == 1)
                     writeTrajectoryFile();
 
-                cout << endl << "Difodo runtime(ms): " << execution_time << endl;
-                cout << "groundtruth TUM \n" << gt_rel_pose_TUM.getHomogeneousMatrixVal() << endl;
-//                gt_rel_pose_ = ;
-                cout << "Approx rotation \n" << rot << endl;
-                cout << "ROTATION diff " << RAD2DEG(acos( (trace<T,3>(rot.transpose() * gt_rel_pose_TUM.getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
                 //rel_pose_diff_difodo = getPoseEigen<T>(-gt_rel_pose+rel_pose);
                 cout << "groundtruth \n" << gt_rel_pose.getHomogeneousMatrixVal() << endl;
                 cout << "DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
-                cout << "DifOdo ROTATION diff " << RAD2DEG(acos( (trace<T,3>((rel_pose - gt_rel_pose).getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
-                approx_rot.block<3,3>(0,0) = rot;
 
                 cv::Mat gray_diff;
                 cv::Mat gray_warped1, gray_diff1;
                 cv::Mat gray_warped2, gray_diff2;
                 cv::Mat gray_warped3, gray_diff3;
                 sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(-transf+rel_pose+transf), gray_warped1);
-
-                approx_rot_tf = (-transf).getHomogeneousMatrixVal() * approx_rot.transpose() * (transf).getHomogeneousMatrixVal();
-                odometryCalculation(approx_rot.cast<float>());
-                cout << endl << "Difodo runtime(ms): " << execution_time << endl;
-                cout << "groundtruth \n" << gt_rel_pose.getHomogeneousMatrixVal() << endl;
-                cout << "init DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
-                cout << "init DifOdo ROTATION diff " << RAD2DEG(acos( (trace<T,3>((rel_pose - gt_rel_pose).getHomogeneousMatrixVal().block<3,3>(0,0)) - 1) / 2)) << endl;
 
                 //cv::cvtColor( cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), gray, cv::COLOR_BGR2GRAY );
                 sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(gt_rel_pose_TUM), gray_warped1);
@@ -679,6 +715,15 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
             }
         }
     }
+
+    // Show results
+    cout << "Sequence " << rawlog_file << " decimation " << decimation << " av median depth " << mean(v_median_depth)
+         << " rot " << mean(v_rot) << " " << stdev(v_rot) << " " << median(v_rot) << " trans " << mean(v_trans) << " " << stdev(v_trans) << " " << median(v_trans) << endl;
+    cout << " Approx ROT error " << mean(v_rot_error) << " " << stdev(v_rot_error) << " " << median(v_rot_error) << " success rate " << n_success_rot / float(n_frames) << endl;
+    cout << " DifOdo-init ROT error " << mean(v_rot_error_difodo_init) << " " << stdev(v_rot_error_difodo_init) << " " << median(v_rot_error_difodo_init) << " success rate " << n_success_rot_init / float(n_frames)
+         << " time " << mean(v_time_difodo_init) << " " << median(v_time_difodo_init) << endl;
+    cout << " DifOdo ROT error " << mean(v_rot_error_difodo) << " " << stdev(v_rot_error_difodo) << " " << median(v_rot_error_difodo) << " success rate " << n_success_rot_difodo / float(n_frames)
+         << " time " << mean(v_time_difodo) << " " << median(v_time_difodo) << endl;
 }
 
 void CDifodoDatasets_RGBD::reset()
