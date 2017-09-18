@@ -137,6 +137,7 @@ void KinectRigCalib::loadConfiguration(const string & config_file)
     verbose = cfg.read_bool("GLOBAL", "verbose", 0, true);
     line_extraction = cfg.read_int("GLOBAL", "line_extraction", 2, true);
     min_pixels_line = cfg.read_int("GLOBAL", "min_pixels_line", 100, true);
+    max_lines       = cfg.read_int("GLOBAL", "max_lines", 20, true);
     min_angle_diff = cfg.read_float("GLOBAL", "min_angle_diff", 1.2, true);
     th_dist_plane = cfg.read_float("GLOBAL", "th_dist_plane", 0.02, true);
     th_angle_plane = cfg.read_float("GLOBAL", "th_angle_plane", 0.04, true);

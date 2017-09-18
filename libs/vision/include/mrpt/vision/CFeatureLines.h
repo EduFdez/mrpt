@@ -32,10 +32,11 @@ namespace mrpt
             float time;
 
             /*! This function calls the functions defined below according the the parameter "method" */
-            void extractLines ( const cv::Mat & image,
+            void extractLines (const cv::Mat & image,
                                 std::vector<cv::Vec4f> & segments,
-                                size_t th_length,
                                 const int method = 0,
+                                const size_t th_length = 0,
+                                const size_t max_lines = 0,
                                 const bool display = false);
 
             /*! Extract lines using OpenCV methods: LSD, or BinaryDescriptor */

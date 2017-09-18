@@ -39,15 +39,17 @@ public:
 	bool first_pose;
 	bool save_results;
 	bool dataset_finished;
+    bool b_initial_rot;
 
 	/** Constructor. */
-    CDifodoDatasets_RGBD() : mrpt::vision::CDifodo()
+    CDifodoDatasets_RGBD(const std::string & config_file) : mrpt::vision::CDifodo()
 	{
-		save_results = 0;
-		first_pose = false;
+        transf.setFromValues(0,0,0,0.5*M_PI, -0.5*M_PI, 0); // transformation from camera frame to robot frame (MRPT )
+        first_pose = false;
+        save_results = 0;
 		dataset_finished = false;
-        transf.setFromValues(0,0,0,0.5*M_PI, -0.5*M_PI, 0);
-        std::cout << "transf \n" << transf.getHomogeneousMatrixVal() << std::endl;
+        b_initial_rot = false;
+        loadConfiguration( config_file );
 	}
 
 	/** Initialize the visual odometry method and loads the rawlog file */
@@ -57,7 +59,7 @@ public:
 	void loadFrame();
 
     /** Read the dataset and compute odometry */
-    void run(const std::string & config_file);
+    void run();
 
 	/** Create a file to save the trajectory estimates */
 	void CreateResultsFile();

@@ -57,8 +57,15 @@ int main(int argc, char **argv)
             return -1;
         }
         string config_file = find_mrpt_shared_dir() + std::string("config_files/camera-tracking/camera-rot-tracker.ini"); // Default config file
-        if(argc == 2)
+        if(argc >= 2)
             config_file = argv[1];
+        cout << "config_file " << config_file << endl;
+
+        int decimation = -1;
+        if(argc >= 3)
+            decimation = atoi(argv[2
+                    ]);
+        cout << "decimation " << decimation << endl;
 
         if(!fileExists(config_file))
         {
@@ -69,8 +76,12 @@ int main(int argc, char **argv)
         }
 
         //CameraRotTracker camera_tracker;
-        CDifodoDatasets_RGBD camera_tracker;
-        camera_tracker.run(config_file);
+        CDifodoDatasets_RGBD camera_tracker(config_file);
+        if( decimation != -1 )
+            camera_tracker.decimation = decimation;
+        if(argc >= 4)
+            camera_tracker.b_initial_rot = true;
+        camera_tracker.run();
 
         return 0;
     }

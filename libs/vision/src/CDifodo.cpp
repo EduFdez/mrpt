@@ -24,14 +24,13 @@ using mrpt::utils::square;
 
 CDifodo::CDifodo()
 {
-	rows = 60;
-	cols = 80;
-	fovh = M_PIf*58.6f/180.0f;
-	fovv = M_PIf*45.6f/180.0f;
+    rows = 60;
+    cols = 80;
+    fovh = M_PIf*58.6f/180.0f;
+    fovv = M_PIf*45.6f/180.0f;
 	cam_mode = 1;			// (1 - 640 x 480, 2 - 320 x 240, 4 - 160 x 120)
 	downsample = 1;
-	ctf_levels = 1;
-	width = 640/(cam_mode*downsample);
+    width = 640/(cam_mode*downsample);
 	height = 480/(cam_mode*downsample);
 	fast_pyramid = true;
 
@@ -70,7 +69,6 @@ CDifodo::CDifodo()
         yy_old[i].resize(rows_i, cols_i);
         yy[i].assign(0.0f);
         yy_old[i].assign(0.0f);
-		transformations[i].resize(4,4);
 
 		if (cols_i <= cols)
 		{
@@ -368,10 +366,12 @@ void CDifodo::performWarping()
     const float disp_v_i = 0.5f*float(rows_i-1);
 
 	//Rigid transformation estimated up to the present level
-	Matrix4f acu_trans; 
-	acu_trans.setIdentity();
-	for (unsigned int i=1; i<=level; i++)
-		acu_trans = transformations[i-1]*acu_trans;
+    Matrix4f acu_trans = initial_pose;
+    //acu_trans.setIdentity();
+    for (unsigned int i=0; i<level; i++)
+        acu_trans = transformations[i]*acu_trans;
+//    for (unsigned int i=1; i<=level; i++)
+//		acu_trans = transformations[i-1]*acu_trans;
 
 	MatrixXf wacu(rows_i,cols_i);
 	wacu.assign(0.f);
@@ -550,8 +550,8 @@ void CDifodo::computeWeights()
 	//Obtain the velocity associated to the rigid transformation estimated up to the present level
 	Matrix<float,6,1> kai_level = kai_loc_old;
 
-	Matrix4f acu_trans;
-	acu_trans.setIdentity();
+    Matrix4f acu_trans = initial_pose;
+    //acu_trans.setIdentity();
 	for (unsigned int i=0; i<level; i++)
 		acu_trans = transformations[i]*acu_trans;
 
@@ -688,40 +688,40 @@ void CDifodo::solveOneLevel()
 
 	//Update last velocity in local coordinates
 	kai_loc_level = Var;
+    if(std::isnan(kai_loc_level(0))) // This situation has happened for a camera turning with a roll angle (around the viewing direction), which is prone to ill-condition with direct methods
+    {
+        cout << "\n\n\n ill-conditioned level " << level << " num_valid_points " << num_valid_points << " kai_loc_level " << kai_loc_level.transpose() << "\n\n\n";
+        kai_loc_level.setZero();
+//        cout << A.block<10,6>(0,0) << endl;
+//        cout << B.block<10,1>(0,0).transpose() << endl;
+    }
 }
 
-void CDifodo::odometryCalculation(const Matrix4f & init, const int levels)
+void CDifodo::odometryCalculation(const Matrix4f & init)
 {
 	//Clock to measure the runtime
 	utils::CTicTac clock;
-	clock.Tic();
-
-    unsigned int ctf_levels_back = ctf_levels;
-    if(levels >= 0)
-        ctf_levels = levels;
+    clock.Tic();
 
 	//Build the gaussian pyramid
 	if (fast_pyramid)	buildCoordinatesPyramidFast();
 	else				buildCoordinatesPyramid();
 
-    Matrix4f identity(Matrix4f::Identity());
-    transformations[0] = init;
-    for (unsigned int i=1; i<ctf_levels; i++)
-        transformations[i].setIdentity();
+    initial_pose = init;
+    bool b_initial_identity = initial_pose.isApprox( Matrix4f::Identity(), 1e-6 );
 
 	//Coarse-to-fines scheme
-    for (unsigned int i=0; i<ctf_levels; i++)
+    for (level=0; level<ctf_levels; level++)
     {
 		//Previous computations
-        //transformations[i].setIdentity();
+        transformations[level].setIdentity();
 
-		level = i;
-		unsigned int s = pow(2.f,int(ctf_levels-(i+1)));
+        unsigned int s = pow(2.f,int(ctf_levels-(level+1)));
         cols_i = cols/s; rows_i = rows/s;
-        image_level = ctf_levels - i + round(log(float(width/cols))/log(2.f)) - 1;
+        image_level = ctf_levels - level + round(log(float(width/cols))/log(2.f)) - 1;
 
 		//1. Perform warping
-        if (i == 0 && transformations[i].isApprox(identity,1e-6))
+        if (level == 0 && b_initial_identity)
         {
             //cout << "Perform 1st warping \n";
 			depth_warped[image_level] = depth[image_level];
@@ -740,9 +740,13 @@ void CDifodo::odometryCalculation(const Matrix4f & init, const int levels)
 		//4. Compute weights
 		computeWeights();
 
+
 		//5. Solve odometry
-		if (num_valid_points > 6)
+//        cout << level << " num_valid_points " << num_valid_points << " kai_loc_level " << kai_loc_level.transpose() << endl;
+        if (num_valid_points > 6)
 			solveOneLevel();
+//        else
+//            cout << "\n\n       Less than 6 points \n\n";
 
 		//6. Filter solution
 		filterLevelSolution();
@@ -750,7 +754,6 @@ void CDifodo::odometryCalculation(const Matrix4f & init, const int levels)
 
 	//Update poses
 	poseUpdate();
-    ctf_levels = ctf_levels_back;
 
 	//Save runtime
     execution_time = 1000.f*clock.Tac();
@@ -780,9 +783,9 @@ void CDifodo::filterLevelSolution()
 	Matrix<float,6,1> kai_loc_sub = kai_loc_old;
 
 	//Important: we have to substract the previous levels' solutions from the old velocity.
-	Matrix4f acu_trans;
-	acu_trans.setIdentity();
-	for (unsigned int i=0; i<level; i++)
+    Matrix4f acu_trans = initial_pose;
+    //acu_trans.setIdentity();
+    for (unsigned int i=0; i<level; i++)
 		acu_trans = transformations[i]*acu_trans;
 
 	CMatrixDouble44 mat_aux = acu_trans.cast<double>();
@@ -815,16 +818,19 @@ void CDifodo::filterLevelSolution()
 	aux2 = aux1.exp(aux_vel);
 	aux2.getHomogeneousMatrix(trans);
 	transformations[level] = trans.cast<float>();
+
+//    mrpt::math::CArrayDouble<6> aux_vel = kai_loc_level.cast<double>()/fps;
+//    transformations[level] = (poses::CPose3D::exp(aux_vel)).getHomogeneousMatrixVal().cast<float>();
 }
 
 void CDifodo::poseUpdate()
 {
 	//First, compute the overall transformation
 	//---------------------------------------------------
-	Matrix4f acu_trans;
-	acu_trans.setIdentity();
-	for (unsigned int i=1; i<=ctf_levels; i++)
-		acu_trans = transformations[i-1]*acu_trans;
+    Matrix4f acu_trans = initial_pose;
+    //acu_trans.setIdentity();
+    for (unsigned int i=0; i<ctf_levels; i++)
+        acu_trans = transformations[i]*acu_trans;
 
 
 	//Compute the new estimates in the local and absolutes reference frames
@@ -832,7 +838,7 @@ void CDifodo::poseUpdate()
 	CMatrixDouble44 mat_aux = acu_trans.cast<double>();
 	poses::CPose3D aux(mat_aux);
 	CArrayDouble<6> kai_level_acu = aux.ln()*fps;
-	kai_loc = kai_level_acu.cast<float>();
+    kai_loc = kai_level_acu.cast<float>();
 
 	//---------------------------------------------------------------------------------------------
 	//Directly from Eigen:
@@ -866,7 +872,7 @@ void CDifodo::poseUpdate()
 	//Compute the velocity estimate in the new ref frame (to be used by the filter in the next iteration)
 	//---------------------------------------------------------------------------------------------------
 	cam_pose.getRotationMatrix(inv_trans);
-	kai_loc_old.topRows<3>() = inv_trans.inverse().cast<float>()*kai_abs.topRows(3);
+    kai_loc_old.topRows<3>() = inv_trans.inverse().cast<float>()*kai_abs.topRows(3);
 	kai_loc_old.bottomRows<3>() = inv_trans.inverse().cast<float>()*kai_abs.bottomRows(3);
 }
 

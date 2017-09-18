@@ -50,79 +50,65 @@ using namespace mrpt::pbmap;
 // Obtain the rigid transformation from 3 matched planes
 CMatrixDouble registerMatchedPlanes( const CMatrixDouble &matched_planes )
 {
-  ASSERT_(size(matched_planes,1) == 8 && size(matched_planes,2) == 3);
+    ASSERT_(size(matched_planes,1) == 8 && size(matched_planes,2) == 3);
 
-  //Calculate rotation
-  Matrix3f normalCovariances = Matrix3f::Zero();
-  normalCovariances(0,0) = 1;
-  for(unsigned i=0; i<3; i++)
-  {
-    Vector3f n_i = Vector3f(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
-    Vector3f n_ii = Vector3f(matched_planes(4,i), matched_planes(5,i), matched_planes(6,i));
-    normalCovariances += n_i * n_ii.transpose();
-//    normalCovariances += matched_planes.block(i,0,1,3) * matched_planes.block(i,4,1,3).transpose();
-  }
+    //Calculate rotation
+    Matrix3f normalCovariances = Matrix3f::Zero();
+    normalCovariances(0,0) = 1;
+    for(unsigned i=0; i<3; i++)
+    {
+        Vector3f n_i = Vector3f(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
+        Vector3f n_ii = Vector3f(matched_planes(4,i), matched_planes(5,i), matched_planes(6,i));
+        normalCovariances += n_i * n_ii.transpose();
+        //    normalCovariances += matched_planes.block(i,0,1,3) * matched_planes.block(i,4,1,3).transpose();
+    }
+    Matrix3f Rotation;
+    float cond = ExtrinsicCalib::rotationFromNormals(normalCovariances, Rotation);
+//    if(cond < 0.01f){ cout << "ExtrinsicCalibLines::matchNormalVectors: JacobiSVD bad conditioning " << cond << " < " << min_conditioning << "\n";
+//        Rotation = Matrix3f::Identity();
+//    }
 
-  JacobiSVD<MatrixXf> svd(normalCovariances, ComputeThinU | ComputeThinV);
-  Matrix3f Rotation = svd.matrixV() * svd.matrixU().transpose();
+    // Calculate translation
+    Vector3f translation;
+    Matrix3f hessian = Matrix3f::Zero();
+    Vector3f gradient = Vector3f::Zero();
+    hessian(0,0) = 1;
+    for(unsigned i=0; i<3; i++)
+    {
+        float trans_error = (matched_planes(3,i) - matched_planes(7,i)); //+n*t
+        //    hessian += matched_planes.block(i,0,1,3) * matched_planes.block(i,0,1,3).transpose();
+        //    gradient += matched_planes.block(i,0,1,3) * trans_error;
+        Vector3f n_i = Vector3f(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
+        hessian += n_i * n_i.transpose();
+        gradient += n_i * trans_error;
+    }
+    translation = -hessian.inverse() * gradient;
+    //cout << "Previous average translation error " << sumError / matched_planes.size() << endl;
 
-//  float conditioning = svd.singularValues().maxCoeff()/svd.singularValues().minCoeff();
-//  if(conditioning > 100)
-//  {
-//    cout << " ConsistencyTest::initPose -> Bad conditioning: " << conditioning << " -> Returning the identity\n";
-//    return Eigen::Matrix4f::Identity();
-//  }
+    //  // Form SE3 transformation matrix. This matrix maps the model into the current data reference frame
+    //  Eigen::Matrix4f rigidTransf;
+    CMatrixDouble44 rigidTransf;
+    rigidTransf.block(0,0,3,3) = Rotation;
+    rigidTransf.block(0,3,3,1) = translation;
+    rigidTransf.row(3) << 0,0,0,1;
+    //  rigidTransf(0,0) = Rotation(0,0);
+    //  rigidTransf(0,1) = Rotation(0,1);
+    //  rigidTransf(0,2) = Rotation(0,2);
+    //  rigidTransf(1,0) = Rotation(1,0);
+    //  rigidTransf(1,1) = Rotation(1,1);
+    //  rigidTransf(1,2) = Rotation(1,2);
+    //  rigidTransf(2,0) = Rotation(2,0);
+    //  rigidTransf(2,1) = Rotation(2,1);
+    //  rigidTransf(2,2) = Rotation(2,2);
+    //  rigidTransf(0,3) = translation(0);
+    //  rigidTransf(1,3) = translation(1);
+    //  rigidTransf(2,3) = translation(2);
+    //  rigidTransf(3,0) = 0;
+    //  rigidTransf(3,1) = 0;
+    //  rigidTransf(3,2) = 0;
+    //  rigidTransf(3,3) = 1;
 
-  double det = Rotation.determinant();
-  if(det != 1)
-  {
-    Eigen::Matrix3f aux;
-    aux << 1, 0, 0, 0, 1, 0, 0, 0, det;
-    Rotation = svd.matrixV() * aux * svd.matrixU().transpose();
-  }
-
-  // Calculate translation
-  Vector3f translation;
-  Matrix3f hessian = Matrix3f::Zero();
-  Vector3f gradient = Vector3f::Zero();
-  hessian(0,0) = 1;
-  for(unsigned i=0; i<3; i++)
-  {
-    float trans_error = (matched_planes(3,i) - matched_planes(7,i)); //+n*t
-//    hessian += matched_planes.block(i,0,1,3) * matched_planes.block(i,0,1,3).transpose();
-//    gradient += matched_planes.block(i,0,1,3) * trans_error;
-    Vector3f n_i = Vector3f(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
-    hessian += n_i * n_i.transpose();
-    gradient += n_i * trans_error;
-  }
-  translation = -hessian.inverse() * gradient;
-//cout << "Previous average translation error " << sumError / matched_planes.size() << endl;
-
-//  // Form SE3 transformation matrix. This matrix maps the model into the current data reference frame
-//  Eigen::Matrix4f rigidTransf;
-//  rigidTransf.block(0,0,3,3) = Rotation;
-//  rigidTransf.block(0,3,3,1) = translation;
-//  rigidTransf.row(3) << 0,0,0,1;
-
-  CMatrixDouble rigidTransf(4,4);
-  rigidTransf(0,0) = Rotation(0,0);
-  rigidTransf(0,1) = Rotation(0,1);
-  rigidTransf(0,2) = Rotation(0,2);
-  rigidTransf(1,0) = Rotation(1,0);
-  rigidTransf(1,1) = Rotation(1,1);
-  rigidTransf(1,2) = Rotation(1,2);
-  rigidTransf(2,0) = Rotation(2,0);
-  rigidTransf(2,1) = Rotation(2,1);
-  rigidTransf(2,2) = Rotation(2,2);
-  rigidTransf(0,3) = translation(0);
-  rigidTransf(1,3) = translation(1);
-  rigidTransf(2,3) = translation(2);
-  rigidTransf(3,0) = 0;
-  rigidTransf(3,1) = 0;
-  rigidTransf(3,2) = 0;
-  rigidTransf(3,3) = 1;
-
-  return rigidTransf;
+    return rigidTransf;
 }
 
 // Ransac functions to detect outliers in the plane matching

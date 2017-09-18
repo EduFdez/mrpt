@@ -69,24 +69,28 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
     {
     }
 
+//    /*! Match two sets of normal vectors by exhaustive search. A rotation (R12: n1=R12*n2) is computed from pairs of candidate matches to find the mapping with the smallest error. */
+//    static std::map<size_t, size_t> matchNormalVectorsRANSAC(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2,
+//                                                            Eigen::Matrix<T,3,3> & rotation, T & conditioning, const T th_angle = 1.0);
+
+    /*! Match two sets of normal vectors by exhaustive search. A rotation (R12: n1=R12*n2) is computed from pairs of candidate matches to find the mapping with the smallest error. */
+    static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2,
+                                                       Eigen::Matrix<T,3,3> & rotation, T & conditioning, const T th_angle = 1.0);
+
+    /*! oveload */
+    static inline std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2, const T th_angle = 1.0)
+    {
+        Eigen::Matrix<T,3,3> rot;
+        T conditioning;
+        return matchNormalVectors(n_cam1, n_cam2, rot, conditioning, th_angle);
+    }
+
     /*! Extract the normal vectors of the projective planes of the input image segments */
     static void getProjPlaneNormals(const mrpt::utils::TCamera & cam, const std::vector<cv::Vec4f> & segments2D, std::vector<Eigen::Matrix<T,3,1> > & segments_n);
 
     /*! Extract 3D lines from 2D segments in a RGB-D image.*/
     static void getSegments3D(const mrpt::utils::TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const std::vector<cv::Vec4f> & segments2D,
                               std::vector<Eigen::Matrix<T,3,1> > &segments_n, std::vector<Eigen::Matrix<T,6,1> > & segments3D, std::vector<bool> & line_has3D);
-
-    /*! Match two sets of normal vectors by exhaustive search. A rotation (R12: n1=R12*n2) is computed from pairs of candidate matches to find the mapping with the smallest error. */
-    static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2,
-                                                       Eigen::Matrix<T,3,3> & rotation, T & conditioning, const T min_angle_diff = 1);
-
-    /*! oveload */
-    static inline std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2, const T min_angle_diff = 1)
-    {
-        Eigen::Matrix<T,3,3> rot;
-        T conditioning;
-        return matchNormalVectors(n_cam1, n_cam2, rot, conditioning, min_angle_diff);
-    }
 
     /*! Extract line correspondences between the different sensors.*/
     void getCorrespondences(const std::vector<cv::Mat> & rgb, const std::vector<pcl::PointCloud<PointT>::Ptr> & cloud);
@@ -148,6 +152,9 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 
     /*! Minimum segment length to consider line correspondences */
     size_t min_pixels_line;
+
+    /*! Maximum number of lines to segment */
+    size_t max_lines;
 
     /*! Minimum angle threshold to match two sets of rotated normalized vectors */
     T min_angle_diff;

@@ -9,6 +9,7 @@
 
 #include "DifOdometry_Datasets_RGBD.h"
 #include <mrpt/system/filesystem.h>
+#include <mrpt/system/threads.h>
 #include <mrpt/utils/CConfigFile.h>
 #include <mrpt/vision/CFeatureLines.h>
 #include <mrpt/vision/CFeatureExtraction.h>
@@ -21,6 +22,7 @@
 //#include <mrpt/opengl/CSetOfLines.h>
 //#include <mrpt/opengl/CEllipsoid.h>
 //#include <mrpt/opengl/stock_objects.h>
+#include <mrpt/pbmap/colors.h>
 #include "../DifOdometry-Datasets/legend.xpm"
 #include "../kinect-rig-calib/kinect-rig-calib_misc.h"
 #include "pinhole_model_warp.h"
@@ -53,25 +55,27 @@ void CDifodoDatasets_RGBD::loadConfiguration(const string & config_file)
 	downsample = ini.read_int("DIFODO_CONFIG", "downsample", 2, true);
 	rows = ini.read_int("DIFODO_CONFIG", "rows", 240, true);
 	cols = ini.read_int("DIFODO_CONFIG", "cols", 320, true);
-	ctf_levels = ini.read_int("DIFODO_CONFIG", "ctf_levels", 5, true);
-	string filename = ini.read_string("DIFODO_CONFIG", "filename", "no file", true);
+    ctf_levels = ini.read_int("DIFODO_CONFIG", "ctf_levels", 5, true);
+    if(b_initial_rot)
+        ctf_levels = 2;
+
 
 	//						Open Rawlog File
 	//==================================================================
-	if (!dataset.loadFromRawLogFile(filename))
+    if (!dataset.loadFromRawLogFile(rawlog_file))
 		throw std::runtime_error("\nCouldn't open rawlog dataset file for input...");
 
 	rawlog_count = 0;
 
 	// Set external images directory:
-	const string imgsPath = CRawlog::detectImagesDirectory(filename);
+    const string imgsPath = CRawlog::detectImagesDirectory(rawlog_file);
 	CImage::IMAGES_PATH_BASE = imgsPath;
 
 	//					Load ground-truth
 	//=========================================================
-	filename = system::extractFileDirectory(filename);
-	filename.append("/groundtruth.txt");
-	f_gt.open(filename.c_str());
+    string gt_file = system::extractFileDirectory(rawlog_file);
+    gt_file.append("/groundtruth.txt");
+    f_gt.open(gt_file.c_str());
 
 	if (f_gt.fail())
 		throw std::runtime_error("\nError finding the groundtruth file: it should be contained in the same folder than the rawlog file");
@@ -93,6 +97,7 @@ void CDifodoDatasets_RGBD::loadConfiguration(const string & config_file)
 
 	//Resize pyramid
     const unsigned int pyr_levels = round(log(float(width/cols))/log(2.f)) + ctf_levels;
+    cout << "x pyr_levels " << pyr_levels << endl;
     depth.resize(pyr_levels);
     depth_old.resize(pyr_levels);
     depth_inter.resize(pyr_levels);
@@ -126,7 +131,6 @@ void CDifodoDatasets_RGBD::loadConfiguration(const string & config_file)
         yy_old[i].resize(rows_i, cols_i);
         yy[i].assign(0.0f);
         yy_old[i].assign(0.0f);
-		transformations[i].resize(4,4);
 
 		if (cols_i <= cols)
 		{
@@ -344,8 +348,8 @@ void CDifodoDatasets_RGBD::updateScene()
 */
 void CDifodoDatasets_RGBD::loadFrame()
 {
-    cout << "CDifodoDatasets_RGBD::loadFrame...\n";
-    CObservationPtr observation; // = dataset.getAsObservation(rawlog_count);
+    //cout << "CDifodoDatasets_RGBD::loadFrame...\n";
+    CObservationPtr observation;
     for(size_t step = 0; step < decimation; step++ )
     {
         observation = dataset.getAsObservation(rawlog_count++);
@@ -359,6 +363,7 @@ void CDifodoDatasets_RGBD::loadFrame()
             observation = dataset.getAsObservation(rawlog_count++);
         }
     }
+    cout << "CDifodoDatasets_RGBD::loadFrame... " << rawlog_count << " / " << dataset.size() << endl;
 
     obsRGBD[0] = CObservation3DRangeScanPtr(observation);
     obsRGBD[0]->load();
@@ -511,25 +516,23 @@ void CDifodoDatasets_RGBD::loadFrame()
 	if (dataset.size() <= rawlog_count)
 		dataset_finished = true;
 
-    cout << "...CDifodoDatasets_RGBD::loadFrame\n";
+    //cout << "...CDifodoDatasets_RGBD::loadFrame\n";
 }
 
-void CDifodoDatasets_RGBD::run(const string & config_file)
+void CDifodoDatasets_RGBD::run()
 {
     int pushed_key = 0;
     bool working = 0, stop = 0;
 
     // Initialize
-    loadConfiguration( config_file );
 //    initializeScene();
     reset();
 
-    bool display = false;
-
     CFeatureLines featLines;
-    featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, line_extraction, display);
-    cout << "CDifodoDatasets_RGBD initialize. lines " << vv_segments2D[0].size() << endl;
+    featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], line_extraction, min_pixels_line, max_lines, display);
     ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
+    if(verbose)
+        cout << "CDifodoDatasets_RGBD initialize. lines " << vv_segments2D[0].size() << endl;
 
 //    CFeatureExtraction featPoints;
 //    CFeatureList points1, points2;
@@ -542,11 +545,12 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
     // Results
     Eigen::Matrix<T,4,4> approx_rot = Eigen::Matrix<T,4,4>::Identity(), approx_rot_tf = Eigen::Matrix<T,4,4>::Identity(); //rel_pose_diff_difodo
     vector<float> v_rot, v_trans;
-    vector<float> v_rot_error, v_rot_error_difodo, v_rot_error_difodo_init;
-    vector<float> v_time_lines, v_time_rot, v_time_difodo, v_time_difodo_init;
+    vector<float> v_rot_error, v_rot_error_difodo, v_trans_error_difodo;
+    vector<float> v_time_lines, v_time_rot, v_time_difodo;
     vector<float> v_median_depth;
-    size_t n_frames(0), n_success_rot(0), n_success_rot_difodo(0), n_success_rot_init(0);
-    float th_good_rot_deg = 4;
+    size_t n_frames(0), n_success_rot(0), n_success_rot_difodo(0);
+    float th_good_rot_deg = 3, th_good_trans = 0.03f;
+    T rot_error, trans_error;
 
     while (!stop)
     {
@@ -564,61 +568,53 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 
         //Capture 1 new frame and calculate odometry
         case  'n':
+            setNewFrame();
+            loadFrame();
+
             if (dataset_finished)
             {
                 working = 0;
+                stop = true;
                 cout << endl << "End of dataset.";
                 if (f_res.is_open())
                     f_res.close();
             }
             else
             {
-                cout << "CDifodoDatasets_RGBD. process frame \n";
-                setNewFrame();
-                loadFrame();
+                if(verbose)
+                    cout << "CDifodoDatasets_RGBD. process frame \n";
                 ++n_frames;
                 v_median_depth.push_back( getMatMedian<float>(v_depth[0], 0.4, 10) );
-                v_rot.push_back( RAD2DEG(acos( (trace<T,3>(gt_rel_pose_TUM.getRotationMatrix()) - 1) / 2)) );
-                v_trans.push_back( 1000*sqrt(gt_rel_pose_TUM.m_coords[0]*gt_rel_pose_TUM.m_coords[0] + gt_rel_pose_TUM.m_coords[2]*gt_rel_pose_TUM.m_coords[1] + gt_rel_pose_TUM.m_coords[2]*gt_rel_pose_TUM.m_coords[2]) );
-                cout << "groundtruth TUM : " << v_trans.back() << " " << v_rot.back() << " rotation " << gt_rel_pose_TUM.yaw() << " " << gt_rel_pose_TUM.pitch() << " " << gt_rel_pose_TUM.roll() << endl;
+                v_rot.push_back( RAD2DEG( getRotationVector<T,3>( gt_rel_pose_TUM.getRotationMatrix() ).norm() ) );
+                v_trans.push_back( 1000*sqrt(gt_rel_pose_TUM.m_coords[0]*gt_rel_pose_TUM.m_coords[0] + gt_rel_pose_TUM.m_coords[1]*gt_rel_pose_TUM.m_coords[1] + gt_rel_pose_TUM.m_coords[2]*gt_rel_pose_TUM.m_coords[2]) );
+                if(verbose)
+                    cout << "groundtruth TUM : " << v_trans.back() << " mm " << v_rot.back() << " deg. rotation " << gt_rel_pose_TUM.yaw() << " " << gt_rel_pose_TUM.pitch() << " " << gt_rel_pose_TUM.roll() << endl;
 
-                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], min_pixels_line, line_extraction, display);
+                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], line_extraction, min_pixels_line, max_lines); //, display);
                 v_time_lines.push_back(featLines.time);
-                cout << "CDifodoDatasets_RGBD. lines " << vv_segments2D[0].size() << endl;
                 T condition;
                 Matrix<T,3,3> rot;
                 CTicTac clock; clock.Tic(); //Clock to measure the runtime
                 ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
                 map<size_t,size_t> line_matches = matchNormalVectors(vv_segment_n[1], vv_segment_n[0], rot, condition);
                 v_time_rot.push_back(1000*clock.Tac());
+                if(verbose)
+                {
+                    cout << "CDifodoDatasets_RGBD. lines " << vv_segments2D[0].size() << endl;
+                    cout << "line_matches " << line_matches.size() << endl;
+                    cout << "Approx rotation \n" << rot << endl;
+                    cout << "ERROR " << rot_error << " Approx rotation : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
+                }
 
-                cout << "line_matches " << line_matches.size() << endl;
-                cout << "Approx rotation \n" << rot << endl;
                 approx_rot.block<3,3>(0,0) = rot;
-                T rot_error = RAD2DEG(acos( (trace<T,3>(rot.transpose() * gt_rel_pose_TUM.getRotationMatrix()) - 1) / 2));
-                cout << "ROTATION diff " << rot_error << endl;
+                rot_error = RAD2DEG( getRotationVector<T,3>( rot.transpose() * gt_rel_pose_TUM.getRotationMatrix() ).norm() );
                 rel_pose_TUM.setRotationMatrix(rot);
-                cout << "Approx rotation : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
 
                 if( rot_error < th_good_rot_deg)
                 {
                     v_rot_error.push_back(rot_error);
                     ++n_success_rot;
-
-                    approx_rot_tf = (-transf).getHomogeneousMatrixVal() * approx_rot * (transf).getHomogeneousMatrixVal();
-                    odometryCalculation( approx_rot_tf.cast<float>(), 1 ); // 2 pyr levels
-                    v_time_difodo_init.push_back(execution_time);
-                    rot_error = RAD2DEG(acos( (trace<T,3>((rel_pose - gt_rel_pose).getRotationMatrix()) - 1) / 2));
-                    if( rot_error < th_good_rot_deg)
-                    {
-                        v_rot_error_difodo_init.push_back(rot_error);
-                        ++n_success_rot_init;
-                    }
-                    cout << endl << "Difodo runtime(ms): " << execution_time << endl;
-                    cout << "DifOdo-init ROT diff " << rot_error << endl;
                 }
-                rel_pose_TUM = transf + rel_pose + (-transf);
-                cout << "init DifOdo : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
 
 //                points2 = points1;
 //                featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );//
@@ -633,52 +629,92 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
 //                }
 
 //                cout << "odometryCalculation \n";
-                odometryCalculation();
+                if(b_initial_rot)
+                {
+                    //                approx_rot_tf = (-transf).getHomogeneousMatrixVal() * approx_rot * (transf).getHomogeneousMatrixVal();
+                    //                approx_rot_tf = gt_rel_pose.getHomogeneousMatrixVal();
+                    approx_rot_tf.block<3,3>(0,0) = gt_rel_pose.getRotationMatrix();
+                    odometryCalculation( approx_rot_tf.cast<float>() );
+                }
+                else
+                    odometryCalculation();
                 v_time_difodo.push_back(execution_time);
-                rot_error = RAD2DEG(acos( (trace<T,3>((rel_pose - gt_rel_pose).getRotationMatrix()) - 1) / 2));
-                if( rot_error < th_good_rot_deg)
+                rot_error = RAD2DEG( getRotationVector<T,3>( (rel_pose - gt_rel_pose).getRotationMatrix() ).norm() );
+                trans_error = (rel_pose - gt_rel_pose).getHomogeneousMatrixVal().block<3,1>(0,3).norm();
+                if( rot_error < th_good_rot_deg && trans_error < th_good_trans )
                 {
                     v_rot_error_difodo.push_back(rot_error);
+                    v_trans_error_difodo.push_back(trans_error);
                     ++n_success_rot_difodo;
                 }
-                cout << endl << "Difodo runtime(ms): " << execution_time << endl;
-                cout << "DifOdo ROT diff " << rot_error << endl;
                 rel_pose_TUM = transf + rel_pose + (-transf);
-                cout << "DifOdo : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
+                if(verbose)
+                {
+                    cout << "\nERROR DifOdo " << rot_error << " trans error " << 1000*trans_error << endl;
+                    cout << "Difodo runtime(ms): " << execution_time << " rot Euler angles : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
+                    //                cout << "groundtruth \n" << gt_rel_pose.getHomogeneousMatrixVal() << endl;
+                    //                cout << "DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
+                }
 
                 if (save_results == 1)
                     writeTrajectoryFile();
 
-                //rel_pose_diff_difodo = getPoseEigen<T>(-gt_rel_pose+rel_pose);
-                cout << "groundtruth \n" << gt_rel_pose.getHomogeneousMatrixVal() << endl;
-                cout << "DifOdo pose \n" << rel_pose.getHomogeneousMatrixVal() << endl;
+                if( display )
+                {
+                    cv::Mat diff;
+                    cv::Mat gray_warped1, diff1;
+                    cv::Mat gray_warped2, diff2;
+                    cv::Mat gray_warped3, diff3;
 
-                cv::Mat gray_diff;
-                cv::Mat gray_warped1, gray_diff1;
-                cv::Mat gray_warped2, gray_diff2;
-                cv::Mat gray_warped3, gray_diff3;
-                sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(-transf+rel_pose+transf), gray_warped1);
+                    //cv::cvtColor( cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), gray, cv::COLOR_BGR2GRAY );
+                    warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(gt_rel_pose_TUM), gray_warped1);
+                    warp(v_gray[0], v_depth[0], intrinsics, approx_rot.cast<float>(), gray_warped2);
+                    warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(transf+rel_pose+(-transf)), gray_warped3);
+                    cv::absdiff(v_gray[0], v_gray[1], diff);
+                    cv::absdiff(v_gray[1], gray_warped1, diff1);
+                    cv::absdiff(v_gray[1], gray_warped2, diff2);
+                    cv::absdiff(v_gray[1], gray_warped3, diff3);
 
-                //cv::cvtColor( cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), gray, cv::COLOR_BGR2GRAY );
-                sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(gt_rel_pose_TUM), gray_warped1);
-                sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, approx_rot.cast<float>(), gray_warped2);
-                sensor::PinholeModel::warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(-transf+rel_pose+transf), gray_warped3);
-                cv::absdiff(v_gray[0], v_gray[1], gray_diff);
-                cv::absdiff(v_gray[1], gray_warped1, gray_diff1);
-                cv::absdiff(v_gray[1], gray_warped2, gray_diff2);
-                cv::absdiff(v_gray[1], gray_warped3, gray_diff3);
-                cv::imshow("gray0", v_gray[0]);             cv::moveWindow("gray0", 100, 50);
-                cv::imshow("gray1", v_gray[1]);             cv::moveWindow("gray1", 750, 50);
-                cv::imshow("gray_diff", gray_diff);         cv::moveWindow("gray_diff", 1400, 50);
-                cv::imshow("gray_warped1", gray_warped1);   cv::moveWindow("gray_warped1", 100, 550);
-                cv::imshow("gray_warped2", gray_warped2);   cv::moveWindow("gray_warped2", 750, 550);
-                cv::imshow("gray_warped3", gray_warped3);   cv::moveWindow("gray_warped3", 1400, 550);
-                cv::imshow("gray_diff1", gray_diff1);       cv::moveWindow("gray_diff1", 100, 1050);
-                cv::imshow("gray_diff2", gray_diff2);       cv::moveWindow("gray_diff2", 750, 1050);
-                cv::imshow("gray_diff3", gray_diff3);       cv::moveWindow("gray_diff3", 1400, 1050);
+                    cv::Mat image_lines[2];
+                    for(size_t i=0; i < 2; i++)
+                    {
+                        image_lines[i] = v_gray[i].clone();
+                        if( image_lines[i].channels() == 1 )
+                            cv::cvtColor( image_lines[i], image_lines[i], cv::COLOR_GRAY2BGR );
+                        for(auto it = begin(line_matches); it != end(line_matches); ++it)
+                        {
+                            size_t m = (i == 0) ? it->second : it->first;
+                            cv::Scalar color(blu[distance(begin(line_matches),it)%10],grn[distance(begin(line_matches),it)%10],red[distance(begin(line_matches),it)%10]);
+                            cv::line(image_lines[i], cv::Point(cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), cv::Point2f(cv::Point(vv_segments2D[i][m][2], vv_segments2D[i][m][3])), color, 2 );
+                            //cv::circle(image_lines[i], cv::Point(cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), 3, color, 3);
+                            // cv::putText(image_lines[i], string(to_string(distance(begin(segments),line))), cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), 0, 1.2, color, 3 );
+                        }
+                    }
 
-                cv::waitKey();
-//                updateScene();
+                    cv::imshow("gray0", image_lines[0]);        cv::moveWindow("gray0", 100, 50);
+                    cv::imshow("gray1", image_lines[1]);        cv::moveWindow("gray1", 760, 50);
+//                    cv::imshow("gray0", v_gray[0]);             cv::moveWindow("gray0", 100, 50);
+//                    cv::imshow("gray1", v_gray[1]);             cv::moveWindow("gray1", 760, 50);
+                    cv::imshow("diff", diff);                   cv::moveWindow("diff", 1400, 50);
+                    cv::imshow("gray_warped1", gray_warped1);   cv::moveWindow("gray_warped1", 100, 570);
+                    cv::imshow("gray_warped2", gray_warped2);   cv::moveWindow("gray_warped2", 760, 570);
+                    cv::imshow("gray_warped3", gray_warped3);   cv::moveWindow("gray_warped3", 1400, 570);
+                    cv::imshow("diff1", diff1);                 cv::moveWindow("diff1", 100, 1100);
+                    cv::imshow("diff2", diff2);                 cv::moveWindow("diff2", 760, 1100);
+                    cv::imshow("diff3", diff3);                 cv::moveWindow("diff3", 1400, 1100);
+
+//                    cv::imwrite("gray0.png", v_gray[0]);
+//                    cv::imwrite("gray1.png", v_gray[0]);
+//                    cv::imwrite("lines0.png", image_lines[0]);
+//                    cv::imwrite("lines1.png", image_lines[1]);
+//                    cv::imwrite("warp.png", gray_warped1);
+//                    cv::imwrite("diff_gt.png", diff1);
+//                    cv::imwrite("diff_approx_rot.png", diff2);
+//                    cv::imwrite("diff_identity.png", diff);
+
+                    cv::waitKey(0);
+//                    updateScene();
+                }
             }
 
             break;
@@ -721,14 +757,25 @@ void CDifodoDatasets_RGBD::run(const string & config_file)
     }
 
     // Show results
-    cout << "Sequence " << rawlog_file << " decimation " << decimation << " av median depth " << mean(v_median_depth)
-         << " rot " << mean(v_rot) << " " << stdev(v_rot) << " " << median(v_rot) << " trans " << mean(v_trans) << " " << stdev(v_trans) << " " << median(v_trans)
+    cout << "Sequence information: \n" << rawlog_file << "\ndecimation " << decimation << " b_initial_rot " << b_initial_rot << " av median depth " << mean(v_median_depth)
+         << " rot " << mean(v_rot) << " " << stdev(v_rot) << " " << median(v_rot) << " trans " << mean(v_trans) << " " << stdev(v_trans) << " " << median(v_trans) << endl;
+    cout << " Approx ROT error " << mean(v_rot_error) << " " << stdev(v_rot_error) << " " << median(v_rot_error) << " success rate " << n_success_rot / float(n_frames)
          << " time lines " << mean(v_time_lines) << " " << median(v_time_lines) << " time rot " << mean(v_time_rot) << " " << median(v_time_rot) << endl;
-    cout << " Approx ROT error " << mean(v_rot_error) << " " << stdev(v_rot_error) << " " << median(v_rot_error) << " success rate " << n_success_rot / float(n_frames) << endl;
-    cout << " DifOdo-init ROT error " << mean(v_rot_error_difodo_init) << " " << stdev(v_rot_error_difodo_init) << " " << median(v_rot_error_difodo_init) << " success rate " << n_success_rot_init / float(n_frames)
-         << " time " << mean(v_time_difodo_init) << " " << median(v_time_difodo_init) << endl;
     cout << " DifOdo ROT error " << mean(v_rot_error_difodo) << " " << stdev(v_rot_error_difodo) << " " << median(v_rot_error_difodo) << " success rate " << n_success_rot_difodo / float(n_frames)
          << " time " << mean(v_time_difodo) << " " << median(v_time_difodo) << endl;
+
+    size_t pos = rawlog_file.find_last_of('/')+14;
+    string name_seq = rawlog_file.substr(pos,rawlog_file.length()-7-pos);
+    std::ofstream file("results.txt", std::ios_base::app);
+    file << "=============================================================================\n"
+         << name_seq << "\tdecimation " << decimation << " b_init " << b_initial_rot << " av_median_depth " << mean(v_median_depth)
+         << " rot " << mean(v_rot) << " " << stdev(v_rot) << " " << median(v_rot) << " trans " << mean(v_trans) << " " << stdev(v_trans) << " " << median(v_trans)
+         << " ROT_error " << mean(v_rot_error) << " " << stdev(v_rot_error) << " " << median(v_rot_error) << " success " << n_success_rot / float(n_frames)
+//         << " time lines " << mean(v_time_lines) << " " << median(v_time_lines) << " time rot " << mean(v_time_rot) << " " << median(v_time_rot)
+         << " DifOdo_ROT_error " << mean(v_rot_error_difodo) << " " << stdev(v_rot_error_difodo) << " " << median(v_rot_error_difodo)
+         << " DifOdo_TRANS_error " << mean(v_trans_error_difodo) << " " << stdev(v_trans_error_difodo) << " " << median(v_trans_error_difodo)
+         << " DifOdo_success " << n_success_rot_difodo / float(n_frames) << " time " << mean(v_time_difodo) << " " << median(v_time_difodo) << endl << endl;
+
 }
 
 void CDifodoDatasets_RGBD::reset()

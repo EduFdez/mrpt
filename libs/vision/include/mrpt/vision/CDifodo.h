@@ -53,7 +53,7 @@ namespace mrpt
 		  */
 
 		class VISION_IMPEXP CDifodo {
-		protected:
+        protected:
 
 			/** Matrix that stores the original depth frames with the image resolution */
 			Eigen::MatrixXf depth_wf;
@@ -111,7 +111,7 @@ namespace mrpt
 
 			/** Number of coarse-to-fine levels. I has to be consistent with the number of rows and cols, because the
 			  * coarsest level cannot be smaller than 15 x 20. */
-			unsigned int ctf_levels;
+            unsigned int ctf_levels;
 
 			/** Aux varibles: levels of the image pyramid and the solver, respectively */
 			unsigned int image_level;
@@ -125,6 +125,7 @@ namespace mrpt
 
 			/** Transformations of the coarse-to-fine levels */
             std::vector<Eigen::Matrix4f> transformations;
+            Eigen::Matrix4f initial_pose;
 			
 			/** Solution from the solver at a given level */
 			Eigen::Matrix<float, 6, 1> kai_loc_level;
@@ -189,7 +190,7 @@ namespace mrpt
 
 			/** This method performs all the necessary steps to estimate the camera velocity once the new image is read,
 			    and updates the camera pose */
-            void odometryCalculation(const Eigen::Matrix4f & init = Eigen::Matrix4f::Identity(), const int levels = -1);
+            void odometryCalculation(const Eigen::Matrix4f & init = Eigen::Matrix4f::Identity());
 
 			/** Get the rows and cols of the depth image that are considered by the visual odometry method. */
 			inline void getRowsAndCols(unsigned int &num_rows, unsigned int &num_cols) const {num_rows = rows; num_cols = cols;}
@@ -235,10 +236,10 @@ namespace mrpt
 
 			/** Virtual method to be implemented in derived classes.
 			  * It should be used to load a new depth image into the variable depth_wf */
-			virtual void loadFrame() = 0;
+            virtual void loadFrame() = 0;
 
 			//Constructor. Initialize variables and matrix sizes
-			CDifodo();
+            CDifodo();
 
 		};
 	}

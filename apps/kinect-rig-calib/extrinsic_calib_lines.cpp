@@ -48,86 +48,287 @@ using namespace mrpt::vision;
 using namespace mrpt::math;
 using namespace mrpt::utils;
 
-//// Ransac functions to detect outliers in the plane matching
-//void ransacLineAlignment_fit(
-//        const CMatrixDouble &planeCorresp,
-//        const mrpt::vector_size_t  &useIndices,
-//        vector< CMatrixDouble > &fitModels )
-////        vector< Matrix4f > &fitModels )
+// Obtain the rigid transformation from 3 matched lines
+CMatrixDouble registerMatchedLineNormals( const CMatrixDouble & matched_lines )
+{
+    ASSERT_(size(matched_lines,1) == 18 && size(matched_lines,2) >= 2);
+
+    //Calculate rotation
+    Matrix3d normalCovariances = Matrix3d::Zero();
+    normalCovariances(0,0) = 1;
+    for(unsigned i=0; i<size(matched_lines,2); i++)
+    {
+        Vector3d n1(matched_lines(0,i), matched_lines(1,i), matched_lines(2,i));
+        Vector3d n2(matched_lines(3,i), matched_lines(4,i), matched_lines(5,i));
+//        Vector3d n2 = Vector3d(matched_lines(9,i), matched_lines(10,i), matched_lines(11,i));
+        normalCovariances += n2 * n1.transpose();
+        //    normalCovariances += matched_lines.block(i,0,1,3) * matched_lines.block(i,4,1,3).transpose();
+    }
+    Matrix3d Rotation;
+    double cond = ExtrinsicCalib::rotationFromNormals(normalCovariances, Rotation);
+//    if(cond < 0.01f){ //cout << "registerMatchedLineNormals::matchNormalVectors: JacobiSVD bad conditioning " << cond << " < " << min_conditioning << "\n";
+//        Rotation = Matrix3d::Identity();
+//    }
+
+    //  // Form SE3 transformation matrix. This matrix maps the model into the current data reference frame
+    //  Eigen::Matrix4f rigidTransf;
+    CMatrixDouble33 rigidTransf(Rotation);
+//    rigidTransf.block(0,0,3,3) = Rotation;
+//    rigidTransf.block(0,3,3,1) = translation;
+//    rigidTransf.row(3) << 0,0,0,1;
+    //  rigidTransf(0,0) = Rotation(0,0);
+    //  rigidTransf(0,1) = Rotation(0,1);
+    //  rigidTransf(0,2) = Rotation(0,2);
+    //  rigidTransf(1,0) = Rotation(1,0);
+    //  rigidTransf(1,1) = Rotation(1,1);
+    //  rigidTransf(1,2) = Rotation(1,2);
+    //  rigidTransf(2,0) = Rotation(2,0);
+    //  rigidTransf(2,1) = Rotation(2,1);
+    //  rigidTransf(2,2) = Rotation(2,2);
+    //  rigidTransf(0,3) = translation(0);
+    //  rigidTransf(1,3) = translation(1);
+    //  rigidTransf(2,3) = translation(2);
+    //  rigidTransf(3,0) = 0;
+    //  rigidTransf(3,1) = 0;
+    //  rigidTransf(3,2) = 0;
+    //  rigidTransf(3,3) = 1;
+
+    return rigidTransf;
+}
+
+// Ransac functions to detect outliers in the line matching
+void ransacLineRot_fit( const CMatrixDouble         & lineCorresp,
+                        const mrpt::vector_size_t   & useIndices,
+                        vector< CMatrixDouble >     & fitModels )
+                        //vector< Matrix4f > &fitModels )
+{
+    ASSERT_(useIndices.size()==2);
+
+    try
+    {
+        CMatrixDouble corresp(18,2);
+
+        //  cout << "Size lineCorresp: " << endl;
+        //  cout << "useIndices " << useIndices[0] << " " << useIndices[1]  << " " << useIndices[2] << endl;
+        for(unsigned i=0; i<2; i++)
+            corresp.col(i) = lineCorresp.col(useIndices[i]);
+
+        fitModels.resize(1);
+        //    Matrix4f &M = fitModels[0];
+        CMatrixDouble & M = fitModels[0];
+        M = registerMatchedLineNormals(corresp);
+    }
+    catch(exception &)
+    {
+        fitModels.clear();
+        return;
+    }
+}
+
+void ransacLineRot_angle(const CMatrixDouble        & lineCorresp,
+                        const vector<CMatrixDouble> & testModels,
+                        const double                th_min_cos_angle,
+                        unsigned int                & out_bestModelIndex,
+                        mrpt::vector_size_t         & out_inlierIndices )
+{
+    ASSERT_( testModels.size()==1 )
+    const CMatrixDouble & M = testModels[0];
+    ASSERT_( size(M,1)==3 && size(M,2)==3 )
+
+    out_bestModelIndex = 0;
+    Matrix3d Rotation; Rotation << M(0,0), M(0,1), M(0,2), M(1,0), M(1,1), M(1,2), M(2,0), M(2,1), M(2,2);
+
+    const size_t N = size(lineCorresp,2);
+    out_inlierIndices.clear();
+    out_inlierIndices.reserve(100);
+    for (size_t i=0; i<N; i++)
+    {
+        const Matrix<T,3,1> n1 = Matrix<T,3,1>(lineCorresp(0,i), lineCorresp(1,i), lineCorresp(2,i));
+        const Matrix<T,3,1> R_n2 = Rotation * Matrix<T,3,1>(lineCorresp(3,i), lineCorresp(4,i), lineCorresp(5,i));
+        const float cos_angle_error = n1 .dot (R_n2);
+        if (cos_angle_error > th_min_cos_angle)
+            out_inlierIndices.push_back(i);
+    }
+}
+
+/** Return "true" if the selected points are a degenerate (invalid) case.
+  */
+bool ransacLineRot_degenerate ( const CMatrixDouble         & lineCorresp,
+                                const mrpt::vector_size_t   & useIndices )
+{
+    ASSERT_( useIndices.size()==2 )
+
+    const Matrix<T,3,1> n1_i = Matrix<T,3,1>(lineCorresp(0,useIndices[0]), lineCorresp(1,useIndices[0]), lineCorresp(2,useIndices[0]));
+    const Matrix<T,3,1> n2_i = Matrix<T,3,1>(lineCorresp(0,useIndices[1]), lineCorresp(1,useIndices[1]), lineCorresp(2,useIndices[1]));
+    T cos_i = n1_i.dot(n2_i);
+    //cout << "degenerate " << useIndices[0] << " " << useIndices[1]  << " " << useIndices[2] << " - " << fabs(n_1. dot( n_2. cross(n_3) ) ) << endl;
+    if( fabs(cos_i) > 0.98 ) // acos(0.98) = 11.48 deg
+        return true;
+
+    const Matrix<T,3,1> n1_j = Matrix<T,3,1>(lineCorresp(3,useIndices[0]), lineCorresp(4,useIndices[0]), lineCorresp(5,useIndices[0]));
+    const Matrix<T,3,1> n2_j = Matrix<T,3,1>(lineCorresp(3,useIndices[1]), lineCorresp(4,useIndices[1]), lineCorresp(5,useIndices[1]));
+    T cos_j = n1_j.dot(n2_j);
+    if( fabs(acos(cos_i) - acos(cos_j)) > 0.0174533 ) // Check if the rotation is consistent
+        return true;
+
+    return false;
+}
+
+
+//map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectorsRANSAC(const vector<Matrix<T,3,1> > & n_cam1, const vector<Matrix<T,3,1> > & n_cam2, Matrix<T,3,3> & rotation, T & conditioning, const T th_angle)
 //{
-//  ASSERT_(useIndices.size()==3);
 
-//  try
-//  {
-//    CMatrixDouble corresp(8,3);
+//    if( n_cam1.size() < 2 || n_cam2.size() < 2 )
+//    {
+//        cout << "Insuficient lines " << n_cam1.size() << " " << n_cam2.size() << endl;
+//        return map<size_t,size_t>();
+//    }
 
-////  cout << "Size planeCorresp: " << endl;
-////  cout << "useIndices " << useIndices[0] << " " << useIndices[1]  << " " << useIndices[2] << endl;
-//    for(unsigned i=0; i<3; i++)
-//      corresp.col(i) = planeCorresp.col(useIndices[i]);
+//    // Fill matrix with all possible line correspondences
+//    CMatrixDouble lineCorresp(6, matched_lines.size());
+//    unsigned col = 0;
+//    for(map<unsigned, unsigned>::iterator it = matched_lines.begin(); it != matched_lines.end(); it++, col++)
+//    {
+//        lineCorresp(0,col) = PBMSource.vPlanes[it->first].v3normal(0);
+//        lineCorresp(1,col) = PBMSource.vPlanes[it->first].v3normal(1);
+//        lineCorresp(2,col) = PBMSource.vPlanes[it->first].v3normal(2);
+//        lineCorresp(4,col) = PBMTarget.vPlanes[it->second].v3normal(0);
+//        lineCorresp(5,col) = PBMTarget.vPlanes[it->second].v3normal(1);
+//        lineCorresp(6,col) = PBMTarget.vPlanes[it->second].v3normal(2);
+//    }
+//    //  cout << "Size " << matched_lines.size() << " " << size(1) << endl;
 
-//    fitModels.resize(1);
-////    Matrix4f &M = fitModels[0];
-//    CMatrixDouble &M = fitModels[0];
-//    M = registerMatchedPlanes(corresp);
-//  }
-//  catch(exception &)
-//  {
-//    fitModels.clear();
-//    return;
-//  }
+//    mrpt::vector_size_t inliers;
+//    CMatrixDouble best_model;
+
+//    math::RANSAC ransac_executer;
+//    ransac_executer.execute(lineCorresp,
+//                            ransacPlaneAlignment_fit,
+//                            ransac3Dline_distance,
+//                            ransac3Dline_degenerate,
+//                            0.2,
+//                            3,  // Minimum set of points
+//                            inliers,
+//                            best_model,
+//                            true,   // Verbose
+//                            0.99999
+//                            );
+
+//    //  cout << "Computation time: " << tictac.Tac()*1000.0/TIMES << " ms" << endl;
+
+//    cout << "Size lineCorresp: " << size(lineCorresp,2) << endl;
+//    cout << "RANSAC finished: " << inliers.size() << " inliers: " << inliers << " . \nBest model: \n" << best_model << endl;
+//    //        cout << "Best inliers: " << best_inliers << endl;
+
+//    Eigen::Matrix4f rigidTransf; rigidTransf << best_model(0,0), best_model(0,1), best_model(0,2), best_model(0,3), best_model(1,0), best_model(1,1), best_model(1,2), best_model(1,3), best_model(2,0), best_model(2,1), best_model(2,2), best_model(2,3), 0, 0, 0, 1;
+
+//    //  return best_model;
+//    return rigidTransf;
 //}
 
-//void ransacLine_distance(
-//        const CMatrixDouble &planeCorresp,
-//        const vector< CMatrixDouble > & testModels,
-//        const double distanceThreshold,
-//        unsigned int & out_bestModelIndex,
-//        mrpt::vector_size_t & out_inlierIndices )
-//{
-//  ASSERT_( testModels.size()==1 )
-//  out_bestModelIndex = 0;
-//  const CMatrixDouble &M = testModels[0];
+map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T,3,1> > & n_cam1, const vector<Matrix<T,3,1> > & n_cam2, Matrix<T,3,3> & rotation, T & conditioning, const T th_angle)
+{
+    // Find line correspondences (in 2D by assuming a known rotation and zero translation)
+    // Select a pair of lines (normal vector of projective line) and verify rotation
+    CTicTac clock; clock.Tic(); //Clock to measure the runtime
+    map<size_t,size_t> best_matches;
+    vector<map<size_t,size_t> > discarded_matches; // with at least 3 matches
+    T best_error = 10e6;
+    const T min_angle_pair = DEG2RAD(15);
+    const T min_angle_diff = DEG2RAD(th_angle);
+    const T min_angle_diff_cos = cos(min_angle_diff);
+    //const T min_conditioning = 0.01;
+    // Exhaustive search
+    for(size_t i1=0; i1 < n_cam1.size(); i1++)
+    {
+        for(size_t i2=i1+1; i2 < n_cam1.size(); i2++)
+        {
+            T angle_i = acos( n_cam1[i1].dot(n_cam1[i2]) );
+            if( angle_i < min_angle_pair )
+                continue;
+            for(size_t j1=0; j1 < n_cam2.size(); j1++)
+            {
+                for(size_t j2=0; j2 < n_cam2.size(); j2++)
+                {
+                    if( j1 == j2 )
+                        continue;
+                    bool already_checked = false;
+                    for(size_t k=0; k < discarded_matches.size(); k++)
+                        if(discarded_matches[k].count(i1) && discarded_matches[k][i1] == j1 && discarded_matches[k].count(i2) && discarded_matches[k][i2] == j2)
+                        {
+                            already_checked = true;
+                            break;
+                        }
+                    if( already_checked )
+                        continue;
+                    if( fabs( acos( n_cam2[j1].dot(n_cam2[j2]) ) - angle_i ) > min_angle_diff )
+                        continue;
 
-//  Matrix3f Rotation; Rotation << M(0,0), M(0,1), M(0,2), M(1,0), M(1,1), M(1,2), M(2,0), M(2,1), M(2,2);
-//  Matrix<T,3,1> translation; translation << M(0,3), M(1,3), M(2,3);
+                    // Compute rotation
+                    Matrix<T,3,3> rot;
+                    Matrix<T,3,3> cov = n_cam2[j1]*n_cam1[i1].transpose() + n_cam2[j2]*n_cam1[i2].transpose() + (n_cam2[j1].cross(n_cam2[j2]))*(n_cam1[i1].cross(n_cam1[i2])).transpose();
+                    T cond = rotationFromNormals(cov, rot);
+                    //if(cond < min_conditioning){ //cout << "ExtrinsicCalibLines::matchNormalVectors: JacobiSVD bad conditioning " << cond << " < " << min_conditioning << "\n";
+                    //    continue; }
+                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << n_cam1[i1].dot(rot*n_cam2[j1]) << " min_cos " << min_angle_diff_cos << " conditioning " << cond << endl;
+                    //if( n_cam1[i1].dot(rot*n_cam2[j1]) < min_angle_diff_cos ) // Check if the rotation is consistent
+                    //    continue;
 
-//    ASSERT_( size(M,1)==4 && size(M,2)==4 )
+                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << RAD2DEG(acos(n_cam1[i1].dot(rot*n_cam2[j1]))) << " min_cos " << min_angle_diff_cos << " conditioning " << cond << endl;
 
-//  const size_t N = size(planeCorresp,2);
-//  out_inlierIndices.clear();
-//  out_inlierIndices.reserve(100);
-//  for (size_t i=0;i<N;i++)
-//  {
-//    const Matrix<T,3,1> n_i = Matrix<T,3,1>(planeCorresp(0,i), planeCorresp(1,i), planeCorresp(2,i));
-//    const Matrix<T,3,1> n_ii = Rotation * Matrix<T,3,1>(planeCorresp(4,i), planeCorresp(5,i), planeCorresp(6,i));
-//    const float d_error = fabs((planeCorresp(7,i) - translation.dot(n_i)) - planeCorresp(3,i));
-//    const float angle_error = (n_i .cross (n_ii )).norm();
+                    // Check how many lines are consistent with this rotation
+                    map<size_t,size_t> matches;
+                    matches[i1] = j1;
+                    matches[i2] = j2;
+                    set<size_t> matches2; matches2.insert(j1); matches2.insert(j2);
+                    for(size_t i=0; i < n_cam1.size(); i++)
+                    {
+                        if( i==i1 || i==i2 )
+                            continue;
+                        for(size_t j=0; j < n_cam2.size(); j++)
+                        {
+                            if( matches2.count(j) )
+                                continue;
+                            //cout << "error " << i << " vs " << j << " : " << n_cam1[i].dot(rot*n_cam2[j]) << " min " << min_angle_diff << endl;
+                            if( n_cam1[i].dot(rot*n_cam2[j]) > min_angle_diff_cos )
+                            {
+                                cov += n_cam2[j]*n_cam1[i].transpose();
+                                for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++)
+                                    cov += (n_cam2[j].cross(n_cam2[it->second]))*(n_cam1[i].cross(n_cam1[it->first])).transpose();
+                                matches[i] = j;
+                                matches2.insert(j);
+                            }
+                        }
+                    }
 
-//    if (d_error < distanceThreshold)
-//     if (angle_error < distanceThreshold) // Warning: this threshold has a different dimension
-//      out_inlierIndices.push_back(i);
-//  }
-//}
+                    // Compute the rotation from the inliers
+                    T error = 0;
+                    cond = rotationFromNormals(cov, rot);
+                    for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++){ //cout << "match " << it->first << " - " << it->second << " error " << RAD2DEG(acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]))) << endl;
+                        error += acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]));}
 
-///** Return "true" if the selected points are a degenerate (invalid) case.
-//  */
-//bool ransacLine_degenerate(
-//        const CMatrixDouble &planeCorresp,
-//        const mrpt::vector_size_t &useIndices )
-//{
-//  ASSERT_( useIndices.size()==3 )
+                    //cout << "Num corresp " << matches.size() << " conditioning " << cond << " error " << error << " average error " << RAD2DEG(error/matches.size()) << " deg.\n";
 
-//  const Matrix<T,3,1> n_1 = Matrix<T,3,1>(planeCorresp(0,useIndices[0]), planeCorresp(1,useIndices[0]), planeCorresp(2,useIndices[0]));
-//  const Matrix<T,3,1> n_2 = Matrix<T,3,1>(planeCorresp(0,useIndices[1]), planeCorresp(1,useIndices[1]), planeCorresp(2,useIndices[1]));
-//  const Matrix<T,3,1> n_3 = Matrix<T,3,1>(planeCorresp(0,useIndices[2]), planeCorresp(1,useIndices[2]), planeCorresp(2,useIndices[2]));
-////cout << "degenerate " << useIndices[0] << " " << useIndices[1]  << " " << useIndices[2] << " - " << fabs(n_1. dot( n_2. cross(n_3) ) ) << endl;
+                    if(best_matches.size() < matches.size() && matches.size() > 2)
+                    {
+                        //if(matches.size() > 2)
+                            discarded_matches.push_back(matches);
 
-//  if( fabs(n_1. dot( n_2. cross(n_3) ) ) < 0.9 )
-//    return true;
+                        best_matches = matches;
+                        best_error = error;
+                        rotation = rot;
+                        conditioning = cond;
+                    }
+                }
+            }
+        }
+    }
+    cout << " ...matchNormalVectors took " << 1000*clock.Tac() << " ms " << best_matches.size() << " matches, best_error " << RAD2DEG(best_error) << " conditioning " << conditioning << endl << rotation << endl;
+//    for(map<size_t,size_t>::iterator it=best_matches.begin(); it != best_matches.end(); it++)
+//        cout << "match " << it->first << " - " << it->second << endl;
 
-//  return false;
-//}
+    return best_matches;
+}
 
 void ExtrinsicCalibLines::getProjPlaneNormals(const TCamera & cam, const vector<cv::Vec4f> & segments2D, vector<Matrix<T,3,1> > & segments_n)
 {
@@ -136,7 +337,7 @@ void ExtrinsicCalibLines::getProjPlaneNormals(const TCamera & cam, const vector<
     segments_n.resize(n_seg);
     for(size_t i=0; i < n_seg; i++)
     {
-        // Compute the normal vector to the plane containing the 2D line segment and the optical center (the cross product of the end-point vectors in the 3D image plane)
+        // Compute the normal vector to the line containing the 2D line segment and the optical center (the cross product of the end-point vectors in the 3D image line)
         int x1 = segments2D[i][0], y1 = segments2D[i][1], x2 = segments2D[i][2], y2 = segments2D[i][3];
         Matrix<T,3,1> e1( (x1-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y1-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
         Matrix<T,3,1> e2( (x2-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y2-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
@@ -159,7 +360,7 @@ void ExtrinsicCalibLines::getProjPlaneNormals(const TCamera & cam, const vector<
 void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointCloud<PointT>::Ptr & cloud, const mrpt::pbmap::PbMap & pbmap, const vector<cv::Vec4f> & segments2D,
                                         vector<Matrix<T,3,1> > & segments_n, vector<Matrix<T,6,1> > & segments3D, vector<bool> & line_has3D)
 {
-    cout << "ExtrinsicCalibLines::getSegments3D... \n";
+    //cout << "ExtrinsicCalibLines::getSegments3D... \n";
     size_t n_seg = segments2D.size();
     segments_n.resize(n_seg);
     segments3D.resize(n_seg);
@@ -168,7 +369,7 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
 
     for(size_t i=0; i < n_seg; i++)
     {
-        // Compute the normal vector to the plane containing the 2D line segment and the optical center (the cross product of the end-point vectors in the 3D image plane)
+        // Compute the normal vector to the line containing the 2D line segment and the optical center (the cross product of the end-point vectors in the 3D image line)
         T x1 = segments2D[i][0], y1 = segments2D[i][1], x2 = segments2D[i][2], y2 = segments2D[i][3];
         Matrix<T,3,1> e1( (x1-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y1-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
         Matrix<T,3,1> e2( (x2-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y2-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
@@ -200,23 +401,23 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
         // Check if the end points are within a panar segment in v_pbmaps
         for(size_t j=0; j < pbmap.vPlanes.size(); j++)
         {
-            const mrpt::pbmap::Plane & plane = pbmap.vPlanes[j];
+            const mrpt::pbmap::Plane & line = pbmap.vPlanes[j];
 //            cout << "pt1 " << x1 << " " << y1 << " pt2 " << x2 << " " << y2 << endl;
-//            cout << "End-points inside hull? " << plane.isInHull(i1,cloud->width) << endl;
-//            cout << "End-points inside hull? " << plane.isInHull(i2,cloud->width) << endl;
+//            cout << "End-points inside hull? " << line.isInHull(i1,cloud->width) << endl;
+//            cout << "End-points inside hull? " << line.isInHull(i2,cloud->width) << endl;
 //            mrpt::pbmap::PbMap::displayImagePbMap(cloud, cv::Mat(), pbmap, false, cv::Point(x1, y1));
 //            mrpt::pbmap::PbMap::displayImagePbMap(cloud, cv::Mat(), pbmap, false, cv::Point(x2, y2));
-//            if( plane.isInHull(i1,cloud->width) && plane.isInHull(i2,cloud->width) )
+//            if( line.isInHull(i1,cloud->width) && line.isInHull(i2,cloud->width) )
             if( pbmap.vPlanes.size() == 1 )
             {
 //                // Compute the 3D line as the intersection of two lines (http://mathworld.wolfram.com/Plane-PlaneIntersection.html). Another option is (http://mathworld.wolfram.com/Line-PlaneIntersection.html)
 //                Matrix<T,3,1> p(0, 0, 0);
-//                p(2) = -plane.d / (plane.v3normal(2) - (plane.v3normal(0)*n1(2)/n1(0)));
+//                p(2) = -line.d / (line.v3normal(2) - (line.v3normal(0)*n1(2)/n1(0)));
 //                p(0) = -n1(2)*p(2)/n1(0);
 
 //                MatrixXf m = MatrixXf::Zero(2,3);
 //                m.row(0) = n1;
-//                m.row(1) = plane.v3normal;
+//                m.row(1) = line.v3normal;
 //                FullPivLU<MatrixXf> lu(m);
 //                MatrixXf m_null_space = lu.kernel(); m_null_space.normalize();
 //                Map<Matrix<T,3,1>> l(m_null_space.data(),3);
@@ -229,113 +430,18 @@ void ExtrinsicCalibLines::getSegments3D(const TCamera & cam, const pcl::PointClo
 //                cout << "line3D " << vv_lines3D[sensor1][i] << endl;
 //                //cout << "m_null_space \n" << m_null_space << endl;
 
-                // Compute the 3D line as the intersection of a line and a plane. The equations are {n*p+d=0; p1+t(p2-p1)=p}, considering p1=(0,0,0) [the optical center] -> t = -d/n.dot(p2)
-                double t1 = - plane.d / plane.v3normal.dot(e1.cast<float>());
+                // Compute the 3D line as the intersection of a line and a line. The equations are {n*p+d=0; p1+t(p2-p1)=p}, considering p1=(0,0,0) [the optical center] -> t = -d/n.dot(p2)
+                double t1 = - line.d / line.v3normal.dot(e1.cast<float>());
                 Matrix<T,3,1> p1 = t1*e1;
-                double t2 = - plane.d / plane.v3normal.dot(e2.cast<float>());
+                double t2 = - line.d / line.v3normal.dot(e2.cast<float>());
                 Matrix<T,3,1> p2 = t2*e2;
                 line_has3D[i] = true;
                 segments3D[i] << p1[0], p1[1], p1[2], p2[0], p2[1], p2[2];
-                //cout << i << " Segment3D (from plane intersection) " << segments3D[i].transpose() << endl;
+                //cout << i << " Segment3D (from line intersection) " << segments3D[i].transpose() << endl;
                 break;
             }
         }
     }
-}
-
-map<size_t,size_t> ExtrinsicCalibLines::matchNormalVectors(const vector<Matrix<T,3,1> > & n_cam1, const vector<Matrix<T,3,1> > & n_cam2, Matrix<T,3,3> & rotation, T & conditioning, const T min_angle_diff)
-{
-    // Find line correspondences (in 2D by assuming a known rotation and zero translation)
-    // Select a pair of lines (normal vector of projective plane) and verify rotation
-    CTicTac clock; clock.Tic(); //Clock to measure the runtime
-    map<size_t,size_t> best_matches;
-    vector<map<size_t,size_t> > discarded_matches; // with at least 3 matches
-    T best_error = 10e6;
-    const T min_angle_diff_cos = cos(DEG2RAD(min_angle_diff));
-    const T min_conditioning = 0.01;
-    // Exhaustive search
-    for(size_t i1=0; i1 < n_cam1.size(); i1++)
-    {
-        for(size_t i2=i1+1; i2 < n_cam1.size(); i2++)
-        {
-            for(size_t j1=0; j1 < n_cam2.size(); j1++)
-            {
-                for(size_t j2=0; j2 < n_cam2.size(); j2++)
-                {
-                    if( j1 == j2 )
-                        continue;
-                    bool already_checked = false;
-                    for(size_t k=0; k < discarded_matches.size(); k++)
-                        if(discarded_matches[k].count(i1) && discarded_matches[k][i1] == j1 && discarded_matches[k].count(i2) && discarded_matches[k][i2] == j2)
-                        {
-                            already_checked = true;
-                            break;
-                        }
-                    if( already_checked )
-                        continue;
-
-                    // Compute rotation
-                    Matrix<T,3,3> rot;
-                    Matrix<T,3,3> cov = n_cam2[j1]*n_cam1[i1].transpose() + n_cam2[j2]*n_cam1[i2].transpose() + (n_cam2[j1].cross(n_cam2[j2]))*(n_cam1[i1].cross(n_cam1[i2])).transpose();
-                    T cond = rotationFromNormals(cov, rot);
-                    if(cond < min_conditioning){ //cout << "ExtrinsicCalibLines::matchNormalVectors: JacobiSVD bad conditioning " << cond << " < " << min_conditioning << "\n";
-                        continue; }
-                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << n_cam1[i1].dot(rot*n_cam2[j1]) << " min_cos " << min_angle_diff_cos << " conditioning " << cond << endl;
-                    if( n_cam1[i1].dot(rot*n_cam2[j1]) < min_angle_diff_cos ) // Check if the rotation is consistent
-                        continue;
-
-                    //cout << "Candidate pair " << i1 << "-" << i2 << " vs " << j1 << "-" << j2 << " error " << RAD2DEG(acos(n_cam1[i1].dot(rot*n_cam2[j1]))) << " min_cos " << min_angle_diff_cos << " conditioning " << cond << endl;
-
-                    // Check how many lines are consistent with this rotation
-                    map<size_t,size_t> matches;
-                    matches[i1] = j1;
-                    matches[i2] = j2;
-                    for(size_t i=0; i < n_cam1.size(); i++)
-                    {
-                        if( i==i1 || i==i2 )
-                            continue;
-                        for(size_t j=0; j < n_cam2.size(); j++)
-                        {
-                            if( j==j1 || j==j2 )
-                                continue;
-                            //cout << "error " << i << " vs " << j << " : " << n_cam1[i].dot(rot*n_cam2[j]) << " min " << min_angle_diff << endl;
-                            if( n_cam1[i].dot(rot*n_cam2[j]) > min_angle_diff_cos )
-                            {
-                                cov += n_cam2[j]*n_cam1[i].transpose();
-                                for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++)
-                                    cov += (n_cam2[j].cross(n_cam2[it->second]))*(n_cam1[i].cross(n_cam1[it->first])).transpose();
-                                matches[i] = j;
-                            }
-                        }
-                    }
-
-                    // Compute the rotation from the inliers
-                    T error = 0;
-                    cond = rotationFromNormals(cov, rot);
-                    for(map<size_t,size_t>::iterator it=matches.begin(); it != matches.end(); it++){ //cout << "match " << it->first << " - " << it->second << " error " << RAD2DEG(acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]))) << endl;
-                        error += acos(n_cam1[it->first] .dot (rot*n_cam2[it->second]));}
-
-                    //cout << "Num corresp " << matches.size() << " conditioning " << cond << " error " << error << " average error " << RAD2DEG(error/matches.size()) << " deg.\n";
-
-                    if(best_matches.size() < matches.size() && matches.size() > 2)
-                    {
-                        //if(matches.size() > 2)
-                            discarded_matches.push_back(matches);
-
-                        best_matches = matches;
-                        best_error = error;
-                        rotation = rot;
-                        conditioning = cond;
-                    }
-                }
-            }
-        }
-    }
-//    cout << " ...matchNormalVectors took " << 1000*clock.Tac() << " ms " << best_matches.size() << " matches, best_error " << RAD2DEG(best_error) << " conditioning " << conditioning << endl << rotation << endl;
-//    for(map<size_t,size_t>::iterator it=best_matches.begin(); it != best_matches.end(); it++)
-//        cout << "match " << it->first << " - " << it->second << endl;
-
-    return best_matches;
 }
 
 //double ExtrinsicCalibLines::calcRotationErrorPair(const CMatrixDouble & correspondences, const Matrix<T,3,3> & Rot, bool in_deg)
@@ -352,7 +458,7 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
         // sensor_id = omp_get_thread_num();
         cout << sensor_id << " cloud " << cloud[sensor_id]->height << "x" << cloud[sensor_id]->width << endl;
         CFeatureLines featLines;
-        featLines.extractLines(rgb[sensor_id], vv_segments2D[sensor_id], min_pixels_line, line_extraction); //, true);
+        featLines.extractLines(rgb[sensor_id], vv_segments2D[sensor_id], line_extraction, min_pixels_line, max_lines); //, true);
         cout << sensor_id << " lines " << vv_segments2D[sensor_id].size() << endl;
         ExtrinsicCalibLines::getSegments3D(intrinsics[sensor_id].rightCamera, cloud[sensor_id], v_pbmap[sensor_id], vv_segments2D[sensor_id], vv_segment_n[sensor_id], vv_segments3D[sensor_id], vv_line_has3D[sensor_id]);
         //ExtrinsicCalibLines::getSegments3D(rgb[sensor_id], cloud[sensor_id], intrinsics[sensor_id].rightCamera, vv_segments2D[sensor_id], vv_segment_n[sensor_id], vv_segments3D[sensor_id], vv_line_has3D[sensor_id]);
@@ -669,7 +775,7 @@ Matrix<T,3,3> ExtrinsicCalibLines::ApproximateRotationZeroTrans(const size_t sen
 
 ////        if(weightedLS == 1 && correspondences.cols() == 18)
 ////        {
-////            // The weight takes into account the number of inliers of the patch, the distance of the patch's center to the image center and the distance of the plane to the sensor
+////            // The weight takes into account the number of inliers of the patch, the distance of the patch's center to the image center and the distance of the line to the sensor
 ////            //          T weight = (correspondences(i,8) / (correspondences(i,3) * correspondences(i,9)));// / correspondences.rows();
 ////            T weight = correspondences(i,17);
 ////            Hessian += weight * (n1 * n1.transpose() );
@@ -977,3 +1083,86 @@ void ExtrinsicCalibLines::Calibrate()
 
     cout << "Errors " << calcRotationError(Rt_estimated) << " av deg " << calcRotationError(Rt_estimated,true) << " av trans " << calcTranslationError(Rt_estimated,true) << endl;
 }
+
+
+//// Ransac functions to detect outliers in the line matching
+//void ransacLineAlignment_fit(
+//        const CMatrixDouble &lineCorresp,
+//        const mrpt::vector_size_t  &useIndices,
+//        vector< CMatrixDouble > &fitModels )
+////        vector< Matrix4f > &fitModels )
+//{
+//  ASSERT_(useIndices.size()==3);
+
+//  try
+//  {
+//    CMatrixDouble corresp(8,3);
+
+////  cout << "Size lineCorresp: " << endl;
+////  cout << "useIndices " << useIndices[0] << " " << useIndices[1]  << " " << useIndices[2] << endl;
+//    for(unsigned i=0; i<3; i++)
+//      corresp.col(i) = lineCorresp.col(useIndices[i]);
+
+//    fitModels.resize(1);
+////    Matrix4f &M = fitModels[0];
+//    CMatrixDouble &M = fitModels[0];
+//    M = registerMatchedPlanes(corresp);
+//  }
+//  catch(exception &)
+//  {
+//    fitModels.clear();
+//    return;
+//  }
+//}
+
+//void ransacLine_distance(
+//        const CMatrixDouble &lineCorresp,
+//        const vector< CMatrixDouble > & testModels,
+//        const double distanceThreshold,
+//        unsigned int & out_bestModelIndex,
+//        mrpt::vector_size_t & out_inlierIndices )
+//{
+//  ASSERT_( testModels.size()==1 )
+//  out_bestModelIndex = 0;
+//  const CMatrixDouble &M = testModels[0];
+
+//  Matrix3d Rotation; Rotation << M(0,0), M(0,1), M(0,2), M(1,0), M(1,1), M(1,2), M(2,0), M(2,1), M(2,2);
+//  Matrix<T,3,1> translation; translation << M(0,3), M(1,3), M(2,3);
+
+//    ASSERT_( size(M,1)==4 && size(M,2)==4 )
+
+//  const size_t N = size(lineCorresp,2);
+//  out_inlierIndices.clear();
+//  out_inlierIndices.reserve(100);
+//  for (size_t i=0;i<N;i++)
+//  {
+//    const Matrix<T,3,1> n_i = Matrix<T,3,1>(lineCorresp(0,i), lineCorresp(1,i), lineCorresp(2,i));
+//    const Matrix<T,3,1> n_ii = Rotation * Matrix<T,3,1>(lineCorresp(4,i), lineCorresp(5,i), lineCorresp(6,i));
+//    const float d_error = fabs((lineCorresp(7,i) - translation.dot(n_i)) - lineCorresp(3,i));
+//    const float angle_error = (n_i .cross (n_ii )).norm();
+
+//    if (d_error < distanceThreshold)
+//     if (angle_error < distanceThreshold) // Warning: this threshold has a different dimension
+//      out_inlierIndices.push_back(i);
+//  }
+//}
+
+///** Return "true" if the selected points are a degenerate (invalid) case.
+//  */
+//bool ransacLine_degenerate(
+//        const CMatrixDouble &lineCorresp,
+//        const mrpt::vector_size_t &useIndices )
+//{
+//  ASSERT_( useIndices.size()==3 )
+
+//  const Matrix<T,3,1> n_1 = Matrix<T,3,1>(lineCorresp(0,useIndices[0]), lineCorresp(1,useIndices[0]), lineCorresp(2,useIndices[0]));
+//  const Matrix<T,3,1> n_2 = Matrix<T,3,1>(lineCorresp(0,useIndices[1]), lineCorresp(1,useIndices[1]), lineCorresp(2,useIndices[1]));
+//  const Matrix<T,3,1> n_3 = Matrix<T,3,1>(lineCorresp(0,useIndices[2]), lineCorresp(1,useIndices[2]), lineCorresp(2,useIndices[2]));
+////cout << "degenerate " << useIndices[0] << " " << useIndices[1]  << " " << useIndices[2] << " - " << fabs(n_1. dot( n_2. cross(n_3) ) ) << endl;
+
+//  if( fabs(n_1. dot( n_2. cross(n_3) ) ) < 0.9 )
+//    return true;
+
+//  return false;
+//}
+
