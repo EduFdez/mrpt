@@ -28,6 +28,7 @@ MRPT_INITIALIZER(registerAllClasses_mrpt_core)
 
 	registerClass( CLASS_ID( CIncrementalMapPartitioner ) );
 	registerClass( CLASS_ID( CMultiMetricMapPDF ) );
+//    registerClass( CLASS_ID( MetricRegistration<float> ) );
 #endif
 }
 

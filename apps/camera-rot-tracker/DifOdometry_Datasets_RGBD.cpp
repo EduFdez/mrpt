@@ -8,12 +8,18 @@
    +---------------------------------------------------------------------------+ */
 
 #include "DifOdometry_Datasets_RGBD.h"
+#include "pinhole_model_warp.h"
+//#include "../DifOdometry-Datasets/legend.xpm"
+#include "../kinect-rig-calib/kinect-rig-calib_misc.h"
 #include <mrpt/system/filesystem.h>
 #include <mrpt/system/threads.h>
 #include <mrpt/utils/CConfigFile.h>
 #include <mrpt/vision/CFeatureLines.h>
 #include <mrpt/vision/CFeatureExtraction.h>
 #include <mrpt/vision/tracking.h>
+#include <mrpt/pbmap/PbMap.h>
+#include <mrpt/pbmap/colors.h>
+#include <mrpt/slam/MetricRegistration.h>
 //#include <mrpt/opengl/CFrustum.h>
 //#include <mrpt/opengl/CGridPlaneXY.h>
 //#include <mrpt/opengl/CBox.h>
@@ -22,10 +28,13 @@
 //#include <mrpt/opengl/CSetOfLines.h>
 //#include <mrpt/opengl/CEllipsoid.h>
 //#include <mrpt/opengl/stock_objects.h>
-#include <mrpt/pbmap/colors.h>
-#include "../DifOdometry-Datasets/legend.xpm"
-#include "../kinect-rig-calib/kinect-rig-calib_misc.h"
-#include "pinhole_model_warp.h"
+
+#include "opencv2/core/cuda.hpp"
+#include "opencv2/cudawarping.hpp"
+#include "opencv2/cudaarithm.hpp"
+
+#include <pcl/filters/fast_bilateral.h>
+#include <pcl/filters/fast_bilateral_omp.h>
 
 using namespace Eigen;
 using namespace std;
@@ -39,6 +48,7 @@ using namespace mrpt::math;
 using namespace mrpt::utils;
 using namespace mrpt::poses;
 using namespace mrpt::vision;
+using namespace mrpt::slam;
 
 void CDifodoDatasets_RGBD::loadConfiguration(const string & config_file)
 {	
@@ -58,7 +68,6 @@ void CDifodoDatasets_RGBD::loadConfiguration(const string & config_file)
     ctf_levels = ini.read_int("DIFODO_CONFIG", "ctf_levels", 5, true);
     if(b_initial_rot)
         ctf_levels = 2;
-
 
 	//						Open Rawlog File
 	//==================================================================
@@ -363,7 +372,7 @@ void CDifodoDatasets_RGBD::loadFrame()
             observation = dataset.getAsObservation(rawlog_count++);
         }
     }
-    cout << "CDifodoDatasets_RGBD::loadFrame... " << rawlog_count << " / " << dataset.size() << endl;
+    cout << "\nCDifodoDatasets_RGBD::loadFrame... " << rawlog_count << " / " << dataset.size() << endl;
 
     obsRGBD[0] = CObservation3DRangeScanPtr(observation);
     obsRGBD[0]->load();
@@ -371,9 +380,10 @@ void CDifodoDatasets_RGBD::loadFrame()
 	const unsigned int height = range.getRowCount();
 	const unsigned int width = range.getColCount();
     v_rgb[0] = cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>());
+    //rgb_undist.undistort(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), v_rgb[0]);
     cv::cvtColor( v_rgb[0], v_gray[0], cv::COLOR_BGR2GRAY );
     convertRange_mrpt2cvMat(obsRGBD[0]->rangeImage, v_depth[0]);
-//    v_cloud[0] = getPointCloud<PointT>(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), v_depth[0], intrinsics);
+    v_cloud[0] = getPointCloud<PointT>(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), v_depth[0], intrinsics);
 //    cv::imshow("rgb", v_rgb[0]);
 //    cv::waitKey();
 
@@ -528,11 +538,33 @@ void CDifodoDatasets_RGBD::run()
 //    initializeScene();
     reset();
 
+    T max_angle_rad = DEG2RAD(min_angle_diff);
+
     CFeatureLines featLines;
-    featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], line_extraction, min_pixels_line, max_lines, display);
+    //featLines.extractLinesDesc(v_gray[0], vv_segments2D[0], vv_segmentsDesc[0], line_extraction, min_pixels_line, max_lines); //, display);
+    //featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], line_extraction, min_pixels_line, max_lines); //, display);
+    featLines.extractLines(v_gray[0], vv_segments2D[0], vv_length[0], vv_seg_contrast[0], line_extraction, min_pixels_line, max_lines, true); //, display);
+    //featLines.extractLines(v_gray[0], vv_segments2D[0], line_extraction, min_pixels_line, max_lines); //, display);
     ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
     if(verbose)
         cout << "CDifodoDatasets_RGBD initialize. lines " << vv_segments2D[0].size() << endl;
+
+    pcl::FastBilateralFilter<PointT> filter;
+    filter.setSigmaS(10.0);
+    filter.setSigmaR(0.5);
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+
+    CTicTac clock1;
+    clock1.Tic(); //Clock to measure the runtime
+    filter.setInputCloud(v_cloud[0]);
+    filter.filter(*cloud);
+    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud = mrpt::pbmap::PbMap::computeImgNormal(cloud);
+    cout << "  normal_cloud took " << 1000*clock1.Tac() << " ms \n";
+    clock1.Tic(); //Clock to measure the runtime
+//    vv_pt_coor[0] = getDistributedNormals(v_depth[0], intrinsics, vv_pt_normal[0], vv_pt_robust[0], 4, 3);
+    vv_pt_coor[0] = getDistributedNormals(normal_cloud, vv_pt_normal[0], vv_pt_robust[0], 5, 4);
+    cout << "  getDistributedNormals took " << 1000*clock1.Tac() << " ms \n";
+
 
 //    CFeatureExtraction featPoints;
 //    CFeatureList points1, points2;
@@ -543,6 +575,7 @@ void CDifodoDatasets_RGBD::run()
 //    cout << "CDifodoDatasets_RGBD initialize. points " << points1.size() << endl;
 
     // Results
+    Eigen::Matrix<T,3,3> isometry;
     Eigen::Matrix<T,4,4> approx_rot = Eigen::Matrix<T,4,4>::Identity(), approx_rot_tf = Eigen::Matrix<T,4,4>::Identity(); //rel_pose_diff_difodo
     vector<float> v_rot, v_trans;
     vector<float> v_rot_error, v_rot_error_difodo, v_trans_error_difodo;
@@ -590,14 +623,24 @@ void CDifodoDatasets_RGBD::run()
                 if(verbose)
                     cout << "groundtruth TUM : " << v_trans.back() << " mm " << v_rot.back() << " deg. rotation " << gt_rel_pose_TUM.yaw() << " " << gt_rel_pose_TUM.pitch() << " " << gt_rel_pose_TUM.roll() << endl;
 
-                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], line_extraction, min_pixels_line, max_lines); //, display);
+//                featLines.extractLinesDesc(v_gray[0], vv_segments2D[0], vv_segmentsDesc[0], line_extraction, min_pixels_line, max_lines, true);
+//                featLines.extractLines(cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), vv_segments2D[0], line_extraction, min_pixels_line, max_lines); //, display);
+//                featLines.extractLines(v_gray[0], vv_segments2D[0], line_extraction, min_pixels_line, max_lines); //, display);
+                featLines.extractLines(v_gray[0], vv_segments2D[0], vv_length[0], vv_seg_contrast[0], line_extraction, min_pixels_line, max_lines);//, true); //, display);
                 v_time_lines.push_back(featLines.time);
                 T condition;
                 Matrix<T,3,3> rot;
+                ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);                
                 CTicTac clock; clock.Tic(); //Clock to measure the runtime
-                ExtrinsicCalibLines::getProjPlaneNormals(intrinsics, vv_segments2D[0], vv_segment_n[0]);
-                map<size_t,size_t> line_matches = matchNormalVectors(vv_segment_n[1], vv_segment_n[0], rot, condition);
+                map<size_t,size_t> line_matches = mrpt::slam::MetricRegistration<T>::registerNormalVectors(vv_segment_n[1], vv_segment_n[0], rot, condition, max_angle_rad, DEG2RAD(10));
+//                map<size_t,size_t> line_matches = MetricRegistration<T>::registerNormalVectorsContrast(vv_segment_n[1], vv_length[1], vv_seg_contrast[1],
+//                                                                                                        vv_segment_n[0], vv_length[0], vv_seg_contrast[0],
+//                                                                                                        rot, condition, max_angle_rad, DEG2RAD(10), 60);
                 v_time_rot.push_back(1000*clock.Tac());
+                cout << "match normals " << v_time_rot.back() << "ms\n";
+                approx_rot.block<3,3>(0,0) = rot;
+                rot_error = RAD2DEG( getRotationVector<T,3>( rot.transpose() * gt_rel_pose_TUM.getRotationMatrix() ).norm() );
+                rel_pose_TUM.setRotationMatrix(rot);
                 if(verbose)
                 {
                     cout << "CDifodoDatasets_RGBD. lines " << vv_segments2D[0].size() << endl;
@@ -606,15 +649,46 @@ void CDifodoDatasets_RGBD::run()
                     cout << "ERROR " << rot_error << " Approx rotation : " << rel_pose_TUM.yaw() << " " << rel_pose_TUM.pitch() << " " << rel_pose_TUM.roll() << endl;
                 }
 
-                approx_rot.block<3,3>(0,0) = rot;
-                rot_error = RAD2DEG( getRotationVector<T,3>( rot.transpose() * gt_rel_pose_TUM.getRotationMatrix() ).norm() );
-                rel_pose_TUM.setRotationMatrix(rot);
-
                 if( rot_error < th_good_rot_deg)
                 {
                     v_rot_error.push_back(rot_error);
                     ++n_success_rot;
                 }
+
+                clock.Tic();
+                map<size_t,size_t> line_matches2 = mrpt::slam::MetricRegistration<T>::registerNormalVectorsStop(vv_segment_n[1], vv_segment_n[0], rot, condition, max_angle_rad, DEG2RAD(10));
+//                map<size_t,size_t> line_matches2 = MetricRegistration<T>::registerNormalVectorsContrastStop(vv_segment_n[1], vv_length[1], vv_seg_contrast[1],
+//                                                                                                            vv_segment_n[0], vv_length[0], vv_seg_contrast[0],
+//                                                                                                            rot, condition, max_angle_rad, DEG2RAD(10), 60);
+                double time = 1000*clock.Tac();
+                cout << "match normals contrast " << time << "ms\n";
+                approx_rot.block<3,3>(0,0) = rot;
+                rot_error = RAD2DEG( getRotationVector<T,3>( rot.transpose() * gt_rel_pose_TUM.getRotationMatrix() ).norm() );
+                cout << "ERROR " << rot_error << endl;
+                if( line_matches != line_matches2 )
+                {
+                    std::cout << "line_matches " << line_matches.size() << " \n";
+                    for(map<size_t,size_t>::iterator it=line_matches.begin(); it != line_matches.end(); it++)
+                        std::cout << " match " << it->first << " - " << it->second << endl;
+
+                    std::cout << "line_matches2 " << line_matches2.size() << " \n";
+                    for(map<size_t,size_t>::iterator it=line_matches2.begin(); it != line_matches2.end(); it++)
+                        std::cout << " match " << it->first << " - " << it->second << endl;
+                }
+
+
+                // Match surface patches from the depth images
+                filter.setInputCloud(v_cloud[0]);
+                filter.filter(*cloud);
+                pcl::PointCloud<pcl::Normal>::Ptr normal_cloud = mrpt::pbmap::PbMap::computeImgNormal(cloud);
+                vv_pt_coor[0] = getDistributedNormals(normal_cloud, vv_pt_normal[0], vv_pt_robust[0], 5, 4);
+
+                float condition_pts;
+                Matrix<float,3,3> rot_pts(Matrix<float,3,3>::Identity());
+                map<size_t,size_t> point_depth_matches = mrpt::slam::MetricRegistration<float>::registerNormalVectors(vv_pt_normal[1], vv_pt_normal[0], rot_pts, condition_pts, max_angle_rad, DEG2RAD(10));
+                T rot_pts_error = RAD2DEG( getRotationVector<T,3>( rot_pts.transpose().cast<T>() * gt_rel_pose_TUM.getRotationMatrix() ).norm() );
+                cout << "Point matches " << point_depth_matches.size() << " condition_pts " << condition_pts << " rot_pts_error " << rot_pts_error << endl;
+
 
 //                points2 = points1;
 //                featPoints.detectFeatures( obsRGBD[0]->intensityImage, points1 );//
@@ -627,6 +701,10 @@ void CDifodoDatasets_RGBD::run()
 //                    feature_matches.showImagesAndMatchedPoints( obsRGBD[0]->intensityImage, obsRGBD[1]->intensityImage, point_matches, TColor(0,0,255) );
 //                    mrpt::system::pause();
 //                }
+
+//                std::vector<Point2f> obj;
+//                std::vector<Point2f> scene;
+//                  Mat H = findHomography( obj, scene, CV_RANSAC );
 
 //                cout << "odometryCalculation \n";
                 if(b_initial_rot)
@@ -665,43 +743,125 @@ void CDifodoDatasets_RGBD::run()
                     cv::Mat gray_warped1, diff1;
                     cv::Mat gray_warped2, diff2;
                     cv::Mat gray_warped3, diff3;
+                    cv::Mat gray_warped4, diff4;
 
                     //cv::cvtColor( cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), gray, cv::COLOR_BGR2GRAY );
                     warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(gt_rel_pose_TUM), gray_warped1);
                     warp(v_gray[0], v_depth[0], intrinsics, approx_rot.cast<float>(), gray_warped2);
                     warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(transf+rel_pose+(-transf)), gray_warped3);
+                    mrpt::slam::MetricRegistration<T>::rotation2homography( rot, intrinsics.intrinsicParams.cast<T>(), isometry );
+                    //cout << "Isometry\n" << isometry << endl;
+                    cv::Mat cvH;
+                    cv::Mat imgMask = cv::Mat(v_gray[0].size(), CV_8UC1, cv::Scalar(1));
+                    cv::Mat imgMaskWarped;
+                    Eigen::Matrix<T,2,3> isometry_2x3 = isometry.block<2,3>(0,0);
+                    cv::eigen2cv(isometry_2x3, cvH);
+                    //cv::cuda::warpAffine(imgMask , imgMaskWarped, cvH, imgMaskWarped.size());
+                    cv::warpAffine(imgMask , imgMaskWarped, cvH, imgMaskWarped.size());
+                    cv::warpAffine(v_gray[0], gray_warped4, cvH, v_gray[0].size());
+                    gray_warped4.copyTo(gray_warped4, imgMaskWarped);
+                    cv::Scalar sum_abs_diff = cv::sum(gray_warped4); // cv::cuda::sum(gray_warped4, imgMaskWarped);
+                    cv::Scalar sum_warped = cv::sum(imgMaskWarped);
+                    T MAD = sum_abs_diff[0] / T(sum_warped[0]);
+                    cout << "MAD " << MAD << endl;
+                    //cv::cuda::absdiff(v_gray[0], v_gray[1], diff);
                     cv::absdiff(v_gray[0], v_gray[1], diff);
                     cv::absdiff(v_gray[1], gray_warped1, diff1);
                     cv::absdiff(v_gray[1], gray_warped2, diff2);
                     cv::absdiff(v_gray[1], gray_warped3, diff3);
+                    cv::absdiff(v_gray[1], gray_warped4, diff4);
 
+                    cv::Mat image_lines_3[2];
+                    cv::Mat image_lines_2[2];
                     cv::Mat image_lines[2];
+                    cv::Mat image_pts[2];
                     for(size_t i=0; i < 2; i++)
                     {
-                        image_lines[i] = v_gray[i].clone();
-                        if( image_lines[i].channels() == 1 )
-                            cv::cvtColor( image_lines[i], image_lines[i], cv::COLOR_GRAY2BGR );
+                        cv::cvtColor( v_gray[i], image_lines[i], cv::COLOR_GRAY2BGR );
+                        cv::cvtColor( v_gray[i], image_lines_2[i], cv::COLOR_GRAY2BGR );
+                        cv::cvtColor( v_gray[i], image_lines_3[i], cv::COLOR_GRAY2BGR );
+//                        v_rgb[i].copyTo(image_lines_2[i]);
+//                        image_lines_2[i] = v_gray[i].clone();
+//                        image_lines[i] = v_gray[i].clone();
+//                        if( image_lines[i].channels() == 1 )
+//                            cv::cvtColor( image_lines[i], image_lines[i], cv::COLOR_GRAY2BGR );
+//                            cv::cvtColor( image_lines_2[i], image_lines_2[i], cv::COLOR_GRAY2BGR );
                         for(auto it = begin(line_matches); it != end(line_matches); ++it)
                         {
                             size_t m = (i == 0) ? it->second : it->first;
                             cv::Scalar color(blu[distance(begin(line_matches),it)%10],grn[distance(begin(line_matches),it)%10],red[distance(begin(line_matches),it)%10]);
                             cv::line(image_lines[i], cv::Point(cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), cv::Point2f(cv::Point(vv_segments2D[i][m][2], vv_segments2D[i][m][3])), color, 2 );
                             //cv::circle(image_lines[i], cv::Point(cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), 3, color, 3);
-                            // cv::putText(image_lines[i], string(to_string(distance(begin(segments),line))), cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), 0, 1.2, color, 3 );
+                            cv::putText(image_lines[i], to_string(m), cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1]), 0, 1.0, color, 1 );
+                        }
+
+                        for(auto it = begin(line_matches2); it != end(line_matches2); ++it)
+                        {
+                            //cout << "match " << it->second << " / " << vv_segments2D[it->second].size() << " " << it->first << " / " << vv_segments2D[it->first].size() << "\n";
+                            size_t m = (i == 0) ? it->second : it->first;
+                            cv::Scalar color(blu[distance(begin(line_matches2),it)%10],grn[distance(begin(line_matches2),it)%10],red[distance(begin(line_matches2),it)%10]);
+                            cv::line(image_lines_2[i], cv::Point(cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), cv::Point2f(cv::Point(vv_segments2D[i][m][2], vv_segments2D[i][m][3])), color, 2 );
+
+                            Eigen::Vector2f seg(vv_segments2D[i][m][2]-vv_segments2D[i][m][0], vv_segments2D[i][m][3]-vv_segments2D[i][m][1]);
+                            int l = seg.norm();
+                            seg.normalize();
+                            Eigen::Vector2f n(vv_segments2D[i][m][3]-vv_segments2D[i][m][1], vv_segments2D[i][m][0]-vv_segments2D[i][m][2]);
+                            n.normalize();
+                            int d = 10 + rand() % 2;
+                            int rand_line = 0.5*(rand() % l);
+                            cv::Point pt_line(vv_segments2D[i][m][0]+rand_line*seg[0], vv_segments2D[i][m][1]+rand_line*seg[1]);
+                            cv::Point n1(d*n[0], d*n[1]);
+                            cv::Point pt_txt = pt_line + n1;
+                            cv::line( image_lines_2[i], pt_line, pt_txt, color, 1 );
+                            cv::putText(image_lines_2[i], to_string(int(vv_seg_contrast[i][m])), pt_txt, 0, 1.0, color, 1 );
+
+//                            cv::circle(image_lines_2[i], cv::Point(cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), 3, color, 3);
+                            // cv::putText(image_lines_2[i], to_string(distance(begin(segments),line)), cv::Point2f(vv_segments2D[i][m][0], vv_segments2D[i][m][1])), 0, 1.2, color, 3 );
+                        }
+
+                        for(auto line = begin(vv_segments2D[i]); line != end(vv_segments2D[i]); ++line)
+                        {
+                            size_t j = distance(begin(vv_segments2D[i]),line);
+                            cv::Scalar color(blu[j%10],grn[j%10],red[j%10]);
+                            cv::line(image_lines_3[i], cv::Point(cv::Point2f((*line)[0], (*line)[1])), cv::Point2f(cv::Point((*line)[2], (*line)[3])), color, 3 );
+                            cv::circle(image_lines_3[i], cv::Point(cv::Point2f((*line)[0], (*line)[1])), 3, color, 3);
+                            cv::putText(image_lines_3[i], to_string(int(vv_seg_contrast[i][j])), cv::Point(cv::Point2f((*line)[0], (*line)[1])), 0, 1.0, color, 1 );
+                            cv::putText(image_lines_3[i], to_string(j), cv::Point(cv::Point2f((*line)[2], (*line)[3])), 0, 1.0, color, 1 );
+                        }
+
+                        //image_pts[i] = v_rgb[i].clone();
+                        cv::Mat mask = cv::Mat::zeros(v_rgb[i].size(), CV_8UC1);
+                        mask.setTo(255, v_depth[i] > 0.3f);
+                        v_rgb[i].copyTo(image_pts[i], mask);
+                        for(size_t ii=0; ii < vv_pt_coor[i].size(); ++ii)
+                        {
+                            //cout << "it: " << vv_pt_coor[i][ii][0] << " " << vv_pt_coor[i][ii][1] << " \n";
+                            if( vv_pt_robust[i][ii] )
+                                cv::circle(image_pts[i], cv::Point(vv_pt_coor[i][ii][0], vv_pt_coor[i][ii][1]), 3, cv::Scalar(0,255,0), 3); // Green
+                            else
+                                cv::circle(image_pts[i], cv::Point(vv_pt_coor[i][ii][0], vv_pt_coor[i][ii][1]), 3, cv::Scalar(0,0,255), 3); // Red
                         }
                     }
 
-                    cv::imshow("gray0", image_lines[0]);        cv::moveWindow("gray0", 100, 50);
-                    cv::imshow("gray1", image_lines[1]);        cv::moveWindow("gray1", 760, 50);
+                    cv::imshow("lines0", image_lines[0]);        cv::moveWindow("lines0", 100, 50);
+                    cv::imshow("lines1", image_lines[1]);        cv::moveWindow("lines1", 760, 50);
 //                    cv::imshow("gray0", v_gray[0]);             cv::moveWindow("gray0", 100, 50);
 //                    cv::imshow("gray1", v_gray[1]);             cv::moveWindow("gray1", 760, 50);
                     cv::imshow("diff", diff);                   cv::moveWindow("diff", 1400, 50);
                     cv::imshow("gray_warped1", gray_warped1);   cv::moveWindow("gray_warped1", 100, 570);
                     cv::imshow("gray_warped2", gray_warped2);   cv::moveWindow("gray_warped2", 760, 570);
                     cv::imshow("gray_warped3", gray_warped3);   cv::moveWindow("gray_warped3", 1400, 570);
+                    cv::imshow("gray_warped4", gray_warped4);   cv::moveWindow("gray_warped4", 2040, 570);
                     cv::imshow("diff1", diff1);                 cv::moveWindow("diff1", 100, 1100);
                     cv::imshow("diff2", diff2);                 cv::moveWindow("diff2", 760, 1100);
                     cv::imshow("diff3", diff3);                 cv::moveWindow("diff3", 1400, 1100);
+                    cv::imshow("diff4", diff4);                 cv::moveWindow("diff4", 2040, 1100);
+                    cv::imshow("points0", image_pts[0]);        cv::moveWindow("points0", 100, 1630);
+                    cv::imshow("points1", image_pts[1]);        cv::moveWindow("points1", 760, 1630);
+                    cv::imshow("lines_0", image_lines_2[0]);     cv::moveWindow("lines_0", 100, 570);
+                    cv::imshow("lines_1", image_lines_2[1]);     cv::moveWindow("lines_1", 760, 570);
+                    cv::imshow("lines_x0", image_lines_3[0]);     cv::moveWindow("lines_x0", 100, 1630);
+                    cv::imshow("lines_x1", image_lines_3[1]);     cv::moveWindow("lines_x1", 760, 1630);
 
 //                    cv::imwrite("gray0.png", v_gray[0]);
 //                    cv::imwrite("gray1.png", v_gray[0]);

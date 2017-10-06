@@ -65,7 +65,8 @@ CMatrixDouble registerMatchedLineNormals( const CMatrixDouble & matched_lines )
         //    normalCovariances += matched_lines.block(i,0,1,3) * matched_lines.block(i,4,1,3).transpose();
     }
     Matrix3d Rotation;
-    double cond = ExtrinsicCalib::rotationFromNormals(normalCovariances, Rotation);
+    ExtrinsicCalib::rotationFromNormals(normalCovariances, Rotation);
+//    double cond = ExtrinsicCalib::rotationFromNormals(normalCovariances, Rotation);
 //    if(cond < 0.01f){ //cout << "registerMatchedLineNormals::matchNormalVectors: JacobiSVD bad conditioning " << cond << " < " << min_conditioning << "\n";
 //        Rotation = Matrix3d::Identity();
 //    }
@@ -73,25 +74,6 @@ CMatrixDouble registerMatchedLineNormals( const CMatrixDouble & matched_lines )
     //  // Form SE3 transformation matrix. This matrix maps the model into the current data reference frame
     //  Eigen::Matrix4f rigidTransf;
     CMatrixDouble33 rigidTransf(Rotation);
-//    rigidTransf.block(0,0,3,3) = Rotation;
-//    rigidTransf.block(0,3,3,1) = translation;
-//    rigidTransf.row(3) << 0,0,0,1;
-    //  rigidTransf(0,0) = Rotation(0,0);
-    //  rigidTransf(0,1) = Rotation(0,1);
-    //  rigidTransf(0,2) = Rotation(0,2);
-    //  rigidTransf(1,0) = Rotation(1,0);
-    //  rigidTransf(1,1) = Rotation(1,1);
-    //  rigidTransf(1,2) = Rotation(1,2);
-    //  rigidTransf(2,0) = Rotation(2,0);
-    //  rigidTransf(2,1) = Rotation(2,1);
-    //  rigidTransf(2,2) = Rotation(2,2);
-    //  rigidTransf(0,3) = translation(0);
-    //  rigidTransf(1,3) = translation(1);
-    //  rigidTransf(2,3) = translation(2);
-    //  rigidTransf(3,0) = 0;
-    //  rigidTransf(3,1) = 0;
-    //  rigidTransf(3,2) = 0;
-    //  rigidTransf(3,3) = 1;
 
     return rigidTransf;
 }
@@ -343,6 +325,8 @@ void ExtrinsicCalibLines::getProjPlaneNormals(const TCamera & cam, const vector<
         Matrix<T,3,1> e2( (x2-cam.intrinsicParams(0,2))/cam.intrinsicParams(0,0), (y2-cam.intrinsicParams(1,2))/cam.intrinsicParams(1,1), 1);
         segments_n[i] = e1.cross(e2);
         segments_n[i].normalize();
+        //cout << i << " normal " << segments_n[i].transpose() << endl;
+
 //        // Force the normal vector to be around the 2nd quadrant of X-Y (i.e. positive X and negative Y)
 //        if(fabs(segments_n[i][0]) > fabs(segments_n[i][1]) ) // Larger X component
 //        {
@@ -459,6 +443,7 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
         cout << sensor_id << " cloud " << cloud[sensor_id]->height << "x" << cloud[sensor_id]->width << endl;
         CFeatureLines featLines;
         featLines.extractLines(rgb[sensor_id], vv_segments2D[sensor_id], line_extraction, min_pixels_line, max_lines); //, true);
+//        featLines.extractLinesDesc(rgb[sensor_id], vv_segments2D[sensor_id], vv_segmentsDesc[sensor_id], line_extraction, min_pixels_line, max_lines); //, true);
         cout << sensor_id << " lines " << vv_segments2D[sensor_id].size() << endl;
         ExtrinsicCalibLines::getSegments3D(intrinsics[sensor_id].rightCamera, cloud[sensor_id], v_pbmap[sensor_id], vv_segments2D[sensor_id], vv_segment_n[sensor_id], vv_segments3D[sensor_id], vv_line_has3D[sensor_id]);
         //ExtrinsicCalibLines::getSegments3D(rgb[sensor_id], cloud[sensor_id], intrinsics[sensor_id].rightCamera, vv_segments2D[sensor_id], vv_segment_n[sensor_id], vv_segments3D[sensor_id], vv_line_has3D[sensor_id]);
@@ -491,7 +476,7 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
 //            cv::Mat rgb_concat;
 //            if(b_confirm_visually) // This visualization is specialized for the rgbd360 sensor rig
 //            {
-//                cv::Mat rgb_concat(max(), 2*width+20, CV_8UC3, cv::Scalar(255,255,255));
+//                cv::Mat rgb_concat(max(), 2*width+20, CV_8UC3, cv::T(255,255,255));
 //                cv::Mat img_transposed, img_rotated;
 //                cv::transpose(rgb[sensor1], img_transposed);
 //                cv::flip(img_transposed, img_rotated, 0);
@@ -504,10 +489,10 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
 
 //                cv::Mat image_lines;
 //                rgb_concat.convertTo(image_lines, CV_8UC1, 1.0 / 2);
-//                cv::line(image_lines, cv::Point(vv_segments2D[sensor1][i][1], height1-vv_segments2D[sensor1][i][0]), cv::Point(vv_segments2D[sensor1][i][3], height1-vv_segments2D[sensor1][i][2]), cv::Scalar(255, 0, 255), 1);
-//                cv::line(image_lines, cv::Point(width+20+vv_segments2D[sensor2][j][1], height2-vv_segments2D[sensor2][j][0]), cv::Point(width+20+vv_segments2D[sensor2][j][3], height2-vv_segments2D[sensor2][j][2]), cv::Scalar(255, 0, 255), 1);
-//                cv::line(image_lines, cv::Point(width+20+p1(1), height-p1(0)), cv::Point(width+20+p2(1), height-p2(0)), cv::Scalar(0, 150, 0), 1);
-//                cv::circle(image_lines, cv::Point(width+20+p(1), height-p(0)), 3, cv::Scalar(0, 0, 200), 3);
+//                cv::line(image_lines, cv::Point(vv_segments2D[sensor1][i][1], height1-vv_segments2D[sensor1][i][0]), cv::Point(vv_segments2D[sensor1][i][3], height1-vv_segments2D[sensor1][i][2]), cv::T(255, 0, 255), 1);
+//                cv::line(image_lines, cv::Point(width+20+vv_segments2D[sensor2][j][1], height2-vv_segments2D[sensor2][j][0]), cv::Point(width+20+vv_segments2D[sensor2][j][3], height2-vv_segments2D[sensor2][j][2]), cv::T(255, 0, 255), 1);
+//                cv::line(image_lines, cv::Point(width+20+p1(1), height-p1(0)), cv::Point(width+20+p2(1), height-p2(0)), cv::T(0, 150, 0), 1);
+//                cv::circle(image_lines, cv::Point(width+20+p(1), height-p(0)), 3, cv::T(0, 0, 200), 3);
 //                cv::imshow("Line match", image_lines);
 //                cv::waitKey(0);
 //            }
@@ -524,10 +509,10 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
 //                {
 //                    cv::Mat img_line1;
 //                    rgb[sensor1].copyTo(img_line1);
-//                    cv::line(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), cv::Scalar(255, 0, 255), 1);
-//                    cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), 3, cv::Scalar(0, 0, 200), 3);
-//                    cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), 3, cv::Scalar(0, 0, 200), 3);
-//                    cv::putText(img_line1, string(to_string(i)+"/"+to_string(vv_segments2D[sensor1].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
+//                    cv::line(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), cv::T(255, 0, 255), 1);
+//                    cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][0], vv_segments2D[sensor1][i][1]), 3, cv::T(0, 0, 200), 3);
+//                    cv::circle(img_line1, cv::Point(vv_segments2D[sensor1][i][2], vv_segments2D[sensor1][i][3]), 3, cv::T(0, 0, 200), 3);
+//                    cv::putText(img_line1, string(to_string(i)+"/"+to_string(vv_segments2D[sensor1].size())), cv::Point(30,60), 0, 1.8, cv::T(200,0,0), 3 );
 //                    cv::imshow("img_line1", img_line1); cv::moveWindow("img_line1", 20,60);
 //                }
 
@@ -553,10 +538,10 @@ void ExtrinsicCalibLines::getCorrespondences(const vector<cv::Mat> & rgb, const 
 ////                                mrpt::system::sleep(10);
 //                            cv::Mat img_line2;
 //                            rgb[sensor2].copyTo(img_line2);
-//                            cv::line(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), cv::Scalar(255, 0, 255), 1);
-//                            cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), 3, cv::Scalar(0, 0, 200), 3);
-//                            cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), 3, cv::Scalar(0, 0, 200), 3);
-//                            cv::putText(img_line2, string(to_string(j)+"/"+to_string(vv_segments2D[sensor2].size())), cv::Point(30,60), 0, 1.8, cv::Scalar(200,0,0), 3 );
+//                            cv::line(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), cv::T(255, 0, 255), 1);
+//                            cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][0], vv_segments2D[sensor2][j][1]), 3, cv::T(0, 0, 200), 3);
+//                            cv::circle(img_line2, cv::Point(vv_segments2D[sensor2][j][2], vv_segments2D[sensor2][j][3]), 3, cv::T(0, 0, 200), 3);
+//                            cv::putText(img_line2, string(to_string(j)+"/"+to_string(vv_segments2D[sensor2].size())), cv::Point(30,60), 0, 1.8, cv::T(200,0,0), 3 );
 //                            cv::imshow("img_line2", img_line2); cv::moveWindow("img_line2", 20,100+500);
 //                            char key = 'a';
 //                            while( key != 'k' && key != 'K' && key != 'l' && key != 'L' )

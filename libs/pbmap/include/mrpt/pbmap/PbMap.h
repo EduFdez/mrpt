@@ -63,7 +63,7 @@ namespace mrpt {
             pcl::PointCloud<PointT>::Ptr globalMapPtr;
 
             /*!Static function to compute a normal image from an organized point cloud.*/
-            static pcl::PointCloud<pcl::Normal>::Ptr computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor);
+            static pcl::PointCloud<pcl::Normal>::Ptr computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres = 0.02f, const float smooth_factor = 10.0f);
 
             /*!Static function to segment planes from an organized point cloud.*/
             static size_t segmentPlanes(const pcl::PointCloud<PointT>::Ptr & cloud,

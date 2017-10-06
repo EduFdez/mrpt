@@ -62,6 +62,7 @@ void KinectRigCalib::setNumSensors(const size_t n_sensors)
     {
         lines = FeatCorresp(num_sensors, 18);
         vv_segments2D.resize(num_sensors);
+        vv_segmentsDesc.resize(num_sensors);
         vv_segment_n.resize(num_sensors);
         vv_segments3D.resize(num_sensors);
         vv_line_has3D.resize(num_sensors);

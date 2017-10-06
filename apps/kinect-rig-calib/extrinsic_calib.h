@@ -127,7 +127,8 @@ class ExtrinsicCalib
     }
 
     /*! Calculate the rotation from the covariance matrix of a set of corresponding normal vectors */
-    static inline T rotationFromNormals(const Eigen::Matrix<T,3,3> & covariance, Eigen::Matrix<T,3,3> & rotation) //, const T threshold_cond = -1)
+    template <typename Scalar>
+    static inline Scalar rotationFromNormals(const Eigen::Matrix<Scalar,3,3> & covariance, Eigen::Matrix<Scalar,3,3> & rotation) //, const T threshold_cond = -1)
     {
 //        std::cout << "ExtrinsicCalib::rotationFromNormals...\n";
 //        mrpt::utils::CTicTac clock; clock.Tic(); //Clock to measure the runtime

@@ -39,7 +39,7 @@ bool larger_segment(const cv::Vec4f & s1, const cv::Vec4f & s2)
 }
 
 void CFeatureLines::extractLines(const cv::Mat & image,
-                                std::vector<cv::Vec4f> & segments,
+                                std::vector<cv::Vec4f>  & segments,
                                 const int method,
                                 const size_t th_length, const size_t max_lines,
                                 const bool display)
@@ -47,7 +47,7 @@ void CFeatureLines::extractLines(const cv::Mat & image,
     if( method < 0 || method > 4 )
         throw std::runtime_error("MRPT ERROR: CFeatureLines::extractLines called with \'method\'' parameter.\n");
 
-    //cout << "CFeatureLines::extractLines... method " << method << " th_length " << th_length << endl;
+    cout << "CFeatureLines::extractLines... method " << method << " th_length " << th_length << " im " << image.depth() << endl;
     CTicTac clock; clock.Tic(); //Clock to measure the runtime
 
     if( method >= 0 || method < 4 )
@@ -56,15 +56,17 @@ void CFeatureLines::extractLines(const cv::Mat & image,
         extractLines_CHB(image, segments, th_length, false);
 
     std::sort (segments.begin(), segments.end(), larger_segment); // Sort segments by their length. This increases the performance for matching them with those segmented from another image
-    if(max_lines > 0)
+    if( max_lines < segments.size() )
         segments.resize(max_lines);
 
-    // Force the segments to have a predefined order (e1y <= e2y)
     for(auto line = begin(segments); line != end(segments); ++line)
-        if((*line)[1] < (*line)[3])
+    {
+        // Force the segments to have a predefined order (e1y <= e2y)
+        if((*line)[0] > (*line)[2])
             *line = cv::Vec4f((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
-        else if((*line)[1] == (*line)[3] && (*line)[0] > (*line)[1])
+        else if((*line)[0] == (*line)[2] && (*line)[1] > (*line)[3])
             *line = cv::Vec4f((*line)[2], (*line)[3], (*line)[0], (*line)[1]);
+    }
 
     time = 1000*clock.Tac();
     cout << "  CFeatureLines::extractLines.v" << method << " lines " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
@@ -81,10 +83,10 @@ void CFeatureLines::extractLines(const cv::Mat & image,
             int R = ( rand() % (int) ( 255 + 1 ) );
             int G = ( rand() % (int) ( 255 + 1 ) );
             int B = ( rand() % (int) ( 255 + 1 ) );
+            //R = 0; G = 0; B = 255;
             cv::line( image_lines, cv::Point(cv::Point2f((*line)[0], (*line)[1])), cv::Point2f(cv::Point((*line)[2], (*line)[3])), cv::Scalar(B,G,R), 3 );
             cv::circle(image_lines, cv::Point(cv::Point2f((*line)[0], (*line)[1])), 3, cv::Scalar(B,G,R), 3);
-//            cv::putText(image_lines, string(to_string(distance(begin(segments),line))), cv::Point(cv::Point2f(((*line)[0]+(*line)[2])/2,((*line)[1]+(*line)[3])/2)), 0, 1.2, cv::Scalar(B,G,R), 3 );
-
+            cv::putText(image_lines, to_string(distance(begin(segments),line)), cv::Point(cv::Point2f(((*line)[0]+(*line)[2])/2,((*line)[1]+(*line)[3])/2)), 0, 0.8, cv::Scalar(B,G,R), 1 );
         }
         cv::imshow( "lines", image_lines );
         cv::waitKey();
@@ -247,7 +249,7 @@ void CFeatureLines::extractLines_CHB(const cv::Mat & image,
             //image.convertTo(image_lines, CV_8UC1, 1.0 / 2);
             cv::line(image_lines, cv::Point((*line)[0], (*line)[1]), cv::Point((*line)[2], (*line)[3]), cv::Scalar(255, 0, 255), 1);
             cv::circle(image_lines, cv::Point((*line)[0], (*line)[1]), 3, cv::Scalar(255, 0, 255), 3);
-            cv::putText(image_lines, string(to_string(distance(begin(segments),line))), cv::Point(((*line)[0]+(*line)[2])/2,((*line)[1]+(*line)[3])/2), 0, 1.2, cv::Scalar(200,0,0), 3 );
+            cv::putText(image_lines, to_string(distance(begin(segments),line)), cv::Point(((*line)[0]+(*line)[2])/2,((*line)[1]+(*line)[3])/2), 0, 1.2, cv::Scalar(200,0,0), 3 );
             //cv::imshow("lines", image_lines); cv::moveWindow("lines", 20,100+700);
             //cv::waitKey(0);
         }
@@ -448,6 +450,448 @@ void CFeatureLines::extractLines_CannyHough( const cv::Mat & canny_image,
 
     }
 
+}
+
+
+void CFeatureLines::computeContrastOfSegments(const cv::Mat & image, std::vector<cv::Vec4f> & segments, std::vector<int> & v_contrast, const size_t band_dist, const bool display)
+{
+    cout << "CFeatureLines::computeContrastOfSegments... display " << display << endl;
+    cv::Mat image_lines;
+    if(display)
+    {
+        image_lines = image.clone();
+        if( image_lines.channels() == 1 )
+            cv::cvtColor( image_lines, image_lines, cv::COLOR_GRAY2BGR );
+    }
+
+    v_contrast.resize( segments.size() );
+    size_t i(0);
+    for(auto line = begin(segments); line != end(segments); ++line, ++i)
+    {
+//        if(display)
+//        {
+//            image_lines = image.clone();
+//            if( image_lines.channels() == 1 )
+//                cv::cvtColor( image_lines, image_lines, cv::COLOR_GRAY2BGR );
+//        }
+
+        int contrast(0);
+        float deltaX = (*line)[2] - (*line)[0];
+        float deltaY = (*line)[3] - (*line)[1];
+        if(deltaX >= fabs(deltaY))
+        {
+            float m = deltaY / deltaX;
+            int x = round((*line)[0]);
+            int xF = round((*line)[2]);
+            int y = round((*line)[1]);
+            float error = (*line)[1] - y + m*(x-(*line)[0]);
+            if(error > 0.5f)
+            {
+                ++y;
+                error -= 1;
+            }
+            else if(error < 0.5f)
+            {
+                --y;
+                error += 1;
+            }
+            if(m >= 0)
+            {
+                //cout << "line type 1\n";
+                for(; x <= xF; ++x)
+                {
+                    contrast += image.at<uchar>(y+band_dist,x) - image.at<uchar>(y-band_dist,x);
+                    //cout << int(image.at<uchar>(y+band_dist,x) - image.at<uchar>(y-band_dist,x)) << " contrast diff " << int(image.at<uchar>(y+band_dist,x)) << "-" << int(image.at<uchar>(y-band_dist,x)) << " accum " << contrast << endl;
+                    if(display)
+                    {
+                        //image_lines.at<cv::Vec3b>(y+band_dist,x) = cv::Vec3b(0,255,0);
+                        image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+                    }
+                    error += m;
+                    if(error > 0.5f)
+                    {
+                        ++y;
+                        error -= 1;
+                    }
+                }
+            }
+            else
+            {
+                //cout << "line type 2\n";
+                for(; x <= xF; ++x)
+                {
+                    contrast += image.at<uchar>(y+band_dist,x) - image.at<uchar>(y-band_dist,x);
+                    //cout << int(image.at<uchar>(y+band_dist,x) - image.at<uchar>(y-band_dist,x)) << " contrast diff " << int(image.at<uchar>(y+band_dist,x)) << "-" << int(image.at<uchar>(y-band_dist,x)) << " accum " << contrast << endl;
+                    if(display)
+                    {
+                        image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+                    }
+                    error += m;
+                    if(error < 0.5f)
+                    {
+                        --y;
+                        error += 1;
+                    }
+                }
+            }
+            contrast /= round(deltaX);
+            //cout << i << " contrast " << contrast << " deltaX " << round(deltaX) << endl;
+        }
+        else
+        {
+            float m = deltaX / deltaY;
+            int x = round((*line)[0]);
+            int y = round((*line)[1]);
+            int yF = round((*line)[3]);
+            float error = (*line)[0] - x + m*(y-(*line)[1]);
+            if(error > 0.5f)
+            {
+                ++x;
+                error -= 1;
+            }
+            else if(error < 0.5f)
+            {
+                --x;
+                error += 1;
+            }
+            if(m >= 0)
+            {
+                //cout << "line type 3\n";
+                for(; y <= yF; ++y)
+                {
+                    contrast += image.at<uchar>(y,x-band_dist) - image.at<uchar>(y,x+band_dist);
+                    if(display)
+                    {
+                        image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+                    }
+                    error += m;
+                    if(error > 0.5f)
+                    {
+                        ++x;
+                        error -= 1;
+                    }
+                }
+                contrast /= round(deltaY);
+            }
+            else
+            {
+                //cout << "line type 4\n";
+                for(; y >= yF; --y)
+                {
+                    //cout << "contrast diff " << int(image.at<uchar>(y,x+band_dist)) << "-" << int(image.at<uchar>(y,x-band_dist)) << endl;
+                    //cout << "contrast " << contrast << endl;
+                    contrast += image.at<uchar>(y,x+band_dist) - image.at<uchar>(y,x-band_dist);
+                    if(display)
+                    {
+//                    image_lines.at<cv::Vec3b>(y,x+band_dist) = cv::Vec3b(0,255,0);
+                        image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+                    }
+                    error += m;
+                    if(error < 0.5f)
+                    {
+                        ++x;
+                        error += 1;
+                    }
+                }
+                contrast /= -round(deltaY);
+            }
+        }
+        v_contrast[i] = contrast;
+
+        if(display)
+        {
+            Eigen::Vector2f seg((*line)[2]-(*line)[0], (*line)[3]-(*line)[1]);
+            int l = seg.norm();
+            seg.normalize();
+            Eigen::Vector2f n((*line)[3]-(*line)[1], (*line)[0]-(*line)[2]);
+            n.normalize();
+            cv::Point e1((*line)[0],(*line)[1]);
+            cv::Point e2((*line)[2],(*line)[3]);
+            int d = 6 + rand() % 10;
+            int rand_line = 0.8*(rand() % l);
+            cv::Point seg1(rand_line*seg[0], rand_line*seg[1]);
+            cv::Point pt_line = e1 + seg1;
+            cv::Point n1(d*n[0], d*n[1]);
+            cv::Point pt_txt = pt_line + n1;
+            cv::line( image_lines, pt_line, pt_txt, cv::Scalar(0,255,0), 1 );
+            cv::putText(image_lines, to_string(int(contrast)), pt_txt, 0, 0.6, cv::Scalar(200,0,0), 1 );
+//            cv::imshow("line_contrast", image_lines);
+//            cv::waitKey();
+        }
+    }
+    if(display)
+    {
+        cv::imshow("line_contrast", image_lines);
+        cv::waitKey();
+    }
+}
+
+void CFeatureLines::computeContrastOfSegments(const cv::Mat & image, std::vector<cv::Vec6f> & segments, const size_t band_dist)
+{
+    size_t i(0);
+    for(auto line = begin(segments); line != end(segments); ++line, ++i)
+    {
+        float contrast(0.f);
+        float deltaX = (*line)[2] - (*line)[0];
+        float deltaY = (*line)[3] - (*line)[1];
+        if(deltaX >= fabs(deltaY))
+        {
+            float m = deltaY / deltaX;
+            int x = round((*line)[0]);
+            int xF = round((*line)[2]);
+            int y = round((*line)[1]);
+            float error = (*line)[1] - y + m*(x-(*line)[0]);
+            if(error > 0.5f)
+            {
+                ++y;
+                error -= 1;
+            }
+            else if(error < 0.5f)
+            {
+                --y;
+                error += 1;
+            }
+            if(m >= 0)
+            {
+                cout << "line type 1\n";
+                for(; x <= xF; ++x)
+                {
+                    contrast += image.at<uchar>(y+band_dist,x) - image.at<uchar>(y-band_dist,x);
+                    //cout << "contrast diff " << int(image.at<uchar>(y+band_dist,x)) << "-" << int(image.at<uchar>(y-band_dist,x)) << endl;
+//                    image_lines.at<cv::Vec3b>(y+band_dist,x) = cv::Vec3b(0,255,0);
+//                    image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+                    error += m;
+                    if(error > 0.5f)
+                    {
+                        ++y;
+                        error -= 1;
+                    }
+                }
+            }
+            else
+            {
+                cout << "line type 2\n";
+                for(; x <= xF; ++x)
+                {
+                    contrast += image.at<uchar>(y+band_dist,x) - image.at<uchar>(y-band_dist,x);
+//                    image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+                    error += m;
+                    if(error < 0.5f)
+                    {
+                        --y;
+                        error += 1;
+                    }
+                }
+            }
+            contrast /= round(deltaX);
+        }
+        else
+        {
+            float m = deltaX / deltaY;
+            int x = round((*line)[0]);
+            int y = round((*line)[1]);
+            int yF = round((*line)[3]);
+            float error = (*line)[0] - x + m*(y-(*line)[1]);
+            if(error > 0.5f)
+            {
+                ++x;
+                error -= 1;
+            }
+            else if(error < 0.5f)
+            {
+                --x;
+                error += 1;
+            }
+            if(m >= 0)
+            {
+                cout << "line type 3\n";
+                for(; y <= yF; ++y)
+                {
+                    contrast += image.at<uchar>(y,x-band_dist) - image.at<uchar>(y,x+band_dist);
+//                    image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+                    error += m;
+                    if(error > 0.5f)
+                    {
+                        ++x;
+                        error -= 1;
+                    }
+                }
+                contrast /= round(deltaY);
+            }
+            else
+            {
+                cout << "line type 4\n";
+                for(; y >= yF; --y)
+                {
+                    //cout << "contrast diff " << int(image.at<uchar>(y,x+band_dist)) << "-" << int(image.at<uchar>(y,x-band_dist)) << endl;
+                    //cout << "contrast " << contrast << endl;
+                    contrast += image.at<uchar>(y,x+band_dist) - image.at<uchar>(y,x-band_dist);
+//                    image_lines.at<cv::Vec3b>(y,x+band_dist) = cv::Vec3b(0,255,0);
+//                    image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+                    error += m;
+                    if(error < 0.5f)
+                    {
+                        ++x;
+                        error += 1;
+                    }
+                }
+                contrast /= -round(deltaY);
+            }
+        }
+        segments[i][4] = contrast;
+    }
+}
+
+void CFeatureLines::extractLinesDesc(const cv::Mat & image,
+                                    std::vector<cv::Vec4f> & segments,
+                                    std::vector<cv::Vec6f> & segmentsDesc,
+                                    const int method,
+                                    const size_t th_length, const size_t max_lines,
+                                    const bool display)
+{
+    cout << "CFeatureLines::extractLinesDesc... method " << method << " th_length " << th_length << " im " << image.depth() << endl;
+    CTicTac clock; clock.Tic(); //Clock to measure the runtime
+
+    extractLines(image, segments, method, th_length, max_lines);
+    segmentsDesc.resize( segments.size() );
+    for(size_t i=0; i < segments.size(); ++i)
+        segmentsDesc[i] = cv::Vec6f(segments[i][0],segments[i][1],segments[i][2],segments[i][3], 0.f, 0.f);
+    computeContrastOfSegments(image, segmentsDesc);
+
+    time = 1000*clock.Tac();
+    cout << "  CFeatureLines::extractLinesDesc.v" << method << " lines " << segments.size() << " took " << 1000*clock.Tac() << " ms \n";
+
+    // Display 2D segments
+    if(display)
+    {
+        cv::Mat image_lines = image.clone();
+        if( image_lines.channels() == 1 )
+            cv::cvtColor( image_lines, image_lines, cv::COLOR_GRAY2BGR );
+        for(auto line = begin(segments); line != end(segments); ++line)
+        {
+            /* get a random color */
+            int R = ( rand() % (int) ( 255 + 1 ) );
+            int G = ( rand() % (int) ( 255 + 1 ) );
+            int B = ( rand() % (int) ( 255 + 1 ) );
+            R = 0; G = 0; B = 255;
+            cv::line( image_lines, cv::Point(cv::Point2f((*line)[0], (*line)[1])), cv::Point2f(cv::Point((*line)[2], (*line)[3])), cv::Scalar(B,G,R), 3 );
+            cv::circle(image_lines, cv::Point(cv::Point2f((*line)[0], (*line)[1])), 3, cv::Scalar(B,G,R), 3);
+//            cv::putText(image_lines, to_string(distance(begin(segments),line)), cv::Point(cv::Point2f(((*line)[0]+(*line)[2])/2,((*line)[1]+(*line)[3])/2)), 0, 1.2, cv::Scalar(B,G,R), 3 );
+
+//            float contrast(0.f);
+//            float deltaX = (*line)[2] - (*line)[0];
+//            float deltaY = (*line)[3] - (*line)[1];
+//            if(deltaX >= fabs(deltaY))
+//            {
+//                float m = deltaY / deltaX;
+//                int x = round((*line)[0]);
+//                int xF = round((*line)[2]);
+//                int y = round((*line)[1]);
+//                float error = (*line)[1] - y + m*(x-(*line)[0]);
+//                if(error > 0.5f)
+//                {
+//                    ++y;
+//                    error -= 1;
+//                }
+//                else if(error < 0.5f)
+//                {
+//                    --y;
+//                    error += 1;
+//                }
+//                if(m >= 0)
+//                {
+//                    cout << "line type 1\n";
+//                    for(; x <= xF; ++x)
+//                    {
+//                        contrast += image.at<uchar>(y+band_dist,x) - image.at<uchar>(y-band_dist,x);
+//                        //cout << "contrast diff " << int(image.at<uchar>(y+band_dist,x)) << "-" << int(image.at<uchar>(y-band_dist,x)) << endl;
+//                        image_lines.at<cv::Vec3b>(y+band_dist,x) = cv::Vec3b(0,255,0);
+//                        image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+//                        error += m;
+//                        if(error > 0.5f)
+//                        {
+//                            ++y;
+//                            error -= 1;
+//                        }
+//                    }
+//                }
+//                else
+//                {
+//                    cout << "line type 2\n";
+//                    for(; x <= xF; ++x)
+//                    {
+//                        contrast += image.at<uchar>(y+band_dist,x) - image.at<uchar>(y-band_dist,x);
+//                        image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+//                        error += m;
+//                        if(error < 0.5f)
+//                        {
+//                            --y;
+//                            error += 1;
+//                        }
+//                    }
+//                }
+//                contrast /= round(deltaX);
+//            }
+//            else
+//            {
+//                float m = deltaX / deltaY;
+//                int x = round((*line)[0]);
+//                int y = round((*line)[1]);
+//                int yF = round((*line)[3]);
+//                float error = (*line)[0] - x + m*(y-(*line)[1]);
+//                if(error > 0.5f)
+//                {
+//                    ++x;
+//                    error -= 1;
+//                }
+//                else if(error < 0.5f)
+//                {
+//                    --x;
+//                    error += 1;
+//                }
+//                if(m >= 0)
+//                {
+//                    cout << "line type 3\n";
+//                    for(; y <= yF; ++y)
+//                    {
+//                        contrast += image.at<uchar>(y,x-band_dist) - image.at<uchar>(y,x+band_dist);
+//                        image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+//                        error += m;
+//                        if(error > 0.5f)
+//                        {
+//                            ++x;
+//                            error -= 1;
+//                        }
+//                    }
+//                    contrast /= round(deltaY);
+//                }
+//                else
+//                {
+//                    cout << "line type 4\n";
+//                    for(; y >= yF; --y)
+//                    {
+//                        //cout << "contrast diff " << int(image.at<uchar>(y,x+band_dist)) << "-" << int(image.at<uchar>(y,x-band_dist)) << endl;
+//                        //cout << "contrast " << contrast << endl;
+//                        contrast += image.at<uchar>(y,x+band_dist) - image.at<uchar>(y,x-band_dist);
+//                        image_lines.at<cv::Vec3b>(y,x+band_dist) = cv::Vec3b(0,255,0);
+//                        image_lines.at<cv::Vec3b>(y,x) = cv::Vec3b(0,0,255);
+//                        error += m;
+//                        if(error < 0.5f)
+//                        {
+//                            ++x;
+//                            error += 1;
+//                        }
+//                    }
+//                    contrast /= -round(deltaY);
+//                }
+//            }
+//            cout << " contrast " << contrast << endl;
+//            cv::imshow( "lines", image_lines );
+//            cv::waitKey();
+        }
+        cv::imshow( "lines", image_lines );
+        cv::waitKey();
+    }
 }
 
 #endif //MRPT_END

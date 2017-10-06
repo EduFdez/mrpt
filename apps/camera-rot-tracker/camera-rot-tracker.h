@@ -83,6 +83,11 @@ class CameraRotTracker : public ExtrinsicCalibLines
     //std::vector<cv::Mat> depth_reg; // Depth image registered to RGB pose
     std::vector<pcl::PointCloud<PointT>::Ptr> v_cloud;
 //    std::vector<mrpt::vision::FeatureList> points;
+    mrpt::vision::CUndistortMap rgb_undist;
+
+    std::vector<std::vector<cv::Vec2i> > vv_pt_coor;
+    std::vector<std::vector<Eigen::Vector3f> > vv_pt_normal;
+    std::vector<std::vector<bool> > vv_pt_robust;
 
     std::string rawlog_file;
     std::string output_dir;
@@ -107,7 +112,13 @@ class CameraRotTracker : public ExtrinsicCalibLines
         v_cloud.resize(num_sensors);
         v_pbmap.resize(num_sensors);
         vv_segments2D.resize(num_sensors);
+        vv_segmentsDesc.resize(num_sensors);
+        vv_length.resize(num_sensors);
+        vv_seg_contrast.resize(num_sensors);
         vv_segment_n.resize(num_sensors);
+        vv_pt_coor.resize(num_sensors);
+        vv_pt_normal.resize(num_sensors);
+        vv_pt_robust.resize(num_sensors);
 
 //        // Initialize visualizer
 //        viewer.runOnVisualizationThread (boost::bind(&CameraRotTracker::viz_cb, this, _1), "viz_cb");
@@ -120,6 +131,19 @@ class CameraRotTracker : public ExtrinsicCalibLines
 
     /*! Swap images and features from observation [0] (current) to [1] (previous). */
     void setNewFrame();
+
+    static bool computeRobustNormal(const cv::Mat & depth, const mrpt::utils::TCamera &cam, const int u, const int v, Eigen::Vector3f & normal, const int radius = 2, const float max_angle_cos = 0.996194698f ); // cos(mrptDEG2RAD(5))=0.996194698
+
+    static bool computeRobustNormal(const cv::Mat & depth, const float fx, const float fy, const int u, const int v, Eigen::Vector3f & normal, const int radius = 2, const float max_angle_cos = 0.996194698f);
+
+    std::vector< std::vector<Eigen::Matrix<T,3,1> > > vv_point_n; // The normal vector to the surface containing the 2D point
+
+    std::vector<cv::Vec2i> getDistributedNormals(cv::Mat & depth, const mrpt::utils::TCamera & cam, std::vector<Eigen::Vector3f> & v_normal, std::vector<bool> & v_robust_normal, const int h_divisions = 4, const int v_divisions = 3);
+
+    static bool getRobustNormal(pcl::PointCloud<pcl::Normal>::Ptr img_normals, const int u, const int v, Eigen::Vector3f & normal, const int radius, const float max_angle_cos);
+
+    std::vector<cv::Vec2i> getDistributedNormals(pcl::PointCloud<pcl::Normal>::Ptr img_normals, std::vector<Eigen::Vector3f> & v_normal, std::vector<bool> & v_robust_normal, const int h_divisions, const int v_divisions);
+//    std::vector<cv::Vec2i> getDistributedNormals(pcl::PointCloud<pcl::Normal>::Ptr img_normals, std::vector<Eigen::Matrix<T,3,1> > & v_normal, std::vector<bool> & v_robust_normal, const int h_divisions, const int v_divisions);
 
 //    /*! This function encapsulates the main functionality of the calibration process:
 //     *  parse the dataset to find geometric correspondences between the sensors, and estimate the calibration */

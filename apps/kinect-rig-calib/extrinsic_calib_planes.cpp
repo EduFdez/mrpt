@@ -91,22 +91,6 @@ CMatrixDouble registerMatchedPlanes( const CMatrixDouble &matched_planes )
     rigidTransf.block(0,0,3,3) = Rotation;
     rigidTransf.block(0,3,3,1) = translation;
     rigidTransf.row(3) << 0,0,0,1;
-    //  rigidTransf(0,0) = Rotation(0,0);
-    //  rigidTransf(0,1) = Rotation(0,1);
-    //  rigidTransf(0,2) = Rotation(0,2);
-    //  rigidTransf(1,0) = Rotation(1,0);
-    //  rigidTransf(1,1) = Rotation(1,1);
-    //  rigidTransf(1,2) = Rotation(1,2);
-    //  rigidTransf(2,0) = Rotation(2,0);
-    //  rigidTransf(2,1) = Rotation(2,1);
-    //  rigidTransf(2,2) = Rotation(2,2);
-    //  rigidTransf(0,3) = translation(0);
-    //  rigidTransf(1,3) = translation(1);
-    //  rigidTransf(2,3) = translation(2);
-    //  rigidTransf(3,0) = 0;
-    //  rigidTransf(3,1) = 0;
-    //  rigidTransf(3,2) = 0;
-    //  rigidTransf(3,3) = 1;
 
     return rigidTransf;
 }

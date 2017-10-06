@@ -39,6 +39,7 @@ MRPT_WARNING("Including <mrpt/slam.h> makes compilation much slower, consider in
 #include <mrpt/slam/CIncrementalMapPartitioner.h>
 #include <mrpt/slam/CRejectionSamplingRangeOnlyLocalization.h>
 #include <mrpt/slam/data_association.h>
+#include <mrpt/slam/MetricRegistration.h>
 
 // Others:
 #include <mrpt/slam/observations_overlap.h>

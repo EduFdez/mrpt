@@ -74,6 +74,7 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 //                                                            Eigen::Matrix<T,3,3> & rotation, T & conditioning, const T th_angle = 1.0);
 
     /*! Match two sets of normal vectors by exhaustive search. A rotation (R12: n1=R12*n2) is computed from pairs of candidate matches to find the mapping with the smallest error. */
+//    template <typename T>
     static std::map<size_t, size_t> matchNormalVectors(const std::vector<Eigen::Matrix<T,3,1> > & n_cam1, const std::vector<Eigen::Matrix<T,3,1> > & n_cam2,
                                                        Eigen::Matrix<T,3,3> & rotation, T & conditioning, const T th_angle = 1.0);
 
@@ -161,6 +162,9 @@ class ExtrinsicCalibLines : public virtual ExtrinsicCalib//<T>
 
     /*! Lines segmented in the current observation */
     std::vector< std::vector<cv::Vec4f> > vv_segments2D;
+    std::vector< std::vector<cv::Vec6f> > vv_segmentsDesc;
+    std::vector< std::vector<float> > vv_length;
+    std::vector< std::vector<int> > vv_seg_contrast;
     std::vector< std::vector<Eigen::Matrix<T,3,1> > > vv_segment_n; // The normal vector to the plane containing the 2D line segment and the optical center
     std::vector< std::vector<mrpt::math::TLine3D> > vv_lines3D;
     std::vector< std::vector<Eigen::Matrix<T,6,1> > > vv_segments3D;

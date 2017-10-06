@@ -156,7 +156,7 @@
         void warp(const cv::Mat & gray, const cv::Mat & depth, const mrpt::utils::TCamera & cam, const Eigen::Matrix4f & Rt, cv::Mat & warped_gray, const float min_depth_ = 0.3f, const float max_depth_ = 10.f)
         {
             //std::cout << "PinholeModel::warp...\n";
-            if( gray.empty() || depth.empty() || gray.rows != depth.rows || cam.nrows != depth.rows || gray.cols != depth.cols || cam.ncols != depth.cols)
+            if( gray.empty() || depth.empty() || gray.rows != depth.rows || int(cam.nrows) != depth.rows || gray.cols != depth.cols || int(cam.ncols) != depth.cols)
             {
                 cerr << "\n ERROR in ProjectionModel::warpRgbdMap " << gray.empty() << " " << depth.empty() << " \n";
                 throw;
@@ -214,7 +214,7 @@
             warped_gray = cv::Mat::zeros(gray.rows, gray.cols, gray.type());
             uchar *_warped_gray = warped_gray.ptr<uchar>(0);
             uchar *_gray = const_cast<uchar*>(gray.ptr<uchar>(0));
-            for(int i=0; i < img_size_; i++)
+            for(size_t i=0; i < img_size_; i++)
             {
                 if(valid_pixels(i) == -1)
                     continue;
@@ -228,12 +228,12 @@
                 int c_transf = round(c_tf);
                 int r_transf = round(r_tf);
                 // cout << i << " Pixel transform " << i/cam.ncols << " " << i%cam.ncols << " " << r_transf << " " << c_transf << endl;
-                if( c_transf >= 0 && c_transf < cam.ncols && r_transf >= 0 && r_transf < cam.nrows )
+                if( c_transf >= 0 && c_transf < int(cam.ncols) && r_transf >= 0 && r_transf < int(cam.nrows) )
                 {
                     _warped_gray[r_transf * row_stride_ + c_transf] = _gray[i];
-                    if(c_transf+1 < cam.ncols)
+                    if(c_transf+1 < int(cam.ncols))
                         _warped_gray[r_transf * row_stride_ + c_transf+1] = _gray[i];
-                    if(r_transf+1 < cam.nrows)
+                    if(r_transf+1 < int(cam.nrows))
                         _warped_gray[(r_transf+1) * row_stride_ + c_transf+1] = _gray[i];
                 }
 
