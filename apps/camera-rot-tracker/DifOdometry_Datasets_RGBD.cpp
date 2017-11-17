@@ -558,11 +558,11 @@ void CDifodoDatasets_RGBD::run()
     clock1.Tic(); //Clock to measure the runtime
     filter.setInputCloud(v_cloud[0]);
     filter.filter(*cloud);
-    pcl::PointCloud<pcl::Normal>::Ptr normal_cloud = mrpt::pbmap::PbMap::computeImgNormal(cloud);
-    cout << "  normal_cloud took " << 1000*clock1.Tac() << " ms \n";
+    v_normal_cloud[0] = mrpt::pbmap::PbMap::computeImgNormal(cloud);
+    cout << "  extract normal cloud took " << 1000*clock1.Tac() << " ms \n";
     clock1.Tic(); //Clock to measure the runtime
-//    vv_pt_coor[0] = getDistributedNormals(v_depth[0], intrinsics, vv_pt_normal[0], vv_pt_robust[0], 4, 3);
-    vv_pt_coor[0] = getDistributedNormals(normal_cloud, vv_pt_normal[0], vv_pt_robust[0], 5, 4);
+//    vv_pt_coor[0] = getDistributedNormals(v_depth[0], intrinsics, vv_pt_normal[0], vv_pt_low_curv[0], 4, 3);
+    vv_pt_coor[0] = getDistributedNormals2(v_normal_cloud[0], vv_pt_normal[0], vv_pt_low_curv[0], 5, 4);
     cout << "  getDistributedNormals took " << 1000*clock1.Tac() << " ms \n";
 
 
@@ -680,14 +680,46 @@ void CDifodoDatasets_RGBD::run()
                 // Match surface patches from the depth images
                 filter.setInputCloud(v_cloud[0]);
                 filter.filter(*cloud);
-                pcl::PointCloud<pcl::Normal>::Ptr normal_cloud = mrpt::pbmap::PbMap::computeImgNormal(cloud);
-                vv_pt_coor[0] = getDistributedNormals(normal_cloud, vv_pt_normal[0], vv_pt_robust[0], 5, 4);
+                v_normal_cloud[0] = mrpt::pbmap::PbMap::computeImgNormal(cloud);
+                vv_pt_coor[0] = getDistributedNormals2(v_normal_cloud[0], vv_pt_normal[0], vv_pt_low_curv[0], 5, 4);
+                cout << "SurfMatch " << vv_pt_normal[0].size() << " / " << vv_pt_coor[0].size() << endl;
 
-                float condition_pts;
-                Matrix<float,3,3> rot_pts(Matrix<float,3,3>::Identity());
-                map<size_t,size_t> point_depth_matches = mrpt::slam::MetricRegistration<float>::registerNormalVectors(vv_pt_normal[1], vv_pt_normal[0], rot_pts, condition_pts, max_angle_rad, DEG2RAD(10));
-                T rot_pts_error = RAD2DEG( getRotationVector<T,3>( rot_pts.transpose().cast<T>() * gt_rel_pose_TUM.getRotationMatrix() ).norm() );
-                cout << "Point matches " << point_depth_matches.size() << " condition_pts " << condition_pts << " rot_pts_error " << rot_pts_error << endl;
+                float cond_SM;
+                Matrix<float,3,3> rot_SM(Matrix<float,3,3>::Identity());
+                map<size_t,size_t> surf_matches_lowC = mrpt::slam::MetricRegistration<float>::registerNormalVectors(vv_pt_normal[1], vv_pt_normal[0], rot_SM, cond_SM, max_angle_rad, DEG2RAD(10));
+                cout << "surf_matches_lowC: \n";
+                for(auto it = begin(surf_matches_lowC); it != end(surf_matches_lowC); ++it)
+                    cout << it->first << " " << it->second << endl;
+
+                Matrix<float,4,4> pose_SM(Matrix<float,4,4>::Identity());
+                pose_SM.block<3,3>(0,0) = rot_SM;
+                T rot_SM_error = RAD2DEG( getRotationVector<T,3>( rot_SM.transpose().cast<T>() * gt_rel_pose_TUM.getRotationMatrix() ).norm() );
+                cout << "Point matches " << surf_matches_lowC.size() << " cond_SM " << cond_SM << " rot_SM_error " << rot_SM_error << endl;
+                map<size_t,size_t> surf_matches; // Remap indices of the surf_matches indices to the full range of sample points
+                for(auto it = begin(surf_matches_lowC); it != end(surf_matches_lowC); ++it)
+                    surf_matches[vv_pt_low_curv[1][it->first]] = vv_pt_low_curv[0][it->second];
+
+                mrpt::slam::MetricRegistration<T>::rotation2homography( rot, intrinsics.intrinsicParams.cast<T>(), isometry );
+                size_t ref(1), trg(0);
+                Matrix<T,3,3> H(isometry);
+                if(vv_pt_low_curv[1].size() < vv_pt_low_curv[0].size())
+                {
+                    ref = 0;
+                    trg = 1;
+                    H = H.inverse();
+                }
+                vector<cv::Vec2i> v_sm_pts_ref( vv_pt_low_curv[ref].size() );
+                cout << "SurfMatch22 ";
+                std::transform(vv_pt_low_curv[ref].begin(), vv_pt_low_curv[ref].end(), v_sm_pts_ref.begin(), //std::back_inserter(v_sm_pts_ref),
+                               [&](typename std::vector<T>::size_type idx) { return this->vv_pt_coor[ref].at(idx); } ); // Extract sub-vector
+                //for(size_t i=0; i < v_sm_pts_ref.size(); i++)
+                //    v_sm_pts_ref[i] = vv_pt_coor[ref][vv_pt_low_curv[ref][i]];
+                //for(const auto & elem : v_sm_pts_ref)
+                //    cout << elem << " ";
+                vector<cv::Vec2i> v_sm_pts_trg = getNormalsOfPixels_trg( v_sm_pts_ref, H, v_normal_cloud[1], vv_pt_normal[1], vv_pt_low_curv[1]);
+                // Prune points with inconsistent translation
+                // Compute translation
+                // Compare with PCA initialization
 
 
 //                points2 = points1;
@@ -744,12 +776,13 @@ void CDifodoDatasets_RGBD::run()
                     cv::Mat gray_warped2, diff2;
                     cv::Mat gray_warped3, diff3;
                     cv::Mat gray_warped4, diff4;
+                    cv::Mat gray_warped5, diff5;
 
                     //cv::cvtColor( cv::cvarrToMat(obsRGBD[0]->intensityImage.getAs<IplImage>()), gray, cv::COLOR_BGR2GRAY );
                     warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(gt_rel_pose_TUM), gray_warped1);
                     warp(v_gray[0], v_depth[0], intrinsics, approx_rot.cast<float>(), gray_warped2);
                     warp(v_gray[0], v_depth[0], intrinsics, getPoseEigen<float>(transf+rel_pose+(-transf)), gray_warped3);
-                    mrpt::slam::MetricRegistration<T>::rotation2homography( rot, intrinsics.intrinsicParams.cast<T>(), isometry );
+                    warp(v_gray[0], v_depth[0], intrinsics, pose_SM.cast<float>(), gray_warped5);
                     //cout << "Isometry\n" << isometry << endl;
                     cv::Mat cvH;
                     cv::Mat imgMask = cv::Mat(v_gray[0].size(), CV_8UC1, cv::Scalar(1));
@@ -770,11 +803,12 @@ void CDifodoDatasets_RGBD::run()
                     cv::absdiff(v_gray[1], gray_warped2, diff2);
                     cv::absdiff(v_gray[1], gray_warped3, diff3);
                     cv::absdiff(v_gray[1], gray_warped4, diff4);
+                    cv::absdiff(v_gray[1], gray_warped5, diff5);
 
                     cv::Mat image_lines_3[2];
                     cv::Mat image_lines_2[2];
                     cv::Mat image_lines[2];
-                    cv::Mat image_pts[2];
+                    cv::Mat image_SM[2];
                     for(size_t i=0; i < 2; i++)
                     {
                         cv::cvtColor( v_gray[i], image_lines[i], cv::COLOR_GRAY2BGR );
@@ -821,25 +855,32 @@ void CDifodoDatasets_RGBD::run()
 
                         for(auto line = begin(vv_segments2D[i]); line != end(vv_segments2D[i]); ++line)
                         {
-                            size_t j = distance(begin(vv_segments2D[i]),line);
-                            cv::Scalar color(blu[j%10],grn[j%10],red[j%10]);
+                            size_t k = distance(begin(vv_segments2D[i]),line);
+                            cv::Scalar color(blu[k%10],grn[k%10],red[k%10]);
                             cv::line(image_lines_3[i], cv::Point(cv::Point2f((*line)[0], (*line)[1])), cv::Point2f(cv::Point((*line)[2], (*line)[3])), color, 3 );
                             cv::circle(image_lines_3[i], cv::Point(cv::Point2f((*line)[0], (*line)[1])), 3, color, 3);
-                            cv::putText(image_lines_3[i], to_string(int(vv_seg_contrast[i][j])), cv::Point(cv::Point2f((*line)[0], (*line)[1])), 0, 1.0, color, 1 );
-                            cv::putText(image_lines_3[i], to_string(j), cv::Point(cv::Point2f((*line)[2], (*line)[3])), 0, 1.0, color, 1 );
+                            cv::putText(image_lines_3[i], to_string(int(vv_seg_contrast[i][k])), cv::Point(cv::Point2f((*line)[0], (*line)[1])), 0, 1.0, color, 1 );
+                            cv::putText(image_lines_3[i], to_string(k), cv::Point(cv::Point2f((*line)[2], (*line)[3])), 0, 1.0, color, 1 );
                         }
 
-                        //image_pts[i] = v_rgb[i].clone();
+                        //image_SM[i] = v_rgb[i].clone();
                         cv::Mat mask = cv::Mat::zeros(v_rgb[i].size(), CV_8UC1);
                         mask.setTo(255, v_depth[i] > 0.3f);
-                        v_rgb[i].copyTo(image_pts[i], mask);
-                        for(size_t ii=0; ii < vv_pt_coor[i].size(); ++ii)
+                        v_rgb[i].copyTo(image_SM[i], mask);
+//                        for(size_t ii=0; ii < vv_pt_coor[i].size(); ++ii)
+//                        {
+//                            //cout << "it: " << vv_pt_coor[i][ii][0] << " " << vv_pt_coor[i][ii][1] << " \n";
+//                            if( vv_pt_low_curv[i][ii] )
+//                                cv::circle(image_SM[i], cv::Point(vv_pt_coor[i][ii][0], vv_pt_coor[i][ii][1]), 3, cv::Scalar(0,255,0), 3); // Green
+//                            else
+//                                cv::circle(image_SM[i], cv::Point(vv_pt_coor[i][ii][0], vv_pt_coor[i][ii][1]), 3, cv::Scalar(0,0,255), 3); // Red
+//                        }
+                        for(auto it = begin(surf_matches); it != end(surf_matches); ++it)
                         {
-                            //cout << "it: " << vv_pt_coor[i][ii][0] << " " << vv_pt_coor[i][ii][1] << " \n";
-                            if( vv_pt_robust[i][ii] )
-                                cv::circle(image_pts[i], cv::Point(vv_pt_coor[i][ii][0], vv_pt_coor[i][ii][1]), 3, cv::Scalar(0,255,0), 3); // Green
-                            else
-                                cv::circle(image_pts[i], cv::Point(vv_pt_coor[i][ii][0], vv_pt_coor[i][ii][1]), 3, cv::Scalar(0,0,255), 3); // Red
+                            size_t m = (i == 0) ? it->second : it->first;
+                            size_t k = distance(begin(surf_matches),it);
+                            cv::Scalar color(blu[k%10],grn[k%10],red[k%10]);
+                            cv::circle(image_SM[i], cv::Point(vv_pt_coor[i][m][0], vv_pt_coor[i][m][1]), 3, color, 3);
                         }
                     }
 
@@ -856,12 +897,13 @@ void CDifodoDatasets_RGBD::run()
                     cv::imshow("diff2", diff2);                 cv::moveWindow("diff2", 760, 1100);
                     cv::imshow("diff3", diff3);                 cv::moveWindow("diff3", 1400, 1100);
                     cv::imshow("diff4", diff4);                 cv::moveWindow("diff4", 2040, 1100);
-                    cv::imshow("points0", image_pts[0]);        cv::moveWindow("points0", 100, 1630);
-                    cv::imshow("points1", image_pts[1]);        cv::moveWindow("points1", 760, 1630);
+                    cv::imshow("points0", image_SM[0]);        cv::moveWindow("points0", 100, 1630);
+                    cv::imshow("points1", image_SM[1]);        cv::moveWindow("points1", 760, 1630);
                     cv::imshow("lines_0", image_lines_2[0]);     cv::moveWindow("lines_0", 100, 570);
                     cv::imshow("lines_1", image_lines_2[1]);     cv::moveWindow("lines_1", 760, 570);
-                    cv::imshow("lines_x0", image_lines_3[0]);     cv::moveWindow("lines_x0", 100, 1630);
-                    cv::imshow("lines_x1", image_lines_3[1]);     cv::moveWindow("lines_x1", 760, 1630);
+                    cv::imshow("lines_x0", image_lines_3[0]);     cv::moveWindow("lines_x0", 1400, 50); //cv::moveWindow("lines_x0", 100, 1630);
+                    cv::imshow("lines_x1", image_lines_3[1]);     cv::moveWindow("lines_x1", 1400, 570); //cv::moveWindow("lines_x1", 760, 1630);
+                    cv::imshow("diff_SM", diff5); cv::moveWindow("diff_SM", 1400, 1630); //cv::moveWindow("lines_x1", 760, 1630);
 
 //                    cv::imwrite("gray0.png", v_gray[0]);
 //                    cv::imwrite("gray1.png", v_gray[0]);

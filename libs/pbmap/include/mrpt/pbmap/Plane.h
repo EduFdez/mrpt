@@ -21,7 +21,6 @@
 
 #include <mrpt/utils/utils_defs.h>
 #include <mrpt/pbmap/link_pragmas.h>
-
 #include <mrpt/utils/CSerializable.h>
 #include <pcl/point_types.h>
 #include <pcl/common/pca.h>

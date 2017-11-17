@@ -106,13 +106,14 @@ void  PbMap::readFromStream(mrpt::utils::CStream &in, int version)
 
 pcl::PointCloud<pcl::Normal>::Ptr PbMap::computeImgNormal(const pcl::PointCloud<PointT>::Ptr & cloud, const float depth_thres, const float smooth_factor)
 {
+    //cout << "PbMap::computeImgNormal...\n";
     //ImgRGBD_3D::fastBilateralFilter(cloud, cloud);
 
     pcl::IntegralImageNormalEstimation<PointT, pcl::Normal> ne;
-//    ne.setNormalEstimationMethod(ne.COVARIANCE_MATRIX);
+    ne.setNormalEstimationMethod(ne.COVARIANCE_MATRIX);
+    //ne.setNormalEstimationMethod(ne.AVERAGE_3D_GRADIENT);
     //ne.setNormalEstimationMethod(ne.SIMPLE_3D_GRADIENT);
     //ne.setNormalEstimationMethod(ne.AVERAGE_DEPTH_CHANGE);
-    ne.setNormalEstimationMethod(ne.AVERAGE_3D_GRADIENT);
     ne.setMaxDepthChangeFactor(depth_thres); // For VGA: 0.02f, 10.0f
     ne.setNormalSmoothingSize(smooth_factor);
     ne.setDepthDependentSmoothing(true);

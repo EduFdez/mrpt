@@ -133,7 +133,7 @@ class ExtrinsicCalib
 //        std::cout << "ExtrinsicCalib::rotationFromNormals...\n";
 //        mrpt::utils::CTicTac clock; clock.Tic(); //Clock to measure the runtime
 
-        Eigen::JacobiSVD<Eigen::Matrix<T,3,3> > svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::JacobiSVD<Eigen::Matrix<Scalar,3,3> > svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
         float conditioning = svd.singularValues().minCoeff() / svd.singularValues().maxCoeff();
 //        if(conditioning < threshold_cond)
 //        {

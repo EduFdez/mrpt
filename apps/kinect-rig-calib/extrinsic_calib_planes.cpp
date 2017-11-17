@@ -53,32 +53,32 @@ CMatrixDouble registerMatchedPlanes( const CMatrixDouble &matched_planes )
     ASSERT_(size(matched_planes,1) == 8 && size(matched_planes,2) == 3);
 
     //Calculate rotation
-    Matrix3f normalCovariances = Matrix3f::Zero();
+    Matrix<T,3,3> normalCovariances = Matrix<T,3,3>::Zero();
     normalCovariances(0,0) = 1;
     for(unsigned i=0; i<3; i++)
     {
-        Vector3f n_i = Vector3f(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
-        Vector3f n_ii = Vector3f(matched_planes(4,i), matched_planes(5,i), matched_planes(6,i));
+        Matrix<T,3,1> n_i = Matrix<T,3,1>(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
+        Matrix<T,3,1> n_ii = Matrix<T,3,1>(matched_planes(4,i), matched_planes(5,i), matched_planes(6,i));
         normalCovariances += n_i * n_ii.transpose();
         //    normalCovariances += matched_planes.block(i,0,1,3) * matched_planes.block(i,4,1,3).transpose();
     }
-    Matrix3f Rotation;
+    Matrix<T,3,3> Rotation;
     float cond = ExtrinsicCalib::rotationFromNormals(normalCovariances, Rotation);
 //    if(cond < 0.01f){ cout << "ExtrinsicCalibLines::matchNormalVectors: JacobiSVD bad conditioning " << cond << " < " << min_conditioning << "\n";
-//        Rotation = Matrix3f::Identity();
+//        Rotation = Matrix<T,3,3>::Identity();
 //    }
 
     // Calculate translation
-    Vector3f translation;
-    Matrix3f hessian = Matrix3f::Zero();
-    Vector3f gradient = Vector3f::Zero();
+    Matrix<T,3,1> translation;
+    Matrix<T,3,3> hessian = Matrix<T,3,3>::Zero();
+    Matrix<T,3,1> gradient = Matrix<T,3,1>::Zero();
     hessian(0,0) = 1;
     for(unsigned i=0; i<3; i++)
     {
         float trans_error = (matched_planes(3,i) - matched_planes(7,i)); //+n*t
         //    hessian += matched_planes.block(i,0,1,3) * matched_planes.block(i,0,1,3).transpose();
         //    gradient += matched_planes.block(i,0,1,3) * trans_error;
-        Vector3f n_i = Vector3f(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
+        Matrix<T,3,1> n_i = Matrix<T,3,1>(matched_planes(0,i), matched_planes(1,i), matched_planes(2,i));
         hessian += n_i * n_i.transpose();
         gradient += n_i * trans_error;
     }
@@ -88,8 +88,8 @@ CMatrixDouble registerMatchedPlanes( const CMatrixDouble &matched_planes )
     //  // Form SE3 transformation matrix. This matrix maps the model into the current data reference frame
     //  Eigen::Matrix4f rigidTransf;
     CMatrixDouble44 rigidTransf;
-    rigidTransf.block(0,0,3,3) = Rotation;
-    rigidTransf.block(0,3,3,1) = translation;
+    rigidTransf.block(0,0,3,3) = Rotation.cast<T>();
+    rigidTransf.block(0,3,3,1) = translation.cast<T>();
     rigidTransf.row(3) << 0,0,0,1;
 
     return rigidTransf;

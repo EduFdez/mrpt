@@ -89,6 +89,7 @@ void CameraRotTracker::setNewFrame()
         cv::swap(v_gray[i], v_gray[i-1]);
         cv::swap(v_depth[i], v_depth[i-1]);
         v_cloud[i].swap(v_cloud[i-1]);
+        v_normal_cloud[i].swap(v_normal_cloud[i-1]);
         vv_segments2D[i] = vv_segments2D[i-1];
         vv_segmentsDesc[i] = vv_segmentsDesc[i-1];
         vv_length[i] = vv_length[i-1];
@@ -96,22 +97,22 @@ void CameraRotTracker::setNewFrame()
         vv_segment_n[i] = vv_segment_n[i-1];
         vv_pt_coor[i] = vv_pt_coor[i-1];
         vv_pt_normal[i] = vv_pt_normal[i-1];
-        vv_pt_robust[i] = vv_pt_robust[i-1];
+        vv_pt_low_curv[i] = vv_pt_low_curv[i-1];
     }
 }
 
-bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const mrpt::utils::TCamera & cam, const int u, const int v, Eigen::Vector3f & normal, const int radius, const float max_angle_cos)
+bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const mrpt::utils::TCamera & cam, const int u, const int v, Vector3f & normal, const int radius, const float max_angle_cos)
 {
     ASSERT_(radius > 0 && depth.type() == CV_32FC1);
-    if( u-radius < 0 || u+radius >= depth.cols || v-radius < 0 || v+radius >= depth.rows ) // A robust normal cannot be computed at the limit of the image
+    if( u-radius < 0 || u+radius >= depth.cols || v-radius < 0 || v+radius >= depth.rows ) // A low_curv normal cannot be computed at the limit of the image
         return false;
 
     float *_depth = reinterpret_cast<float*>(depth.data);
     int row_stride = depth.step / sizeof(float);
 
     const int patch_size = (radius+1)*(radius+1);
-    Eigen::MatrixXf pts(3,patch_size);
-    Eigen::Vector3f center = Eigen::Vector3f::Zero();
+    MatrixXf pts(3,patch_size);
+    Vector3f center = Vector3f::Zero();
     int num_pts(0);
     for(int r=v-radius; r <= v+radius; r++)
         for(int c=u-radius; c <= u+radius; c++)
@@ -119,7 +120,7 @@ bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const mrpt::ut
             float d = _depth[c+r*row_stride];
             if( d < 0.3f || d > 10.f)
                 return false;
-            Eigen::Vector3f pt(d*(u-cam.cx())/cam.fx(), d*(v-cam.cy())/cam.fy(), d);
+            Vector3f pt(d*(u-cam.cx())/cam.fx(), d*(v-cam.cy())/cam.fy(), d);
             pts.col(num_pts++) = pt;
             center += pt;
         }
@@ -129,11 +130,11 @@ bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const mrpt::ut
     pts = pts.leftCols(num_pts);
     center /= num_pts;
     pts -= center.replicate(1,num_pts);
-    Eigen::Matrix3f M = Eigen::Matrix3f::Zero();
+    Matrix3f M = Matrix3f::Zero();
     for (int i = 0; i < num_pts; i++)
         M += pts.block<3,1>(0,i) * pts.block<3,1>(0,i).transpose();
 
-    Eigen::EigenSolver<MatrixXf> es(M);
+    EigenSolver<MatrixXf> es(M);
     JacobiSVD<MatrixXf> svd(M, ComputeThinU | ComputeThinV);
     normal = svd.matrixU().col(2);
 
@@ -146,10 +147,10 @@ bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const mrpt::ut
         return false;
 }
 
-bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const float fx, const float fy, const int u, const int v, Eigen::Vector3f & normal, const int radius, const float max_angle_cos)
+bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const float fx, const float fy, const int u, const int v, Vector3f & normal, const int radius, const float max_angle_cos)
 {
     ASSERT_(radius > 0 && depth.type() == CV_32FC1);
-    if( u-radius < 0 || u+radius >= depth.cols || v-radius < 0 || v+radius >= depth.rows ) // A robust normal cannot be computed at the limit of the image
+    if( u-radius < 0 || u+radius >= depth.cols || v-radius < 0 || v+radius >= depth.rows ) // A low_curv normal cannot be computed at the limit of the image
         return false;
 
     float *_depth = reinterpret_cast<float*>(depth.data);
@@ -166,7 +167,7 @@ bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const float fx
     int p = u + v*row_stride;
     float scx = fx / _depth[p]; // Scale the gradient
     float scy = fy / _depth[p]; // Scale the gradient
-    std::vector<Eigen::Vector3f> v_normal(radius);
+    std::vector<Vector3f> v_normal(radius);
     int r = 1;
     int rv = row_stride;
     for(int i=0; i < radius; i++, r++, rv+=row_stride)
@@ -190,9 +191,9 @@ bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const float fx
                      ] << std::endl;
         std::cout << i+1 << " dz_dy " << dz_dy << " dz_dy1 " << dz_dy1 << " dz_dy_1 " << dz_dy_1 << std::endl;
 
-        Eigen::Vector3f n1(-dz_dx1*scx, -dz_dy1*scy, 1.f);
+        Vector3f n1(-dz_dx1*scx, -dz_dy1*scy, 1.f);
         n1.normalize();
-        Eigen::Vector3f n_1(-dz_dx_1*scx, -dz_dy_1*scy, 1.f);
+        Vector3f n_1(-dz_dx_1*scx, -dz_dy_1*scy, 1.f);
         n_1.normalize();
         if( n1.dot(n_1) < max_angle_cos )
             return false;
@@ -214,15 +215,15 @@ bool CameraRotTracker::computeRobustNormal(const cv::Mat & depth, const float fx
     return true;
 }
 
-vector<cv::Vec2i> CameraRotTracker::getDistributedNormals(cv::Mat & depth, const mrpt::utils::TCamera & cam, vector<Eigen::Vector3f> & v_normal, vector<bool> & v_robust_normal, const int h_divisions, const int v_divisions)
+vector<cv::Vec2i> CameraRotTracker::getDistributedNormals(cv::Mat & depth, const mrpt::utils::TCamera & cam, vector<Vector3f> & v_normal, vector<bool> & v_low_curv, const int h_divisions, const int v_divisions)
 {
     cout << "CameraRotTracker::getDistributedNormals..." << depth.cols << "x" << depth.rows << endl;
     int h_slice = depth.cols / h_divisions;
     int v_slice = depth.rows / v_divisions;
     size_t n_pts = h_divisions*v_divisions;
-    vector<cv::Vec2i> pix_coor(n_pts);
+    vector<cv::Vec2i> v_pixels(n_pts);
     v_normal.resize(n_pts);
-    v_robust_normal.resize(n_pts);
+    v_low_curv.resize(n_pts);
     size_t pt_id = 0;
     int u = h_slice/2;
     const int radius = 2;
@@ -233,19 +234,19 @@ vector<cv::Vec2i> CameraRotTracker::getDistributedNormals(cv::Mat & depth, const
         for(int r=0; r < v_divisions; r++, v+=v_slice, pt_id++)
         {
             cout << "pt_coor " << u << " " << v << endl;
-            pix_coor[pt_id][0] = u;
-            pix_coor[pt_id][1] = v;
-            v_robust_normal[pt_id] = computeRobustNormal(depth, cam, u, v, v_normal[pt_id], radius, max_angle_cos);
+            v_pixels[pt_id][0] = u;
+            v_pixels[pt_id][1] = v;
+            v_low_curv[pt_id] = computeRobustNormal(depth, cam, u, v, v_normal[pt_id], radius, max_angle_cos);
         }
     }
 
-    return pix_coor;
+    return v_pixels;
 }
 
-bool CameraRotTracker::getRobustNormal(pcl::PointCloud<pcl::Normal>::Ptr img_normals, const int u, const int v, Eigen::Vector3f & normal, const int radius, const float max_angle_cos)
+bool CameraRotTracker::getRobustNormal(pcl::PointCloud<pcl::Normal>::Ptr img_normals, const int u, const int v, Vector3f & normal, const int radius, const float max_angle_cos)
 {
     ASSERT_(radius > 0 && !img_normals->empty());
-    if( u-radius < 0 || u+radius >= int(img_normals->width) || v-radius < 0 || v+radius >= int(img_normals->height) ) // A robust normal cannot be computed at the limit of the image
+    if( u-radius < 0 || u+radius >= int(img_normals->width) || v-radius < 0 || v+radius >= int(img_normals->height) ) // A low_curv normal cannot be computed at the limit of the image
         return false;
 
     size_t p = u + v*img_normals->width;
@@ -275,15 +276,15 @@ bool CameraRotTracker::getRobustNormal(pcl::PointCloud<pcl::Normal>::Ptr img_nor
     return true;
 }
 
-vector<cv::Vec2i> CameraRotTracker::getDistributedNormals(pcl::PointCloud<pcl::Normal>::Ptr img_normals, vector<Eigen::Vector3f> & v_normal, vector<bool> & v_robust_normal, const int h_divisions, const int v_divisions)
+vector<cv::Vec2i> CameraRotTracker::getDistributedNormals2(pcl::PointCloud<pcl::Normal>::Ptr & img_normals, vector<Vector3f> & v_normal, vector<size_t> & v_low_curv, const int h_divisions, const int v_divisions)
 {
     //cout << "CameraRotTracker::getDistributedNormals..." << img_normals->width << "x" << img_normals->height << endl;
     int h_slice = img_normals->width / h_divisions;
     int v_slice = img_normals->height / v_divisions;
     size_t n_pts = h_divisions*v_divisions;
-    vector<cv::Vec2i> pix_coor(n_pts);
+    vector<cv::Vec2i> v_pixels(n_pts);
     v_normal.resize(n_pts);
-    v_robust_normal.resize(n_pts);
+    v_low_curv.resize(n_pts);
     size_t pt_id(0);
     size_t valid_pts(0);
     int u = h_slice/2;
@@ -295,14 +296,89 @@ vector<cv::Vec2i> CameraRotTracker::getDistributedNormals(pcl::PointCloud<pcl::N
         for(int r=0; r < v_divisions; r++, v+=v_slice, pt_id++)
         {
             //cout << "\tpt_coor " << u << " " << v << endl;
-            pix_coor[pt_id][0] = u;
-            pix_coor[pt_id][1] = v;
-            v_robust_normal[pt_id] = getRobustNormal(img_normals, u, v, v_normal[valid_pts], radius, max_angle_cos);
-            if(v_robust_normal[pt_id])
+            v_pixels[pt_id][0] = u;
+            v_pixels[pt_id][1] = v;
+            bool low_curv = getRobustNormal(img_normals, u, v, v_normal[valid_pts], radius, max_angle_cos);
+            if(low_curv)
+            {
+                v_low_curv[valid_pts] = pt_id;
                 ++valid_pts;
+            }
         }
     }
     v_normal.resize(valid_pts);
+    v_low_curv.resize(valid_pts);
 
-    return pix_coor;
+    return v_pixels;
 }
+
+// Get the normal vectors of the input pixels in the target immage according to the input Isometry
+vector<cv::Vec2i> CameraRotTracker::getNormalsOfPixels_trg( const vector<cv::Vec2i> & v_pixels, const Matrix<T,3,3> & H, pcl::PointCloud<pcl::Normal>::Ptr img_normals,
+                                                            vector<Vector3f> & v_normal, vector<size_t> & v_low_curv)
+{
+    //cout << "CameraRotTracker::getDistributedNormals..." << img_normals->width << "x" << img_normals->height << endl;
+    size_t n_pts = v_pixels.size();
+    vector<cv::Vec2i> v_pixels_trg(n_pts);
+    v_normal.resize(n_pts);
+    v_low_curv.resize(n_pts);
+    size_t valid_pts(0);
+    const int radius = 1;
+    const float max_angle_cos = cos(DEG2RAD(4));
+    for(size_t i=0; i < n_pts; i++)
+    {
+        Matrix<T,3,1> pix_ref(v_pixels[i][0],v_pixels[i][1],1);
+        Matrix<T,3,1> pix_trg( H*pix_ref );
+        v_pixels_trg[i][0] = round( pix_trg(0) );
+        v_pixels_trg[i][1] = round( pix_trg(1) );
+        if( v_pixels_trg[i][0] < 0 || v_pixels_trg[i][0] >= int(img_normals->width) || v_pixels_trg[i][1] < 0 || v_pixels_trg[i][1] >= int(img_normals->height) )
+            continue;
+
+        bool low_curv = getRobustNormal(img_normals, v_pixels_trg[i][0], v_pixels_trg[i][1], v_normal[valid_pts], radius, max_angle_cos);
+        if(low_curv)
+        {
+            v_low_curv[valid_pts] = i;
+            ++valid_pts;
+        }
+
+    }
+    v_normal.resize(valid_pts);
+    v_low_curv.resize(valid_pts);
+
+    return v_pixels_trg;
+}
+
+
+//vector<cv::Vec2i> CameraRotTracker::getSM_Rcorresp(pcl::PointCloud<pcl::Normal>::Ptr img_normals, vector<Vector3f> & v_normal, vector<size_t> & v_low_curv, const vector<cv::Vec2i> & v_pixels_trg, Matrix<T,3,3> & R)
+//{
+//    //cout << "CameraRotTracker::getDistributedNormals..." << img_normals->width << "x" << img_normals->height << endl;
+//    int h_slice = img_normals->width / h_divisions;
+//    int v_slice = img_normals->height / v_divisions;
+//    size_t n_pts = h_divisions*v_divisions;
+//    vector<cv::Vec2i> v_pixels_trg(n_pts);
+//    v_normal.resize(n_pts);
+//    v_low_curv.resize(n_pts);
+//    size_t pt_id(0);
+//    size_t valid_pts(0);
+//    int u = h_slice/2;
+//    const int radius = 1;
+//    const float max_angle_cos = cos(DEG2RAD(4));
+//    for(int c=0; c < h_divisions; c++, u+=h_slice)
+//    {
+//        int v = v_slice/2;
+//        for(int r=0; r < v_divisions; r++, v+=v_slice, pt_id++)
+//        {
+//            //cout << "\tpt_coor " << u << " " << v << endl;
+//            v_pixels_trg[pt_id][0] = u;
+//            v_pixels_trg[pt_id][1] = v;
+//            bool low_curv = getRobustNormal(img_normals, u, v, v_normal[valid_pts], radius, max_angle_cos);
+//            if(low_curv)
+//            {
+//                v_low_curv[valid_pts] = pt_id;
+//                ++valid_pts;
+//            }
+//        }
+//    }
+//    v_normal.resize(valid_pts);
+
+//    return v_pixels_trg;
+//}

@@ -16,14 +16,13 @@
 
 #if MRPT_HAS_PCL
 
+#include <mrpt/system/os.h>
 #include <mrpt/pbmap/Plane.h>
 #include <mrpt/pbmap/Miscellaneous.h>
 #include <pcl/common/time.h>
 #include <pcl/filters/voxel_grid.h>
 
 #include <Eigen/Eigenvalues>
-
-#include <mrpt/system/os.h>
 
 using namespace mrpt::pbmap;
 using namespace mrpt::utils;

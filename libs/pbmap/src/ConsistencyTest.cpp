@@ -91,7 +91,7 @@ Eigen::Matrix4f ConsistencyTest::initPose( std::map<unsigned, unsigned> &matched
   JacobiSVD<MatrixXf> svd(normalCovariances, ComputeThinU | ComputeThinV);
   Matrix3f Rotation = svd.matrixV() * svd.matrixU().transpose();
 
-  // Check consitioning. 3 non-parallel planes are required in 6DoF, and only two for planar movement (3DoF)
+  // Check conditioning. 3 non-parallel planes are required in 6DoF, and only two for planar movement (3DoF)
   bool bPlanar_cond = false;
   for(map<unsigned, unsigned>::iterator it1 = matched_planes.begin(); it1 != matched_planes.end() && !bPlanar_cond; it1++)
   {

@@ -18,16 +18,19 @@
 #include <mrpt/config.h>
 #if MRPT_HAS_PCL
 
-#include <mrpt/utils/types_math.h> // Eigen
+#include <mrpt/pbmap/link_pragmas.h>
+#include <mrpt/math/ops_containers.h>
+//#include <mrpt/math/CMatrixFixedNumeric.h>
+#include <mrpt/math.h>
+//#include <mrpt/utils/types_math.h> // Eigen
+#include <set>
 #include <map>
+#include <vector>
 #include <string>
 #include <iostream>
 #include <iterator>
-#include <vector>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include <mrpt/pbmap/link_pragmas.h>
-#include <mrpt/math.h>
 
 /*! Sort a vector and retrieve the indexes of teh sorted values.*/
 template <typename T>

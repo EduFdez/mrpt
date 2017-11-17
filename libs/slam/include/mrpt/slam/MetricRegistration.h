@@ -525,9 +525,9 @@ namespace slam
         }
 
         static std::map<size_t, size_t> registerNormalVectorsContrastStop ( const std::vector<Eigen::Matrix<T,3,1> > & n_i, std::vector<float> & length_i, const std::vector<int> & contrast_i,
-                                                                        const std::vector<Eigen::Matrix<T,3,1> > & n_j, std::vector<float> & length_j, const std::vector<int> & contrast_j,
-                                                                        Eigen::Matrix<T,3,3> & rotation, T & conditioning,
-                                                                        const T max_angle_diff = 0.0174533, const T min_angle_pair = 0.174533, const int th_contrast = 80)
+                                                                            const std::vector<Eigen::Matrix<T,3,1> > & n_j, std::vector<float> & length_j, const std::vector<int> & contrast_j,
+                                                                            Eigen::Matrix<T,3,3> & rotation, T & conditioning,
+                                                                            const T max_angle_diff = 0.0174533, const T min_angle_pair = 0.174533, const int th_contrast = 80)
         {
             // Find a set of normal vector correspondences among n_i and n_j and compute the relative rotation and conditioning number
             std::map<size_t,size_t> best_matches;
@@ -821,6 +821,47 @@ namespace slam
 //        //        std::cout << "match " << it->first << " - " << it->second << "\n";
 
 //            return best_matches;
+//        }
+
+        static Eigen::Matrix<T,3,1> computeTranslationSM(const Eigen::Matrix<T,3,3> & R, std::map<size_t, size_t> & sm_matches,
+                                                         const std::vector<Eigen::Matrix<T,3,1> > & n_i, const std::vector<float> & depth_i, const std::vector<float> & depth_j)
+        {
+            // Calculate translation
+            Eigen::Matrix<T,3,1> translation;
+            Eigen::Matrix<T,3,3> hessian = Eigen::Matrix<T,3,3>::Zero();
+            Eigen::Matrix<T,3,1> gradient = Eigen::Matrix<T,3,1>::Zero();
+            T accum_error2 = 0.0;
+            for(auto it = sm_matches.begin(); it != sm_matches.end(); it++)
+            {
+                T trans_error = (sm_matches[it->first] - sm_matches[it->second]); //+n*t
+                accum_error2 += trans_error * trans_error;
+                hessian += n_i[it->first].v3normal * n_i[it->first].v3normal.transpose();
+                gradient += n_i[it->first].v3normal * trans_error;
+            }
+            translation = -hessian.inverse() * gradient;
+
+            return translation;
+        }
+
+//        static Eigen::Matrix<T,3,1> computePoseSM(const Eigen::Matrix<T,3,3> & R, std::map<size_t, size_t> & sm_matches,
+//                                                         const std::vector<Eigen::Matrix<T,3,1> > & n_i, const std::vector<float> & depth_i,
+//                                                         const std::vector<Eigen::Matrix<T,3,1> > & n_j, const std::vector<float> & depth_j)
+//        {
+//            // Calculate translation
+//            Eigen::Matrix<T,3,1> translation;
+//            Eigen::Matrix<T,3,3> hessian = Eigen::Matrix<T,3,3>::Zero();
+//            Eigen::Matrix<T,3,1> gradient = Eigen::Matrix<T,3,1>::Zero();
+//            float accum_error2 = 0.0;
+//            for(auto it = sm_matches.begin(); it != sm_matches.end(); it++)
+//            {
+//                float trans_error = (sm_matches[it->first] - sm_matches[it->second]); //+n*t
+//                accum_error2 += trans_error * trans_error;
+//                hessian += n_i[it->first].v3normal * n_i[it->first].v3normal.transpose();
+//                gradient += n_i[it->first].v3normal * trans_error;
+//            }
+//            translation = -hessian.inverse() * gradient;
+
+//            return translation;
 //        }
 
         inline static void rotation2homography(const Eigen::Matrix<T,3,3> & R, const Eigen::Matrix<T,3,3> & K, Eigen::Matrix<T,3,3> & H)
