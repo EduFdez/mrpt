@@ -700,12 +700,13 @@ void CDifodoDatasets_RGBD::run()
                     surf_matches[vv_pt_low_curv[1][it->first]] = vv_pt_low_curv[0][it->second];
 
                 mrpt::slam::MetricRegistration<T>::rotation2homography( rot, intrinsics.intrinsicParams.cast<T>(), isometry );
-                size_t ref(1), trg(0);
+                size_t ref(1);
+                //size_t trg(0);
                 Matrix<T,3,3> H(isometry);
                 if(vv_pt_low_curv[1].size() < vv_pt_low_curv[0].size())
                 {
                     ref = 0;
-                    trg = 1;
+                //    trg = 1;
                     H = H.inverse();
                 }
                 vector<cv::Vec2i> v_sm_pts_ref( vv_pt_low_curv[ref].size() );

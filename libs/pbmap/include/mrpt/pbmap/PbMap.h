@@ -18,6 +18,7 @@
 #include <mrpt/config.h>
 #if MRPT_HAS_PCL
 
+#include <mrpt/utils/types_math.h> // Eigen
 #include <mrpt/utils/utils_defs.h>
 #include <mrpt/utils/CSerializable.h>
 #include <mrpt/pbmap/link_pragmas.h>

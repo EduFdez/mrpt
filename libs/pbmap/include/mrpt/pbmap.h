@@ -13,6 +13,7 @@
 #include <mrpt/config.h>
 
 #include <mrpt/pbmap/ConsistencyTest.h>
+#include <mrpt/pbmap/DisplayCloudPbMap.h>
 #include <mrpt/pbmap/heuristicParams.h>
 #include <mrpt/pbmap/Miscellaneous.h>
 #include <mrpt/pbmap/PbMap.h>
@@ -23,7 +24,6 @@
 #include <mrpt/pbmap/SemanticClustering.h>
 #include <mrpt/pbmap/Subgraph.h>
 #include <mrpt/pbmap/SubgraphMatcher.h>
-#include <mrpt/pbmap/DisplayCloudPbMap.h>
 
 #endif
 

@@ -11,8 +11,10 @@
  *  Construction of plane-based maps and localization in it from RGBD Images.
  *  Writen by Eduardo Fernandez-Moral. See docs for <a href="group__mrpt__pbmap__grp.html" >mrpt-pbmap</a>
  */
-#include <mrpt/pbmap.h> // precomp. hdr
 
+#include <mrpt/pbmap/PbMap.h>
+#include <mrpt/pbmap/colors.h>
+#include <mrpt/system/threads.h>
 #include <mrpt/utils/CFileGZInputStream.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/visualization/pcl_visualizer.h>
@@ -67,16 +69,6 @@ PbMapVisualizer::PbMapVisualizer() :
   cloudViewer("PbMap")
 {
 }
-
-// Color = (red[i], grn[i], blu[i])
-// The color order is: red, green, blue, yellow, pink, turquoise, orange, purple, dark green, beige
-unsigned char red [10] = {255,   0,   0, 255, 255,   0, 255, 204,   0, 255};
-unsigned char grn [10] = {  0, 255,   0, 255,   0, 255, 160,  51, 128, 222};
-unsigned char blu [10] = {  0,   0, 255,   0, 255, 255, 0  , 204,   0, 173};
-
-double ared [10] = {1.0,   0,   0, 1.0, 1.0,   0, 1.0, 0.8,   0, 1.0};
-double agrn [10] = {  0, 1.0,   0, 1.0,   0, 1.0, 0.6, 0.2, 0.5, 0.9};
-double ablu [10] = {  0,   0, 1.0,   0, 1.0, 1.0,   0, 0.8,   0, 0.7};
 
 void PbMapVisualizer::viz_cb (pcl::visualization::PCLVisualizer& viz)
 {
