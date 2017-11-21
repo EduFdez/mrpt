@@ -25,8 +25,6 @@
 #include <mrpt/maps/CColouredPointsMap.h>
 #include <mrpt/poses/CPose3D.h>
 #include <mrpt/utils/TStereoCamera.h>
-//#include <mrpt/system/os.h>
-//#include <mrpt/system/threads.h>
 #include <mrpt/system/filesystem.h>
 #include <mrpt/vision/chessboard_stereo_camera_calib.h>
 #include <mrpt/vision/CUndistortMap.h>
