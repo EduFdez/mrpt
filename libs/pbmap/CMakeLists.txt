@@ -10,11 +10,10 @@ IF(CMAKE_MRPT_HAS_PCL)
 		pbmap
 		# Dependencies
 		mrpt-graphs
-		mrpt-base
 		)
 
 	IF(BUILD_mrpt-pbmap)
-		target_link_libraries(mrpt-pbmap ${PCL_LIBRARIES})
+		target_link_libraries(mrpt-pbmap PRIVATE ${PCL_LIBRARIES})
 	ENDIF()
 
 ELSE(CMAKE_MRPT_HAS_PCL)

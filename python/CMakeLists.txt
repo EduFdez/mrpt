@@ -12,8 +12,31 @@ include_directories(
   ${Boost_INCLUDE_DIRS}
   ${PYTHON_INCLUDE_DIRS}
 )
+# Find Numpy include directory
+execute_process(
+    COMMAND
+    "${PYTHON_EXECUTABLE}" -c
+# multiline string; indentation would break this
+"try:
+    import sys
+    import numpy
+    sys.stdout.write(numpy.get_include())
+except:
+    pass
+"
+    OUTPUT_VARIABLE MRPT_NUMPY_INCLUDE_DIRECTORY
+)
+if(MRPT_NUMPY_INCLUDE_DIRECTORY)
+  include_directories(${MRPT_NUMPY_INCLUDE_DIRECTORY})
+endif()
+
+# gcc and clang
+if (NOT MSVC)
+	add_compile_options(-Wno-unused-local-typedef)
+endif()
 
 add_library(pymrpt
+  SHARED # Python lib must be shared
   src/system_bindings.cpp
   src/utils_bindings.cpp
   src/kinematics_bindings.cpp
@@ -46,4 +69,4 @@ install(TARGETS pymrpt
   LIBRARY DESTINATION ${PYMRPT_INSTALL_DIR}
 )
 
-DeclareAppDependencies(pymrpt mrpt-base mrpt-slam mrpt-obs mrpt-maps mrpt-nav mrpt-gui mrpt-opengl mrpt-vision) # Dependencies
+DeclareAppDependencies(pymrpt mrpt-poses mrpt-slam mrpt-obs mrpt-maps mrpt-nav mrpt-gui mrpt-opengl mrpt-vision) # Dependencies

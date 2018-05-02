@@ -1,0 +1,7 @@
+coverage:
+  ignore:
+    - tests/*
+    - samples/*
+    - apps/*
+    - **/otherlibs
+    - otherlibs/*

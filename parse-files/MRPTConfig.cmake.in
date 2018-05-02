@@ -14,12 +14,11 @@
 #
 #
 #   The libraries or "modules" which can be included are
-#   (see the full list and description in: http://www.mrpt.org/Libraries )
-#     - base           --> libmrpt-base
+#   (see the full list and description in: https://www.mrpt.org/Libraries )
+#     - poses          --> libmrpt-poses
 #     - opengl         --> libmrpt-opengl
 #     - hwdrivers      --> libmrpt-hwdrivers
-#     - reactivenav    --> libmrpt-reactivenav
-#     - hmtslam        --> libmrpt-hmtslam
+#     - nav            --> libmrpt-nav
 #
 #   This file will define the following variables:
 #    - MRPT_LIBRARIES        : The list of libraries to links against.
@@ -30,9 +29,9 @@
 #    - MRPT_VERSION_{MAJOR,MINOR,PATCH}: 3 variables for the version parts
 #
 #   Optional input variables:
-#    - MRPT_DONT_USE_DBG_LIBS: If defined at input, before the
-#         "FIND_PACKAGE(MRPT...)", and set to "1", the release libraries
-#         will be used even for linking against "Debug" CMake builds.
+#    - (Windows only) MRPT_DONT_USE_DBG_LIBS: If defined at input, before the
+#         "FIND_PACKAGE(MRPT...)", and set to "1", will not search for `-dbg`
+#         libraries when linking in "Debug" CMake builds.
 #
 # =========================================================================
 
@@ -42,6 +41,23 @@ SET(MRPT_VERSION_MAJOR @CMAKE_MRPT_VERSION_NUMBER_MAJOR@)
 SET(MRPT_VERSION_MINOR @CMAKE_MRPT_VERSION_NUMBER_MINOR@)
 SET(MRPT_VERSION_PATCH @CMAKE_MRPT_VERSION_NUMBER_PATCH@)
 
+# Require C++17
+if (MSVC)
+	add_compile_options("/std:c++latest")
+else()
+	if(${CMAKE_VERSION} VERSION_LESS "3.8.0")
+		add_compile_options(-std=c++17)
+	else()
+		if ("${CMAKE_CXX_STANDARD}" STREQUAL "" OR "${CMAKE_CXX_STANDARD}" LESS 17)
+			set(CMAKE_CXX_STANDARD 17)
+		endif()
+	endif()
+endif()
+
+# missing math consts (M_PI) in msvc:
+IF(MSVC)
+	ADD_DEFINITIONS(-D_USE_MATH_DEFINES)
+ENDIF()
 
 # Extract the directory where *this* file has been installed (determined at cmake run-time)
 get_filename_component(THIS_MRPT_CONFIG_PATH "${CMAKE_CURRENT_LIST_FILE}" PATH)
@@ -75,9 +91,12 @@ ENDIF ()
 
 # If using GCC and -Wall, eigen3 headers raise some warnings: silent them:
 IF(CMAKE_COMPILER_IS_GNUCXX)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-long-long -Wno-variadic-macros")
+	add_compile_options(-Wno-long-long -Wno-variadic-macros)
+	# Workaround: Eigen <3.4 produces *tons* of warnings in GCC >=6. See http://eigen.tuxfamily.org/bz/show_bug.cgi?id=1221
+	IF (NOT ${CMAKE_CXX_COMPILER_VERSION} LESS "6.0")
+		add_compile_options(-Wno-ignored-attributes -Wno-int-in-bool-context)
+	ENDIF()
 ENDIF()
-
 
 # ======================================================
 # Include directories to add to the user project:
@@ -124,27 +143,24 @@ SET(ALL_MRPT_LIBS "@ALL_MRPT_LIBS@")
 #  End of DECLARE_LIBS_HDR_ONLY
 
 # Add hierarchical dependencies of MRPT libraries,
-#  and replace "base"->"mrpt-base", etc.
+#  and replace "core"->"mrpt-core", etc.
 # ================================================
 SET(FINAL_LIST_COMPONENTS "")
-FOREACH(_MOD ${MRPT_FIND_COMPONENTS})
-	STRING(TOLOWER ${_MOD} _MOD)
-	SET(_NAM "mrpt-${_MOD}")
-	get_property(_LIB_DEP GLOBAL PROPERTY "${_NAM}_LIB_DEPS")
-
-	# Add deps:
-	IF (NOT "${_LIB_DEP}" STREQUAL "")
-		#MESSAGE(STATUS "ADD: ${_LIB_DEP}")
-		LIST(APPEND FINAL_LIST_COMPONENTS ${_LIB_DEP})
-	ENDIF ()
-
-	# Add lib itself:
-	IF (NOT "${_NAM}" STREQUAL "mrpt-core")
+FOREACH(iter RANGE 1 12) # repeat to get depedencies recursively
+	FOREACH(_MOD ${MRPT_FIND_COMPONENTS})
+		STRING(TOLOWER ${_MOD} _MOD)
+		STRING(REGEX REPLACE "mrpt-(.*)" "\\1" _MOD ${_MOD})
+		SET(_NAM "mrpt-${_MOD}")
 		LIST(APPEND FINAL_LIST_COMPONENTS ${_NAM})
-	ENDIF ()
+		get_property(_LIB_DEP GLOBAL PROPERTY "${_NAM}_LIB_DEPS")
+		# Add deps:
+		IF (NOT "${_LIB_DEP}" STREQUAL "")
+			LIST(APPEND FINAL_LIST_COMPONENTS ${_LIB_DEP})
+		ENDIF ()
+	ENDFOREACH()
+	SET(MRPT_FIND_COMPONENTS ${FINAL_LIST_COMPONENTS})
+	list(REMOVE_DUPLICATES MRPT_FIND_COMPONENTS)
 ENDFOREACH()
-SET(MRPT_FIND_COMPONENTS ${FINAL_LIST_COMPONENTS})
-list(REMOVE_DUPLICATES MRPT_FIND_COMPONENTS)
 
 # ======================================================
 # Check:
@@ -180,10 +196,10 @@ FOREACH(MRPTLIB ${MRPT_FIND_COMPONENTS})
 	# If the required lib is header-only, don't add to the list of libs to link!
 	get_property(_LIB_HDRONLY GLOBAL PROPERTY "mrpt-${MRPTLIB}_LIB_IS_HEADERS_ONLY")
 	IF(NOT _LIB_HDRONLY)
-		IF(NOT MRPT_DONT_USE_DBG_LIBS)
+		IF(WIN32 AND NOT MRPT_DONT_USE_DBG_LIBS)
 			LIST(APPEND MRPT_LIBRARIES
 				optimized @MRPT_LIB_PREFIX@mrpt-${MRPTLIB}@MRPT_DLL_VERSION_POSTFIX@
-				debug     @MRPT_LIB_PREFIX@mrpt-${MRPTLIB}@MRPT_DLL_VERSION_POSTFIX@-dbg)
+				debug     @MRPT_LIB_PREFIX@mrpt-${MRPTLIB}@MRPT_DLL_VERSION_POSTFIX@@CMAKE_DEBUG_POSTFIX@)
 		ELSE()
 			LIST(APPEND MRPT_LIBRARIES  @MRPT_LIB_PREFIX@mrpt-${MRPTLIB}@MRPT_DLL_VERSION_POSTFIX@)
 		ENDIF()

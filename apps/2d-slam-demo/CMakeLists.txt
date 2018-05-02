@@ -18,7 +18,6 @@ IF(CMAKE_MRPT_HAS_WXWIDGETS)
 		slamdemoApp.cpp   slamdemoApp.h
 		slamdemoMain.cpp  slamdemoMain.h
 		batch_experiments.cpp
-		CAboutBox.cpp  CAboutBox.h
 		CDlgParams.cpp CDlgParams.h
 		CLogView.cpp CLogView.h
 	 )
@@ -39,7 +38,7 @@ IF(CMAKE_MRPT_HAS_WXWIDGETS)
 	# Dependencies on MRPT libraries:
 	#  Just mention the top-level dependency, the rest will be detected automatically,
 	#  and all the needed #include<> dirs added (see the script DeclareAppDependencies.cmake for further details)
-	DeclareAppDependencies(${PROJECT_NAME} mrpt-slam mrpt-gui)
+	DeclareAppDependencies(${PROJECT_NAME} mrpt-slam mrpt-gui mrpt-tclap)
 
 	DeclareAppForInstall(${PROJECT_NAME})
 

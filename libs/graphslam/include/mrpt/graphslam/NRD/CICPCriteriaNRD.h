@@ -1,46 +1,34 @@
-/* +---------------------------------------------------------------------------+
-	 |                     Mobile Robot Programming Toolkit (MRPT)               |
-	 |                          http://www.mrpt.org/                             |
-	 |                                                                           |
-	 | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
-	 | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-	 | Released under BSD License. See details in http://www.mrpt.org/License    |
-	 +---------------------------------------------------------------------------+ */
+/* +------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)            |
+   |                          http://www.mrpt.org/                          |
+   |                                                                        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file     |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                |
+   | Released under BSD License. See details in http://www.mrpt.org/License |
+   +------------------------------------------------------------------------+ */
 
 #ifndef CICPCRITERIANRD_H
 #define CICPCRITERIANRD_H
 
-#include <mrpt/obs/CRawlog.h>
 #include <mrpt/obs/CActionCollection.h>
 #include <mrpt/obs/CSensoryFrame.h>
 #include <mrpt/obs/CObservation2DRangeScan.h>
 #include <mrpt/obs/CObservation3DRangeScan.h>
-#include <mrpt/poses/CPosePDF.h>
-#include <mrpt/poses/CPose3DPDF.h>
-#include <mrpt/poses/CRobot2DPoseEstimator.h>
-#include <mrpt/maps/CSimplePointsMap.h>
-#include <mrpt/obs/CRawlog.h>
-#include <mrpt/obs/CObservationOdometry.h>
-#include <mrpt/obs/CObservation3DRangeScan.h>
-#include <mrpt/utils/CLoadableOptions.h>
-#include <mrpt/utils/CConfigFile.h>
-#include <mrpt/utils/CConfigFileBase.h>
-#include <mrpt/utils/CStream.h>
-#include <mrpt/utils/types_simple.h>
-#include <mrpt/slam/CICP.h>
-#include <mrpt/system/datetime.h>
-#include <mrpt/system/os.h>
-#include <mrpt/system/threads.h>
+#include <mrpt/config/CLoadableOptions.h>
+#include <mrpt/config/CConfigFileBase.h>
 
 #include <mrpt/graphslam/interfaces/CNodeRegistrationDecider.h>
-#include <mrpt/graphslam/misc/CRangeScanRegistrationDecider.h>
+#include <mrpt/graphslam/misc/CRangeScanOps.h>
 #include <mrpt/graphslam/misc/TSlidingWindow.h>
 
 #include <string>
-#include <math.h>
 
-namespace mrpt { namespace graphslam { namespace deciders {
-
+namespace mrpt
+{
+namespace graphslam
+{
+namespace deciders
+{
 /**\brief ICP-based Fixed Intervals Node Registration
  *
  * ## Description
@@ -54,7 +42,7 @@ namespace mrpt { namespace graphslam { namespace deciders {
  * graph)
  * \sa loadParams, TParams::loadFromConfigFile
  *
- * Decider *does not guarantee* thread safety when accessing the GRAPH_t
+ * Decider *does not guarantee* thread safety when accessing the GRAPH_T
  * resource. This is handled by the CGraphSlamEngine class.
  *
  * ### Specifications
@@ -71,7 +59,7 @@ namespace mrpt { namespace graphslam { namespace deciders {
  *
  * - \b class_verbosity
  *   + \a Section       : NodeRegistrationDeciderParameters
- *   + \a default value : 1 (LVL_INFO)
+ *   + \a default value : 1 (mrpt::system::LVL_INFO)
  *   + \a Required      : FALSE
  *
  * - \b registration_max_distance
@@ -84,9 +72,9 @@ namespace mrpt { namespace graphslam { namespace deciders {
  *  + \a Default value : 10 // degrees
  *  + \a Required      : FALSE
  *
- * \note Since the decider inherits from the CRangeScanRegistrationDecider
+ * \note Since the decider inherits from the CRangeScanOps
  * class, it parses the configuration parameters of the latter as well from the
- * "ICP" section. Refer to the CRangeScanRegistrationDecider documentation for
+ * "ICP" section. Refer to the CRangeScanOps documentation for
  * its list of configuration
  * parameters
  *
@@ -97,172 +85,169 @@ namespace mrpt { namespace graphslam { namespace deciders {
  *
  * \ingroup mrpt_graphslam_grp
  */
-template<class GRAPH_t>
-class CICPCriteriaNRD:
-	public mrpt::graphslam::deciders::CNodeRegistrationDecider<GRAPH_t>,
-	public mrpt::graphslam::deciders::CRangeScanRegistrationDecider<GRAPH_t>
+template <class GRAPH_T>
+class CICPCriteriaNRD
+	: public virtual mrpt::graphslam::deciders::CNodeRegistrationDecider<
+		  GRAPH_T>,
+	  public mrpt::graphslam::deciders::CRangeScanOps<GRAPH_T>
 {
-	public:
-		// Public functions
-		//////////////////////////////////////////////////////////////
+   public:
+	// Public functions
+	//////////////////////////////////////////////////////////////
+	/**\brief Handy typedefs */
+	/**\{*/
+	/**\brief type of graph constraints */
+	using constraint_t = typename GRAPH_T::constraint_t;
+	/**\brief type of underlying poses (2D/3D). */
+	using pose_t = typename GRAPH_T::constraint_t::type_value;
+	using global_pose_t = typename GRAPH_T::global_pose_t;
 
-		typedef mrpt::graphslam::deciders::CNodeRegistrationDecider<GRAPH_t> superA;
-		typedef mrpt::graphslam::deciders::CRangeScanRegistrationDecider<GRAPH_t> superB;
+	using InfMat = mrpt::math::CMatrixFixedNumeric<
+		double, constraint_t::state_length, constraint_t::state_length>;
+	/**\brief Typedef for accessing methods of the RangeScanRegistrationDecider
+	 * parent class.
+	 */
+	using range_ops_t = mrpt::graphslam::deciders::CRangeScanOps<GRAPH_T>;
+	using decider_t = CICPCriteriaNRD<GRAPH_T>; /**< self type */
+	/**\brief Node Registration Decider */
+	using parent_t =
+		mrpt::graphslam::deciders::CNodeRegistrationDecider<GRAPH_T>;
+	/**\}*/
 
-		/**\brief type of graph constraints */
-		typedef typename GRAPH_t::constraint_t constraint_t;
-		/**\brief type of underlying poses (2D/3D). */
-		typedef typename GRAPH_t::constraint_t::type_value pose_t;
+	/**\brief Class constructor */
+	CICPCriteriaNRD();
+	/**\brief Class destructor */
+	~CICPCriteriaNRD();
 
-		typedef mrpt::math::CMatrixFixedNumeric<double,
-						constraint_t::state_length,
-						constraint_t::state_length> InfMat;
-		/**\brief Typedef for accessing methods of the RangeScanRegistrationDecider
-		 * parent class.
-		 */
-		typedef mrpt::graphslam::deciders::CRangeScanRegistrationDecider<GRAPH_t>
-			range_scanner_t;
-		typedef CICPCriteriaNRD<GRAPH_t> decider_t; /**< self type - Handy typedef */
+	void loadParams(const std::string& source_fname);
+	void printParams() const;
+	void getDescriptiveReport(std::string* report_str) const;
 
-		/**\brief Class constructor */
-		CICPCriteriaNRD();
-		/**\brief Class destructor */
-		~CICPCriteriaNRD();
+	/**\brief Update the decider state using the latest dataset measurements.
+	 *
+	 * \note Depending on the observations at hand, update of the state is
+	 * handled either by updateState2D, or by updateState3D methods. This
+	 * helps in separating the 2D, 3D RangeScans handling altogether, which in
+	 * turn simplifies the overall procedure
+	 *
+	 * Order of calls:
+	 * updateState (calls) ==> updateState2D/3D ==>
+	 * checkRegistrationCondition2D/3D ==> CheckRegistrationCondition
+	 *
+	 * \sa updateState2D, updateState3D
+	 */
+	bool updateState(
+		mrpt::obs::CActionCollection::Ptr action,
+		mrpt::obs::CSensoryFrame::Ptr observations,
+		mrpt::obs::CObservation::Ptr observation);
+	/**\brief Specialized updateState method used solely when dealing with
+	 * 2DRangeScan information.
+	 * \sa updateState3D
+	 */
+	bool updateState2D(mrpt::obs::CObservation2DRangeScan::Ptr observation);
+	/**\brief Specialized updateState method used solely when dealing with
+	 * 3DRangeScan information.
+	 * \sa updateState2D
+	 */
+	bool updateState3D(mrpt::obs::CObservation3DRangeScan::Ptr observation);
 
-		void setGraphPtr(GRAPH_t* graph);
-		void loadParams(const std::string& source_fname);
-		void printParams() const;
-		void getDescriptiveReport(std::string* report_str) const;
+	struct TParams : public mrpt::config::CLoadableOptions
+	{
+	   public:
+		TParams(decider_t& d);
+		~TParams();
 
-		pose_t getCurrentRobotPosEstimation() const;
+		decider_t& decider; /**< Reference to outer decider class */
 
-		/**\brief Update the decider state using the latest dataset measurements.
-		 *
-		 * \note Depending on the observations at hand, update of the state is
-		 * handled either by updateState2D, or by updateState3D methods. This
-		 * helps in separating the 2D, 3D RangeScans handling altogether, which in
-		 * turn simplifies the overall procedure
-		 *
-		 * \sa updateState2D, updateState3D
-		 */
-		bool updateState(
-				mrpt::obs::CActionCollectionPtr action,
-				mrpt::obs::CSensoryFramePtr observations,
-				mrpt::obs::CObservationPtr observation );
-		/**\brief Specialized updateState method used solely when dealing with
-		 * 2DRangeScan information.
-		 * \sa updateState3D
-		 */
-		bool updateState2D(
-				mrpt::obs::CObservation2DRangeScanPtr observation);
-		/**\brief Specialized updateState method used solely when dealing with
-		 * 3DRangeScan information.
-		 * \sa updateState2D
-		 */
-		bool updateState3D(
-				mrpt::obs::CObservation3DRangeScanPtr observation);
+		void loadFromConfigFile(
+			const mrpt::config::CConfigFileBase& source,
+			const std::string& section);
+		void dumpToTextStream(std::ostream& out) const;
 
-		struct TParams: public mrpt::utils::CLoadableOptions {
-			public:
-				TParams(decider_t& d);
-				~TParams();
+		double registration_max_distance; /**< Maximum distance for new node
+											 registration */
+		double registration_max_angle; /**< Maximum angle difference for new
+										  node registration */
+	};
 
-				decider_t& decider; /**< Reference to outer decider class */
+	// Public members
+	// ////////////////////////////
+	TParams params;
 
-				void loadFromConfigFile(
-						const mrpt::utils::CConfigFileBase &source,
-						const std::string &section);
-				void 	dumpToTextStream(mrpt::utils::CStream &out) const;
+   protected:
+	// protected functions
+	//////////////////////////////////////////////////////////////
+	bool checkRegistrationCondition();
+	/**\brief Specialized checkRegistrationCondtion method used solely when
+	 * dealing with 2DRangeScan information
+	 * \sa checkRegistrationCondition3D
+	 */
+	bool checkRegistrationCondition2D();
+	/**\brief Specialized checkRegistrationCondition method used solely when
+	 * dealing with 3DRangeScan information
+	 * \sa checkRegistrationCondition2D
+	 */
+	bool checkRegistrationCondition3D();
 
-				double registration_max_distance; /**< Maximum distance for new node registration */
-				double registration_max_angle; /**< Maximum angle difference for new node registration */
-		};
+	// protected members
+	//////////////////////////////////////////////////////////////
+	bool m_is_using_3DScan;
 
-		// Public members
-		// ////////////////////////////
-		TParams params;
+	/**\brief handy laser scans to use in the class methods
+	 */
+	/**\{ */
+	/**\brief 2D LaserScan corresponding to the latest registered node in the
+	 * graph */
+	mrpt::obs::CObservation2DRangeScan::Ptr m_last_laser_scan2D;
+	/**\brief Current LaserScan. Set during the new measurements acquisition in
+	 * updateState method
+	 */
+	mrpt::obs::CObservation2DRangeScan::Ptr m_curr_laser_scan2D;
 
-	private:
-		// Private functions
-		//////////////////////////////////////////////////////////////
-		bool checkRegistrationCondition();
-		/**\brief Specialized checkRegistrationCondtion method used solely when dealing with
-		 * 2DRangeScan information
-		 * \sa checkRegistrationCondition3D
-		 */
-		bool checkRegistrationCondition2D();
-		/**\brief Specialized checkRegistrationCondition method used solely when dealing with
-		 * 3DRangeScan information
-		 * \sa checkRegistrationCondition2D
-		 */
-		bool checkRegistrationCondition3D();
+	mrpt::obs::CObservation3DRangeScan::Ptr m_last_laser_scan3D;
+	mrpt::obs::CObservation3DRangeScan::Ptr m_curr_laser_scan3D;
+	/**\} */
 
-		void registerNewNode();
-		/**\brief General initialization method to call from the Class Constructors*/
-		void initCICPCriteriaNRD();
+	/**\brief Odometry rigid-body transformation since the last accepted
+	 * LaserScan.
+	 *
+	 * Decider can use it to smoothen the trajectory in the case of high noise
+	 * in the laser measurements
+	 */
+	constraint_t m_latest_odometry_PDF;
+	/**\brief pose_t estimation using only odometry information.
+	 * \note Utilized only in observation-only rawlogs.
+	 *
+	 */
+	pose_t m_curr_odometry_only_pose;
+	/**\brief pose_t estimation using only odometry information.
+	 * \note Utilized only in observation-only rawlogs.
+	 *
+	 * Resets next time an ICP edge/Odometry measurement is utilized for
+	 * updating the estimated robot position.
+	 */
+	pose_t m_last_odometry_only_pose;
+	/**\brief Keeps track of the last N measurements between the ICP edge and
+	 * the corresponding odometry measurements.
+	 *
+	 * Use the last odometry rigid body transformation instead of the
+	 * ICP edge if the mahalanobis distance between them is greater than this
+	 * limit.
+	 */
+	TSlidingWindow m_mahal_distance_ICP_odom;
 
-		// Private members
-		//////////////////////////////////////////////////////////////
-		GRAPH_t* m_graph; /**<\brief Pointer to the graph under construction */
+	// criteria for adding new a new node
+	bool m_use_angle_difference_node_reg;
+	bool m_use_distance_node_reg;
 
-		/**\brief Tracking the PDF of the current position of the robot with regards to
-		 * the \b previous registered node
-		 */
-		constraint_t	m_since_prev_node_PDF;
-
-		bool m_first_time_call2D;
-		bool m_first_time_call3D;
-		bool m_is_using_3DScan;
-
-		// handy laser scans to use in the class methods
-		mrpt::obs::CObservation2DRangeScanPtr m_last_laser_scan2D;
-		mrpt::obs::CObservation2DRangeScanPtr m_curr_laser_scan2D;
-
-		mrpt::obs::CObservation3DRangeScanPtr m_last_laser_scan3D;
-		mrpt::obs::CObservation3DRangeScanPtr m_curr_laser_scan3D;
-
-		/**\brief Latest odometry rigid body transformation.
-		 *
-		 * Decider can use it to smoothen the trajectory in the case of high noise
-		 * in the laser measurements
-		 */
-		constraint_t m_latest_odometry_PDF;
-		/**\brief pose_t estimation using only odometry information. Handy for
-		 * observation-only rawlogs.  */
-		pose_t m_curr_odometry_only_pose;
-		/**\brief pose_t estimation using only odometry information. Handy for
-		 * observation-only rawlogs.
-		 *
-		 * Resets next time an ICP edge is successfully registered.
-		 */
-		pose_t m_last_odometry_only_pose;
-
-		// last inserted node in the graph
-		mrpt::utils::TNodeID m_nodeID_max;
-
-		/**\brief Keeps track of the last N measurements between the ICP edge and
-		 * the corresponding odometry measurements.
-		 *
-		 * Use the last odometry rigid body transformation instead of the
-		 * ICP edge if the mahalanobis distance between them is greater than this
-		 * limit.
-		 */
-		TSlidingWindow m_mahal_distance_ICP_odom;
-
-		mrpt::utils::CTimeLogger m_time_logger; /**<Time logger instance */
-
-		// criteria for adding new a new node
-		bool m_use_angle_difference_node_reg;
-		bool m_use_distance_node_reg;
-
-		/**How many times we used the ICP Edge instead of Odometry edge*/
-		int m_times_used_ICP;
-		/**How many times we used the Odometry Edge instead of the ICP edge */
-		int m_times_used_odom;
+	/**How many times we used the ICP Edge instead of Odometry edge*/
+	int m_times_used_ICP;
+	/**How many times we used the Odometry Edge instead of the ICP edge */
+	int m_times_used_odom;
 };
-
-
-} } } // end of namespaces
+}  // namespace deciders
+}  // namespace graphslam
+}  // namespace mrpt
 
 #include "CICPCriteriaNRD_impl.h"
 #endif /* end of include guard: CICPCRITERIANRD_H */

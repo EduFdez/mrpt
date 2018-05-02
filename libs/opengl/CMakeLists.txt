@@ -13,13 +13,6 @@ IF(CMAKE_MRPT_HAS_OPENGL_GLUT AND NOT CMAKE_MRPT_HAS_GLUT_SYSTEM)
 	INCLUDE_DIRECTORIES("${MRPT_LIBS_ROOT}/opengl/include/otherlibs/freeglut/")
 ENDIF()
 
-# Embedded version of lib3ds?
-IF(NOT CMAKE_MRPT_HAS_LIB3DS_SYSTEM)
-	LIST(APPEND opengl_EXTRA_SRCS		"${MRPT_LIBS_ROOT}/opengl/src/lib3ds/*.c" "${MRPT_LIBS_ROOT}/opengl/src/lib3ds/*.h")
-	LIST(APPEND opengl_EXTRA_SRCS_NAME 	"lib3ds" "lib3ds")
-	INCLUDE_DIRECTORIES("${MRPT_SOURCE_DIR}/libs/opengl/src/")
-ENDIF()
-
 # Embedded version of Glew:
 IF(WIN32)
 	LIST(APPEND opengl_EXTRA_SRCS		"${MRPT_SOURCE_DIR}/libs/opengl/src/glew/src/*.c" "${MRPT_SOURCE_DIR}/libs/opengl/src/glew/include/*.h")
@@ -28,6 +21,8 @@ IF(WIN32)
 ENDIF()
 
 # Glext headers only (for Windows)
+INCLUDE_DIRECTORIES(${CVD_DIR})
+
 INCLUDE_DIRECTORIES("${MRPT_SOURCE_DIR}/libs/opengl/src/glext")
 
 # Assimp:
@@ -41,10 +36,10 @@ IF (CMAKE_MRPT_HAS_ASSIMP)
 	IF (NOT ${ASSIMP_CXX_FLAGS} STREQUAL "")
 		ADD_DEFINITIONS("${ASSIMP_CXX_FLAGS}")
 	ENDIF()
-	IF (NOT ${ASSIMP_INCLUDE_DIRS} STREQUAL "")
+	IF (NOT "${ASSIMP_INCLUDE_DIRS}" STREQUAL "")
 		INCLUDE_DIRECTORIES("${ASSIMP_INCLUDE_DIRS}")
 	ENDIF()
-	IF(NOT ${ASSIMP_VERSION} STREQUAL "")
+	IF(NOT "${ASSIMP_VERSION}" STREQUAL "")
 		string(SUBSTRING "${ASSIMP_VERSION}" 0 1 MRPT_ASSIMP_VERSION_MAJOR)
 		ADD_DEFINITIONS(-DMRPT_ASSIMP_VERSION_MAJOR=${MRPT_ASSIMP_VERSION_MAJOR})
 	ENDIF()
@@ -57,15 +52,18 @@ define_mrpt_lib(
 	# Lib name
 	opengl
 	# Dependencies:
-	mrpt-base
+	mrpt-poses
+	mrpt-img
 	)
+
+add_dependencies(mrpt-opengl libcvd)
+INCLUDE_DIRECTORIES(${CVD_INCLUDE_DIRS})
 
 IF(BUILD_mrpt-opengl)
 	# Ignore precompiled headers in some sources:
 	IF(MRPT_ENABLE_PRECOMPILED_HDRS)
 		IF (MSVC)
 			set_source_files_properties(
-				${lib3ds_FILES}
 				${freeglut_FILES}
 				${glew_FILES}
 				PROPERTIES COMPILE_FLAGS "/Y-"
@@ -75,15 +73,19 @@ IF(BUILD_mrpt-opengl)
 	ENDIF ()
 	ENDIF()
 
+	IF (MSVC)
+		# Avoid duplicated export symbol warnings in MSVC SRC glut version
+		set_target_properties(mrpt-opengl PROPERTIES LINK_FLAGS "/ignore:4197")
+	ENDIF()
+
 	# Link against gl, glu, glut:
-	TARGET_LINK_LIBRARIES(mrpt-opengl ${MRPT_OPENGL_LIBS} ${MRPT_3DS_LIBS})
+	TARGET_LINK_LIBRARIES(mrpt-opengl PUBLIC ${MRPT_OPENGL_LIBS} ${MRPT_3DS_LIBS} ${CVD_LIB})
 
 	# Link against assimp:
 	IF (CMAKE_MRPT_HAS_ASSIMP)
-		IF (NOT CMAKE_MRPT_HAS_ASSIMP_SYSTEM)
-			ADD_DEPENDENCIES(mrpt-opengl assimp)
-		ENDIF ()
-		TARGET_LINK_LIBRARIES(mrpt-opengl ${ASSIMP_LIBRARIES})
+		IF(TARGET "EP_assimp")
+			ADD_DEPENDENCIES(mrpt-opengl EP_assimp)
+		ENDIF()
+		TARGET_LINK_LIBRARIES(mrpt-opengl PRIVATE ${ASSIMP_LIBRARIES})
 	ENDIF ()
-
 ENDIF()

@@ -34,11 +34,13 @@ ADD_EXECUTABLE(${PROJECT_NAME}
 	perf-matrix1.cpp perf-matrix2.cpp
 	perf-pointmaps.cpp
 	perf-poses.cpp
+	perf-pose-interp.cpp
 	perf-random.cpp
 	perf-scan_matching.cpp
 	perf-CObservation3DRangeScan.cpp
 	perf-atan2lut.cpp
-	 ${MRPT_VERSION_RC_FILE}
+	perf-strings.cpp
+	${MRPT_VERSION_RC_FILE}
 	)
 
 # Add the required libraries for linking:
@@ -47,7 +49,7 @@ TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${MRPT_LINKER_LIBS})
 # Dependencies on MRPT libraries:
 #  Just mention the top-level dependency, the rest will be detected automatically,
 #  and all the needed #include<> dirs added (see the script DeclareAppDependencies.cmake for further details)
-DeclareAppDependencies(${PROJECT_NAME} mrpt-slam mrpt-gui mrpt-tfest mrpt-graphs mrpt-graphslam)
+DeclareAppDependencies(${PROJECT_NAME} mrpt-slam mrpt-gui mrpt-tfest mrpt-graphs mrpt-graphslam mrpt-img mrpt-tclap)
 
 
 DeclareAppForInstall(${PROJECT_NAME})

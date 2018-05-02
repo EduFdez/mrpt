@@ -13,7 +13,7 @@ IF(CMAKE_MRPT_HAS_WXWIDGETS)
 	# ---------------------------------------------
 	# TARGET:
 	# ---------------------------------------------
-	SET(SRCS CAboutBox.cpp 	CAboutBox.h
+	SET(SRCS
 	 CFormEdit.cpp	CFormEdit.h
 	 CFormMotionModel.cpp	CFormMotionModel.h
 	 CFormPlayVideo.cpp		CFormPlayVideo.h
@@ -22,7 +22,6 @@ IF(CMAKE_MRPT_HAS_WXWIDGETS)
 	 CFormChangeSensorPositions.cpp CFormChangeSensorPositions.h
 	 COdometryParams.cpp 		COdometryParams.h
 	 CScanAnimation.cpp			CScanAnimation.h
-	 resource.h
 	 xRawLogViewerApp.cpp	xRawLogViewerApp.h
 	 xRawLogViewerMain.cpp	xRawLogViewerMain.h
 	 MyGLCanvas.cpp         MyGLCanvas.h

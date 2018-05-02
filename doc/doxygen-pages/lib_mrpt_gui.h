@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -29,7 +29,7 @@ All these window classes inherits from mrpt::gui::CBaseGUIWindow, which provides
 and variables common to all the classes. 
 It allow moving/resizing the windows, polling for key strokes, etc. 
 Note events-driven applications can be also implemented since it also implements 
-the mrpt::utils::CObservable pattern, emitting events as described in 
+the mrpt::system::CObservable pattern, emitting events as described in 
 the description of mrpt::gui::CBaseGUIWindow.
 
 

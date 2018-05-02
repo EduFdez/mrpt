@@ -1,11 +1,11 @@
-/* +---------------------------------------------------------------------------+
-	 |                     Mobile Robot Programming Toolkit (MRPT)               |
-	 |                          http://www.mrpt.org/                             |
-	 |                                                                           |
-	 | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
-	 | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-	 | Released under BSD License. See details in http://www.mrpt.org/License    |
-	 +---------------------------------------------------------------------------+ */
+/* +------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)            |
+   |                          http://www.mrpt.org/                          |
+   |                                                                        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file     |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                |
+   | Released under BSD License. See details in http://www.mrpt.org/License |
+   +------------------------------------------------------------------------+ */
 
 #ifndef CFIXEDINTERVALSNRD_H
 #define CFIXEDINTERVALSNRD_H
@@ -13,20 +13,17 @@
 #include <mrpt/obs/CObservationOdometry.h>
 #include <mrpt/obs/CSensoryFrame.h>
 #include <mrpt/obs/CActionCollection.h>
-#include <mrpt/obs/CRawlog.h>
-#include <mrpt/utils/CLoadableOptions.h>
-#include <mrpt/utils/CConfigFile.h>
-#include <mrpt/utils/CConfigFileBase.h>
-#include <mrpt/utils/CStream.h>
-#include <mrpt/utils/types_simple.h>
-#include <mrpt/system/threads.h>
+#include <mrpt/config/CLoadableOptions.h>
+#include <mrpt/config/CConfigFileBase.h>
 
 #include <mrpt/graphslam/interfaces/CNodeRegistrationDecider.h>
 
-#include <iostream>
-
-namespace mrpt { namespace graphslam { namespace deciders {
-
+namespace mrpt
+{
+namespace graphslam
+{
+namespace deciders
+{
 /**\brief Fixed Intervals Odometry-based Node Registration
  *
  * ## Description
@@ -38,7 +35,7 @@ namespace mrpt { namespace graphslam { namespace deciders {
  *
  * Current decider is a minimal, simple implementation of the
  * CNodeRegistrationDecider interface which can be used for 2D datasets.
- * Decider *does not guarantee* thread safety when accessing the GRAPH_t
+ * Decider *does not guarantee* thread safety when accessing the GRAPH_T
  * resource. This is handled by the CGraphSlamEngine instance.
  *
  * ### Specifications
@@ -55,7 +52,7 @@ namespace mrpt { namespace graphslam { namespace deciders {
  *
  * - \b class_verbosity
  *   + \a Section       : NodeRegistrationDeciderParameters
- *   + \a Default value : 1 (LVL_INFO)
+ *   + \a Default value : 1 (mrpt::system::LVL_INFO)
  *   + \a Required      : FALSE
  *
  * - \b registration_max_distance
@@ -70,123 +67,118 @@ namespace mrpt { namespace graphslam { namespace deciders {
  *
  * \ingroup mrpt_graphslam_grp
  */
-template<class GRAPH_t=typename mrpt::graphs::CNetworkOfPoses2DInf>
-class CFixedIntervalsNRD:
-	public mrpt::graphslam::deciders::CNodeRegistrationDecider<GRAPH_t>
+template <class GRAPH_T = typename mrpt::graphs::CNetworkOfPoses2DInf>
+class CFixedIntervalsNRD
+	: public virtual mrpt::graphslam::deciders::CNodeRegistrationDecider<
+		  GRAPH_T>
 {
-	public:
-		// Public functions
-		//////////////////////////////////////////////////////////////
+   public:
+	// Public functions
+	//////////////////////////////////////////////////////////////
 
-		/**\brief type of graph constraints */
-		typedef typename GRAPH_t::constraint_t constraint_t;
-		/**\brief type of underlying poses (2D/3D). */
-		typedef typename GRAPH_t::constraint_t::type_value pose_t;
+	/**\brief Handy typedefs */
+	/**\{*/
+	/**\brief Node Registration Decider */
+	using node_reg =
+		mrpt::graphslam::deciders::CNodeRegistrationDecider<GRAPH_T>;
 
-		typedef mrpt::math::CMatrixFixedNumeric<double,
-						constraint_t::state_length,
-						constraint_t::state_length> InfMat;
+	/**\brief type of graph constraints */
+	using constraint_t = typename GRAPH_T::constraint_t;
+	/**\brief type of underlying poses (2D/3D). */
+	using pose_t = typename GRAPH_T::constraint_t::type_value;
+	using global_pose_t = typename GRAPH_T::global_pose_t;
 
-		/**\brief Class constructor */
-		CFixedIntervalsNRD();
-		/**\brief Class destructor */
-		~CFixedIntervalsNRD();
+	using inf_mat_t = mrpt::math::CMatrixFixedNumeric<
+		double, constraint_t::state_length, constraint_t::state_length>;
+	/**\brief Node Registration Decider */
+	using parent_t =
+		mrpt::graphslam::deciders::CNodeRegistrationDecider<GRAPH_T>;
+	/**\}*/
 
-		void setGraphPtr(GRAPH_t* graph);
+	/**\brief Class constructor */
+	CFixedIntervalsNRD();
+	/**\brief Class destructor */
+	~CFixedIntervalsNRD();
 
-		void loadParams(const std::string& source_fname);
-		void printParams() const;
-		void getDescriptiveReport(std::string* report_str) const;
-		pose_t getCurrentRobotPosEstimation() const;
+	void loadParams(const std::string& source_fname);
+	void printParams() const;
+	void getDescriptiveReport(std::string* report_str) const;
 
-		/**\brief Method makes use of the CActionCollection/CObservation to update the
-		 * odometry estimation from the last inserted pose
-		 *
-		 * \return True upon successful node registration in the graph
+	/**\brief Method makes use of the CActionCollection/CObservation to update
+	 * the
+	 * odometry estimation from the last inserted pose
+	 *
+	 * \return True upon successful node registration in the graph
+	 */
+	bool updateState(
+		mrpt::obs::CActionCollection::Ptr action,
+		mrpt::obs::CSensoryFrame::Ptr observations,
+		mrpt::obs::CObservation::Ptr observation);
+
+	/**\brief Parameters structure for managing the relevant to the decider
+	 * variables in a compact manner
+	 */
+	struct TParams : public mrpt::config::CLoadableOptions
+	{
+	   public:
+		TParams();
+		~TParams();
+
+		void loadFromConfigFile(
+			const mrpt::config::CConfigFileBase& source,
+			const std::string& section);
+		void dumpToTextStream(std::ostream& out) const;
+		/**\brief Return a string with the configuration parameters
 		 */
-		bool updateState( mrpt::obs::CActionCollectionPtr action,
-				mrpt::obs::CSensoryFramePtr observations,
-				mrpt::obs::CObservationPtr observation );
+		void getAsString(std::string* params_out) const;
+		std::string getAsString() const;
 
-		/**\brief Parameters structure for managing the relevant to the decider
-		 * variables in a compact manner
-		 */
-		struct TParams: public mrpt::utils::CLoadableOptions {
-			public:
-				TParams();
-				~TParams();
+		// max values for new node registration
+		double registration_max_distance;
+		double registration_max_angle;
+	};
 
-				void loadFromConfigFile(
-						const mrpt::utils::CConfigFileBase &source,
-						const std::string &section);
-				void 	dumpToTextStream(mrpt::utils::CStream &out) const;
-				/**\brief Return a string with the configuration parameters
-				 */
-				void getAsString(std::string* params_out) const;
-				std::string getAsString() const;
+	// Public members
+	// ////////////////////////////
+	TParams params;
 
-				// max values for new node registration
-				double registration_max_distance;
-				double registration_max_angle;
-		};
+   protected:
+	// protected functions
+	//////////////////////////////////////////////////////////////
+	/**\name Registration Conditions Specifiers
+	 */
+	/**\{ */
+	/**\brief If estimated position surpasses the registration max values since
+	 * the previous registered node, register a new node in the graph.
+	 *
+	 * \return True on successful registration.
+	 */
+	bool checkRegistrationCondition();
+	bool checkRegistrationCondition(
+		const mrpt::poses::CPose2D& p1, const mrpt::poses::CPose2D& p2) const;
+	bool checkRegistrationCondition(
+		const mrpt::poses::CPose3D& p1, const mrpt::poses::CPose3D& p2) const;
+	/**\} */
 
-		// Public members
-		// ////////////////////////////
-		TParams params;
+	// protected members
+	//////////////////////////////////////////////////////////////
 
-	private:
-		// Private functions
-		//////////////////////////////////////////////////////////////
-		/**\brief If estimated position surpasses the registration max values since
-		 * the previous registered node, register a new node in the graph.
-		 *
-		 * \return True on successful registration.
-		 */
-		bool checkRegistrationCondition();
-		void registerNewNode();
-		/**\brief Initialization function to be called from the various constructors
-		 */
-		void initCFixedIntervalsNRD();
-		void checkIfInvalidDataset(mrpt::obs::CActionCollectionPtr action,
-				mrpt::obs::CSensoryFramePtr observations,
-				mrpt::obs::CObservationPtr observation );
-
-		// Private members
-		//////////////////////////////////////////////////////////////
-		GRAPH_t* m_graph; /**<\brief Pointer to the graph under construction */
-		mrpt::gui::CDisplayWindow3D* m_win;
-		/**\brief Store the last registered NodeID .
-		 *
-		 * Not his pose since it will most likely change due to calls to the
-		 * graph-optimization procedure / dijkstra_node_estimation
-		 */
-		mrpt::utils::TNodeID m_prev_registered_node;
-
-		/**\brief Tracking the PDF of the current position of the robot with regards to
-		 * the <b> previous registered node </b>
-		 */
-		constraint_t	m_since_prev_node_PDF;
-
-		/**\brief Current estimated position */
-		pose_t m_curr_estimated_pose;
-		/**\brief pose_t estimation using only odometry information. Handy for observation-only rawlogs.  */
-		pose_t m_curr_odometry_only_pose;
-		/**\brief pose_t estimation using only odometry information. Handy for observation-only rawlogs.  */
-		pose_t m_last_odometry_only_pose;
-		/**\brief Keep track of whether we are reading from an
-		 * observation-only rawlog file or from an action-observation rawlog
-		 */
-		bool m_observation_only_rawlog;
-
-		// find out if decider is invalid for the given dataset
-		bool m_checked_for_usuable_dataset;
-		size_t m_consecutive_invalid_format_instances;
-		const size_t m_consecutive_invalid_format_instances_thres;
-
-		mrpt::utils::CTimeLogger m_time_logger; /**<Time logger instance */
+	/**\brief pose_t estimation using only odometry information. Handy for
+	 * observation-only rawlogs.
+	 */
+	pose_t m_curr_odometry_only_pose;
+	/**\brief pose_t estimation using only odometry information. Handy for
+	 * observation-only rawlogs.
+	 */
+	pose_t m_last_odometry_only_pose;
+	/**\brief Keep track of whether we are reading from an observation-only
+	 * rawlog file or from an action-observation rawlog
+	 */
+	bool m_observation_only_rawlog;
 };
-
-} } } // end of namespaces
+}  // namespace deciders
+}  // namespace graphslam
+}  // namespace mrpt
 
 #include "CFixedIntervalsNRD_impl.h"
 #endif /* end of include guard: CFIXEDINTERVALSNRD_H */

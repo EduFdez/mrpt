@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -20,7 +20,7 @@ The <a href="http://www.pointclouds.org/" >PointCloud library</a> (PCL) is optio
 If available, it will provide the following functionality:
 
 - The library <a href="group__mrpt__pbmap__grp.html" >mrpt-pbmap</a> cannot be compiled without PCL.
-- <a href="http://www.mrpt.org/Application:rawlog-edit" >rawlog-edit</a> program: The --generate-pcd command.
+- <a href="http://www.mrpt.org/list-of-mrpt-apps/application-rawlog-edit" >rawlog-edit</a> program: The --generate-pcd command.
 - In point map classes:
 	- mrpt::maps::CPointsMap::getPCLPointCloud() (*)
 	- mrpt::maps::CPointsMap::setFromPCLPointCloud() (*)

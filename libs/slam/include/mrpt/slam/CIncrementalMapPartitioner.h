@@ -1,190 +1,234 @@
-/* +---------------------------------------------------------------------------+
-   |                     Mobile Robot Programming Toolkit (MRPT)               |
-   |                          http://www.mrpt.org/                             |
-   |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
-   | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-   | Released under BSD License. See details in http://www.mrpt.org/License    |
-   +---------------------------------------------------------------------------+ */
+/* +------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)            |
+   |                          http://www.mrpt.org/                          |
+   |                                                                        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file     |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                |
+   | Released under BSD License. See details in http://www.mrpt.org/License |
+   +------------------------------------------------------------------------+ */
 
-#ifndef CINCREMENTALMAPPARTITIONER_H
-#define CINCREMENTALMAPPARTITIONER_H
+#pragma once
 
-#include <mrpt/utils/COutputLogger.h>
-#include <mrpt/utils/CLoadableOptions.h>
+#include <mrpt/system/COutputLogger.h>
+#include <mrpt/config/CLoadableOptions.h>
 #include <mrpt/maps/CMultiMetricMap.h>
 #include <mrpt/maps/CSimplePointsMap.h>
 #include <mrpt/maps/CSimpleMap.h>
 #include <mrpt/maps/CMultiMetricMap.h>
 #include <mrpt/poses/poses_frwds.h>
-
-#include <mrpt/slam/link_pragmas.h>
+#include <mrpt/typemeta/TEnumType.h>
+#include <functional>
+#include <limits>
 
 namespace mrpt
 {
 namespace slam
 {
-	DEFINE_SERIALIZABLE_PRE_CUSTOM_BASE_LINKAGE( CIncrementalMapPartitioner, mrpt::utils::CSerializable, SLAM_IMPEXP )
 
-	/** This class can be used to make partitions on a map/graph build from
-	  *   observations taken at some poses/nodes.
-	  * \ingroup mrpt_slam_grp
-	  */
-	class SLAM_IMPEXP  CIncrementalMapPartitioner : public mrpt::utils::COutputLogger, public mrpt::utils::CSerializable
+/** For use in CIncrementalMapPartitioner 
+  * \ingroup mrpt_slam_grp  */
+enum similarity_method_t : uint8_t
+{
+	smMETRIC_MAP_MATCHING = 0,
+	smOBSERVATION_OVERLAP,
+	smCUSTOM_FUNCTION
+};
+
+/** Map keyframe, comprising raw observations and they as a metric map.
+  * For use in CIncrementalMapPartitioner
+  * \ingroup mrpt_slam_grp */
+struct map_keyframe_t
+{
+	uint32_t kf_id{ 0 };
+	mrpt::maps::CMultiMetricMap::Ptr metric_map;
+	mrpt::obs::CSensoryFrame::Ptr raw_observations;
+};
+
+
+/** Type of similarity evaluator for map keyframes.
+* For use in CIncrementalMapPartitioner
+* \ingroup mrpt_slam_grp  */
+using similarity_func_t = std::function<double(
+	const map_keyframe_t &kf1,
+	const map_keyframe_t &kf2,
+	const mrpt::poses::CPose3D &relPose2wrt1
+	)>;
+
+/** Finds partitions in metric maps based on N-cut graph partition theory.
+  * \ingroup mrpt_slam_grp
+  */
+class CIncrementalMapPartitioner : public mrpt::system::COutputLogger,
+								   public mrpt::serialization::CSerializable
+{
+	// This must be added to any CSerializable derived class:
+	DEFINE_SERIALIZABLE(CIncrementalMapPartitioner)
+
+   public:
+	/** ctor */
+	CIncrementalMapPartitioner() : COutputLogger("CIncrementalMapPartitioner") {}
+	
+	/** Configuration parameters */
+	struct TOptions : public mrpt::config::CLoadableOptions
 	{
-		// This must be added to any CSerializable derived class:
-		DEFINE_SERIALIZABLE( CIncrementalMapPartitioner )
+		void loadFromConfigFile(
+			const mrpt::config::CConfigFileBase& source,
+			const std::string& section) override;
+		void saveToConfigFile(mrpt::config::CConfigFileBase& target,
+			const std::string& section) const;
 
-	public:
-		CIncrementalMapPartitioner( ); //!< ctor
-		virtual ~CIncrementalMapPartitioner(); //!< dtor
+		/**!< N-cut partition threshold [0,2] (default=1) */
+		double partitionThreshold{ 1.0 };
 
-		/** Initialization: Start of a new map, new internal matrices,...
+		/** These parameters are loaded/saved to config files 
+		  * with the prefix "mrp.{param_name}" */
+		mrpt::maps::TMatchingRatioParams mrp;
+
+		/* Force bisection (true) or automatically determine
+		* number of partitions (false=default).
+		*/
+		bool forceBisectionOnly{ false };
+
+		/** Defines the method for determining the adjacency matrix values.
+		  * \sa CIncrementalMapPartitioner::setSimilarityMethod()
 		  */
-		void clear();
+		similarity_method_t simil_method{ smMETRIC_MAP_MATCHING };
 
-		/** Configuration of the algorithm:
-		  */
-		struct SLAM_IMPEXP TOptions : public utils::CLoadableOptions
-		{
-			/** Sets default values at object creation
-			  */
-			TOptions();
+		/** If a partition leads to a cluster with less elements than this, it
+		* will be rejected even if had a good Ncut (default=1).
+		*/
+		uint64_t minimumNumberElementsEachCluster{ 1 };
 
-			void loadFromConfigFile(const mrpt::utils::CConfigFileBase &source,const std::string &section) MRPT_OVERRIDE; // See base docs
-			void dumpToTextStream(mrpt::utils::CStream &out) const MRPT_OVERRIDE; // See base docs
+		/** Type and parameters of metric map(s) to build for each keyframe.
+		  * Parameters can be loaded from a config file from sections 
+		  * with the prefix of this "TOptions" section + ".metricmap".
+		  * Default: a CSimplePointsMap */
+		mrpt::maps::TSetOfMetricMapInitializers metricmap;
 
-			/** The partition threshold for bisection in range [0,2], default=1.0
-			  */
-			float	partitionThreshold;
+		/** Maximum distance, in KF identifier numbers, to check for similarity.
+		  * Default=Infinite. Can be used to constraint the wrong detection of clusters 
+		  * after loop closures but before correcting global poses. */
+		uint64_t maxKeyFrameDistanceToEval{std::numeric_limits<uint64_t>::max()};
 
-			/** For the occupancy grid maps of each node, default=0.10
-			  */
-			float	gridResolution;
+		TOptions();
+	};
 
-			/** Used in the computation of weights, default=0.20
-			  */
-			float	minDistForCorrespondence;
+	/** \name Main map partition API
+	  * @{ */
 
-			/** Used in the computation of weights, default=2.0
-			  */
-			float	minMahaDistForCorrespondence;
+	/** Algorithm parameters */
+	TOptions options;
 
-			/** If set to true (default), 1 or 2 clusters will be returned. Default=false -> Autodetermine the number of partitions.
-			  */
-			bool	forceBisectionOnly;
+	/* Reset the internal state to an empty map */
+	void clear();
 
-			/** If set to true (default), adjacency matrix is computed from maps matching; otherwise, the method CObservation::likelihoodWith will be called directly from the SFs.
-			  */
-			bool   useMapMatching;
+	/**\brief Insert a new keyframe to the graph.
+	*
+	* Call this method each time a new observation is added to the map/graph.
+	* Afterwards, call updatePartitions() to get the updated partitions.
+	*
+	* \param frame The sensed data
+	* \param robotPose An estimation of the robot global pose.
+	*
+	* \return The index of the new pose in the graph, which can be used to
+	* refer to this pose in the future.
+	*
+	* \sa updatePartitions
+	*/
+	uint32_t addMapFrame(
+		const mrpt::obs::CSensoryFrame& frame,
+		const mrpt::poses::CPose3DPDF& robotPose3D);
 
-			/** If a partition leads to a cluster with less elements than this, it will be rejected even if had a good Ncut (default=1). */
-			int    minimumNumberElementsEachCluster;
+	/** Recalculate the map/graph partitions. \sa addMapFrame() */
+	void updatePartitions(std::vector<std::vector<uint32_t>>& partitions);
 
-		} options;
+	/**Get the total node count currently in the internal map/graph. */
+	size_t getNodesCount();
 
-		/** Add a new frame to the current graph: call this method each time a new observation
-		  *   is added to the map/graph, and whenever you want to update the partitions, call "updatePartitions"
-		  * \param frame The sensed data
-		  * \param robotPose An estimation of the robot global 2D pose.
-		  * \return The index of the new pose in the internal list, which will be used to refer to the pose in the future.
-		  * \sa updatePartitions
-		  */
-		unsigned int addMapFrame( const mrpt::obs::CSensoryFramePtr &frame, const mrpt::poses::CPosePDFPtr &robotPose2D );
+	/** Remove a list of keyframes, with indices as returned by addMapFrame()
+	* \param changeCoordsRef If true, coordinates are changed to leave the first
+	* node at (0,0,0).
+	*/
+	void removeSetOfNodes(
+		std::vector<uint32_t> indexesToRemove, bool changeCoordsRef = true);
 
-		/** Add a new frame to the current graph: call this method each time a new observation
-		  *   is added to the map/graph, and whenever you want to update the partitions, call "updatePartitions"
-		  * \param frame The sensed data
-		  * \param robotPose An estimation of the robot global 2D pose.
-		  * \return The index of the new pose in the internal list, which will be used to refer to the pose in the future.
-		  * \sa updatePartitions
-		  */
-		unsigned int addMapFrame( const mrpt::obs::CSensoryFramePtr &frame, const mrpt::poses::CPose3DPDFPtr &robotPose3D );
+	/**\name Change Coordinates System
+	* \brief Change the coordinate origin of all stored poses
+	*
+	* Used for consistency with future new poses to enter in the system.
+	*/
+	void changeCoordinatesOrigin(const mrpt::poses::CPose3D& newOrigin);
+	/**\brief  The new origin is given by the index of the pose that is to
+	* become the new origin.
+	*/
+	void changeCoordinatesOriginPoseIndex(unsigned int newOriginPose);
 
-		/** Add a new frame to the current graph: call this method each time a new observation
-		  *   is added to the map/graph, and whenever you want to update the partitions, call "updatePartitions"
-		  * \param frame The sensed data
-		  * \param robotPose An estimation of the robot global 2D pose.
-		  * \return The index of the new pose in the internal list, which will be used to refer to the pose in the future.
-		  * \sa updatePartitions
-		  */
-		unsigned int addMapFrame( const mrpt::obs::CSensoryFrame &frame, const mrpt::poses::CPose3DPDF &robotPose3D );
+	/** Select the similarity method to use for newly inserted keyframes */
+	void setSimilarityMethod(similarity_method_t method) {
+		options.simil_method = method;
+	}
 
-		/** This method executed only the neccesary part of the partition to take
-		  *   into account the lastest added frames.
-		  * \sa addMapFrame
-		  */
-		void updatePartitions( std::vector<vector_uint> &partitions );
+	/** Sets a custom function for the similarity of new keyframes */
+	void setSimilarityMethod(similarity_func_t func) {
+		options.simil_method = smCUSTOM_FUNCTION;
+		m_sim_func = func;
+	}
+	/** @} */
 
-		/** It returns the nodes count currently in the internal map/graph.
-		  */
-		unsigned int getNodesCount();
+	/** \name Access API to internal graph data
+	* @{ */
+	/**Return a 3D representation of the graph: poses & links between them.
+	* The previous contents of "objs" will be discarded
+	*/
+	void getAs3DScene(
+		mrpt::opengl::CSetOfObjects::Ptr& objs,
+		const std::map<uint32_t, int64_t>* renameIndexes = NULL) const;
 
-		/** Remove the stated nodes (0-based indexes) from the internal lists.
-		  *  If changeCoordsRef is true, coordinates are changed to leave the first node at (0,0,0).
-		  */
-		void  removeSetOfNodes(vector_uint	indexesToRemove, bool changeCoordsRef = true);
+	/** Return a copy of the adjacency matrix.  */
+	template <class MATRIX>
+	void getAdjacencyMatrix(MATRIX& outMatrix) const
+	{
+		outMatrix = m_A;
+	}
 
-		/** Returns a copy of the internal adjacency matrix.  */
-		template <class MATRIX>
-		void  getAdjacencyMatrix( MATRIX &outMatrix ) const { outMatrix = m_A; }
+	/** Return a const ref to the internal adjacency matrix.  */
+	const mrpt::math::CMatrixDouble& getAdjacencyMatrix() const { return m_A; }
 
-		/** Returns a const ref to the internal adjacency matrix.  */
-		const mrpt::math::CMatrixDouble & getAdjacencyMatrix( ) const { return m_A; }
+	/** Read-only access to the sequence of Sensory Frames */
+	const mrpt::maps::CSimpleMap* getSequenceOfFrames() const
+	{
+		return &m_individualFrames;
+	}
 
-		/** Read-only access to the sequence of Sensory Frames
-		  */
-		const mrpt::maps::CSimpleMap* getSequenceOfFrames( ) const
-		{
-			return &m_individualFrames;
-		}
+	/** Access to the sequence of Sensory Frames */
+	mrpt::maps::CSimpleMap* getSequenceOfFrames()
+	{
+		return &m_individualFrames;
+	}
+	/** @} */
 
-		/** Access to the sequence of Sensory Frames
-		  */
-		mrpt::maps::CSimpleMap* getSequenceOfFrames( )
-		{
-			return &m_individualFrames;
-		}
+   private:
+	mrpt::maps::CSimpleMap m_individualFrames;
+	std::deque<mrpt::maps::CMultiMetricMap::Ptr> m_individualMaps;
 
-		/** Mark all nodes for reconsideration in the next call to "updatePartitions", instead of considering just those affected by aditions of new arcs.
-		  */
-		void markAllNodesForReconsideration();
+	/** Adjacency matrix */
+	mrpt::math::CMatrixD m_A{ 0,0 };
 
-		/** Change the coordinate origin of all stored poses, for consistency with future new poses to enter in the system. */
-		void changeCoordinatesOrigin( const mrpt::poses::CPose3D  &newOrigin );
+	/** The last partition */
+	std::vector<std::vector<uint32_t>> m_last_partition;
 
-		/** Change the coordinate origin of all stored poses, for consistency with future new poses to enter in the system; the new origin is given by the index of the pose to become the new origin. */
-		void changeCoordinatesOriginPoseIndex( const unsigned &newOriginPose );
+	/** This will be true after adding new observations, and before an
+	 * "updatePartitions" is invoked. */
+	bool m_last_last_partition_are_new_ones{ false };
 
-		/** Returns a 3D representation of the current state: poses & links between them.
-		  *  The previous contents of "objs" will be discarded
-		  */
-		void getAs3DScene(
-			mrpt::opengl::CSetOfObjectsPtr &objs,
-			const std::map< uint32_t, int64_t >  *renameIndexes = NULL
-			) const;
+	similarity_func_t m_sim_func;
 
-	private:
-		mrpt::maps::CSimpleMap					m_individualFrames;
-		std::deque<mrpt::maps::CMultiMetricMap>	m_individualMaps;
+};  // End of class def.
+}
+}  // End of namespace
 
-		/** Adjacency matrix */
-		mrpt::math::CMatrixD	m_A;
+MRPT_ENUM_TYPE_BEGIN(mrpt::slam::similarity_method_t)
+MRPT_FILL_ENUM_MEMBER(mrpt::slam, smMETRIC_MAP_MATCHING);
+MRPT_FILL_ENUM_MEMBER(mrpt::slam, smOBSERVATION_OVERLAP);
+MRPT_FILL_ENUM_MEMBER(mrpt::slam, smCUSTOM_FUNCTION);
+MRPT_ENUM_TYPE_END()
 
-		/** The last partition */
-		std::vector<vector_uint>			m_last_partition;
-
-		/** This will be true after adding new observations, and before an "updatePartitions" is invoked. */
-		bool						m_last_last_partition_are_new_ones;
-
-		/** The list of keyframes to consider in the next update */
-		std::vector<uint8_t>	m_modified_nodes;
-
-	};	// End of class def.
-	DEFINE_SERIALIZABLE_POST_CUSTOM_BASE_LINKAGE( CIncrementalMapPartitioner, mrpt::utils::CSerializable, SLAM_IMPEXP )
-
-
-	} // End of namespace
-} // End of namespace
-
-#endif

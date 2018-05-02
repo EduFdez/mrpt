@@ -1,33 +1,60 @@
+# Use docker to test on a more modern Ubuntu distro
 language: cpp
-sudo: true
+sudo: required
 dist: trusty
 
-compiler: 
-  - gcc
-  - clang  
-
-os:
-  - linux
-  - osx
-  
-before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then  sudo add-apt-repository ppa:v-launchpad-jochen-sprickerhof-de/pcl -y  ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then  sudo apt-get update -d  ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update          ; fi
-  
-
-install:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then  sudo apt-get install build-essential pkg-config cmake libwxgtk3.0-dev libftdi-dev freeglut3-dev zlib1g-dev libusb-1.0-0-dev  libdc1394-22-dev libavformat-dev libswscale-dev libassimp-dev libjpeg-dev libopencv-dev libgtest-dev libeigen3-dev libsuitesparse-dev libpcl-all libopenni2-dev libudev-dev gdb libboost-python-dev libpython-dev python-numpy -y ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew tap homebrew/science   ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install eigen          ; fi
-  - if [ "$TRAVIS_OS_NAME" == "osx" ]; then /usr/bin/yes | pip uninstall numpy; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install opencv         ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install assimp         ; fi
+before_script:
+  - export CI_SOURCE_PATH=$(pwd)
+  - export REPOSITORY_NAME=${PWD##*/}
+  - export CODECOV_VARS=$(bash <(curl -s https://codecov.io/env))
+  - export BUILD_TYPE=Debug
+  - docker images
 
 script:
-  - bash .travis.sh
+  - travis/travis_docker.sh
 
 env:
-  - TASK="build"
-  - TASK="test"
+  global:
+    - MAKEFLAGS="-j 2"
+    - CCACHE_SLOPPINESS=pch_defines,time_macros
+
+jobs:
+  include:
+    - stage: Build Stage 1
+      env: STAGE=1 TASK="build" DEPS="full" BUILD_TARGET="mrpt-hmtslam"
+      compiler: gcc
+    - env: STAGE=1 TASK="build" DEPS="full" BUILD_TARGET="mrpt-hmtslam"
+      compiler: clang
+    - env: STAGE=1 TASK="build" DEPS="headless" BUILD_TARGET="mrpt-hmtslam"
+      compiler: gcc
+    - env: STAGE=1 TASK="build" DEPS="minimal" BUILD_TARGET="mrpt-hmtslam"
+      compiler: gcc
+    - stage: Tests, Examples, apps
+      env: STAGE=2 TASK="test" DEPS="full"
+      compiler: gcc
+    - env: STAGE=2 TASK="test" DEPS="full"
+      compiler: clang
+    - env: STAGE=2 TASK="test" DEPS="headless"
+      compiler: gcc
+    - env: STAGE=2 TASK="test" DEPS="minimal"
+      compiler: gcc
+    - env: STAGE=2 TASK="build" DEPS="full" BUILD_TARGET="examples"
+      compiler: gcc
+    - env: STAGE=2 TASK="build" DEPS="full" BUILD_TARGET="examples"
+      compiler: clang
+    - env: STAGE=2 TASK="build" DEPS="headless" BUILD_TARGET="examples"
+      compiler: gcc
+    - env: STAGE=2 TASK="build" DEPS="minimal" BUILD_TARGET="examples"
+      compiler: gcc
+    - env: STAGE=2 TASK="build" DEPS="full" BUILD_TARGET="apps"
+      compiler: gcc
+    - env: STAGE=2 TASK="build" DEPS="full" BUILD_TARGET="apps"
+      compiler: clang
+    - env: STAGE=2 TASK="build" DEPS="headless" BUILD_TARGET="apps"
+      compiler: gcc
+    - env: STAGE=2 TASK="build" DEPS="minimal" BUILD_TARGET="apps"
+      compiler: gcc
+    - stage: Extended Builds and Tests
+      language: python
+      env: TASK="lint" DEPS="full"
 

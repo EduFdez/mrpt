@@ -2,17 +2,20 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
-   +---------------------------------------------------------------------------+ */
+   +---------------------------------------------------------------------------+
+   */
 
 #ifndef __mrpt_vision_H
 #define __mrpt_vision_H
 
 #ifndef MRPT_NO_WARN_BIG_HDR
-#include <mrpt/utils/core_defs.h>
-MRPT_WARNING("Including <mrpt/vision.h> makes compilation much slower, consider including only what you need (define MRPT_NO_WARN_BIG_HDR to disable this warning)")
+MRPT_WARNING(
+	"Including <mrpt/vision.h> makes compilation much slower, consider "
+	"including only what you need (define MRPT_NO_WARN_BIG_HDR to disable this "
+	"warning)")
 #endif
 
 #include <mrpt/vision/utils.h>
@@ -28,7 +31,6 @@ MRPT_WARNING("Including <mrpt/vision.h> makes compilation much slower, consider 
 #include <mrpt/vision/tracking.h>
 #include <mrpt/vision/descriptor_kdtrees.h>
 #include <mrpt/vision/descriptor_pairing.h>
-#include <mrpt/vision/bundle_adjustment.h>
 #include <mrpt/vision/CUndistortMap.h>
 #include <mrpt/vision/CStereoRectifyMap.h>
 #include <mrpt/vision/CImagePyramid.h>

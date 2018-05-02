@@ -1,13 +1,13 @@
 # Declares the dependencies of an application:
 # Usage: DeclareAppDependencies( appTargetName [mrpt-xxx [mrpt-yyy] ...] )
 #
+add_custom_target(apps ALL)
+
 macro(DeclareAppDependencies name)
+	add_dependencies(apps ${name})
+
 	# Set app names:
-	if(ENABLE_SOLUTION_FOLDERS)
-		set_target_properties(${name} PROPERTIES FOLDER "applications")
-	else(ENABLE_SOLUTION_FOLDERS)
-		SET_TARGET_PROPERTIES(${name} PROPERTIES PROJECT_LABEL "(APP) ${name}")
-	endif(ENABLE_SOLUTION_FOLDERS)
+	set_target_properties(${name} PROPERTIES FOLDER "applications")
 
 	# set deps:
 	set(ALL_DEPS "")
@@ -41,9 +41,9 @@ macro(DeclareAppDependencies name)
 				TARGET_LINK_LIBRARIES(${name} ${_DEP}${MRPT_LINKER_LIBS_POSTFIX})
 				LIST(APPEND AUX_EXTRA_LINK_LIBS
 					optimized ${MRPT_LIB_PREFIX}${DEP}${MRPT_DLL_VERSION_POSTFIX}
-					debug     ${MRPT_LIB_PREFIX}${DEP}${MRPT_DLL_VERSION_POSTFIX}-dbg) #Old: ${DEP}${MRPT_LINKER_LIBS_POSTFIX})
+					debug     ${MRPT_LIB_PREFIX}${DEP}${MRPT_DLL_VERSION_POSTFIX}${CMAKE_DEBUG_POSTFIX})
 			endif (NOT _LIB_HDRONLY)
-			
+
 			# Include:
 			STRING(REGEX REPLACE "mrpt-(.*)" "\\1" DEP_MRPT_NAME ${_DEP})
 			IF(NOT "${DEP_MRPT_NAME}" STREQUAL "")
@@ -65,6 +65,9 @@ macro(DeclareAppDependencies name)
 		SET(BUILD_APP_${name} OFF CACHE BOOL "Build ${name}" FORCE) # this var is checked in [MRPT]/app/CMakeLists.txt
 		mark_as_advanced(CLEAR BUILD_APP_${name})
 	endif (NOT AUX_ALL_DEPS_BUILD)
+
+	# We need pthread's on unices
+	target_link_libraries(${name} Threads::Threads)
 
 endmacro(DeclareAppDependencies)
 

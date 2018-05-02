@@ -1,22 +1,26 @@
-/* +---------------------------------------------------------------------------+
-   |                     Mobile Robot Programming Toolkit (MRPT)               |
-   |                          http://www.mrpt.org/                             |
-   |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
-   | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-   | Released under BSD License. See details in http://www.mrpt.org/License    |
-   +---------------------------------------------------------------------------+ */
+/* +------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)            |
+   |                          http://www.mrpt.org/                          |
+   |                                                                        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file     |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                |
+   | Released under BSD License. See details in http://www.mrpt.org/License |
+   +------------------------------------------------------------------------+ */
 
-/**  This is the main "include file" for classes into the mrpt::hwdrivers namespace. This file
- *	   includes all the other ones, so user applications must include just this one
+/**  This is the main "include file" for classes into the mrpt::hwdrivers
+ *namespace. This file
+ *	   includes all the other ones, so user applications must include just this
+ *one
  *     and link against the library file "lib_hwdrivers.lib" / "lib_hwdrivers.a"
  */
 #ifndef HWDRIVERS_H
 #define HWDRIVERS_H
 
 #ifndef MRPT_NO_WARN_BIG_HDR
-#include <mrpt/utils/core_defs.h>
-MRPT_WARNING("Including <mrpt/hwdrivers.h> makes compilation much slower, consider including only what you need (define MRPT_NO_WARN_BIG_HDR to disable this warning)")
+MRPT_WARNING(
+	"Including <mrpt/hwdrivers.h> makes compilation much slower, consider "
+	"including only what you need (define MRPT_NO_WARN_BIG_HDR to disable this "
+	"warning)")
 #endif
 
 // Classes into HWDRIVERS
@@ -29,14 +33,11 @@ MRPT_WARNING("Including <mrpt/hwdrivers.h> makes compilation much slower, consid
 #include <mrpt/hwdrivers/CIbeoLuxETH.h>
 #include <mrpt/hwdrivers/CRoboPeakLidar.h>
 #include <mrpt/hwdrivers/CGPSInterface.h>
-#include <mrpt/hwdrivers/CInterfaceFTDIMessages.h>
 #include <mrpt/hwdrivers/CWirelessPower.h>
 #include <mrpt/hwdrivers/CRaePID.h>
 #include <mrpt/hwdrivers/CImpinjRFID.h>
-#include <mrpt/hwdrivers/CSerialPort.h>
 #include <mrpt/hwdrivers/CIMUXSens.h>
 #include <mrpt/hwdrivers/CIMUXSens_MT4.h>
-#include <mrpt/hwdrivers/CActivMediaRobotBase.h>
 #include <mrpt/hwdrivers/CJoystick.h>
 #include <mrpt/hwdrivers/CCameraSensor.h>
 #include <mrpt/hwdrivers/CPtuDPerception.h>
@@ -73,5 +74,7 @@ MRPT_WARNING("Including <mrpt/hwdrivers.h> makes compilation much slower, consid
 #include <mrpt/hwdrivers/CIMUIntersense.h>
 #include <mrpt/hwdrivers/CSkeletonTracker.h>
 #include <mrpt/hwdrivers/CVelodyneScanner.h>
+
+#include <mrpt/hwdrivers/CSICKTim561Eth_2050101.h>
 
 #endif

@@ -5,10 +5,11 @@ define_mrpt_lib(
 	# Lib name
 	graphs
 	# Dependencies
-	mrpt-base
+	mrpt-opengl
+	mrpt-poses
 	)
 
 
 IF(BUILD_mrpt-graphs)
 
-ENDIF() 
+ENDIF()

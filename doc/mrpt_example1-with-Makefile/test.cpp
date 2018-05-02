@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -10,14 +10,17 @@
 #include <mrpt/poses/CPoint3D.h>
 #include <mrpt/poses/CPose2D.h>
 #include <mrpt/poses/CPose3D.h>
-#include <mrpt/utils/CTicTac.h>
+#include <mrpt/system/CTicTac.h>
+#include <iostream>
 
-using namespace mrpt::utils;
-using namespace mrpt::poses;
-using namespace std;
 
 int main()
 {
+	using namespace mrpt;
+	using namespace mrpt::poses;
+	using namespace mrpt::system;
+	using namespace std;
+
 	try
 	{
 		// The landmark (global) position: 3D (x,y,z)

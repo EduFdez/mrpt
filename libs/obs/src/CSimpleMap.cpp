@@ -1,177 +1,113 @@
-/* +---------------------------------------------------------------------------+
-   |                     Mobile Robot Programming Toolkit (MRPT)               |
-   |                          http://www.mrpt.org/                             |
-   |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
-   | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-   | Released under BSD License. See details in http://www.mrpt.org/License    |
-   +---------------------------------------------------------------------------+ */
+/* +------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)            |
+   |                          http://www.mrpt.org/                          |
+   |                                                                        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file     |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                |
+   | Released under BSD License. See details in http://www.mrpt.org/License |
+   +------------------------------------------------------------------------+ */
 
-#include "obs-precomp.h"   // Precompiled headers
+#include "obs-precomp.h"  // Precompiled headers
 
 #include <mrpt/maps/CSimpleMap.h>
-#include <mrpt/utils/CFileGZInputStream.h>
-#include <mrpt/utils/CFileGZOutputStream.h>
-#include <mrpt/utils/CStream.h>
+#include <mrpt/io/CFileGZInputStream.h>
+#include <mrpt/io/CFileGZOutputStream.h>
+#include <mrpt/serialization/CArchive.h>
+#include <mrpt/serialization/metaprogramming_serialization.h>
 
 using namespace mrpt::obs;
 using namespace mrpt::maps;
-using namespace mrpt::utils;
 using namespace mrpt::poses;
 using namespace mrpt::poses;
 using namespace std;
+using namespace mrpt::serialization;
+using namespace mrpt::serialization::metaprogramming;
 
-#include <mrpt/utils/metaprogramming.h>
-using namespace mrpt::utils::metaprogramming;
+IMPLEMENTS_SERIALIZABLE(CSimpleMap, CSerializable, mrpt::maps)
 
-IMPLEMENTS_SERIALIZABLE(CSimpleMap, CSerializable,mrpt::maps)
+const auto fn_pair_make_unique = [](auto& ptr) {
+	ptr.first.reset(dynamic_cast<mrpt::poses::CPose3DPDF*>(ptr.first->clone()));
+	ptr.second.reset(
+		dynamic_cast<mrpt::obs::CSensoryFrame*>(ptr.second->clone()));
+};
 
-/*---------------------------------------------------------------
-						Constructor
-  ---------------------------------------------------------------*/
-CSimpleMap::CSimpleMap() : m_posesObsPairs()
+CSimpleMap::CSimpleMap(const CSimpleMap& o) : m_posesObsPairs(o.m_posesObsPairs)
 {
+	for_each(
+		m_posesObsPairs.begin(), m_posesObsPairs.end(), fn_pair_make_unique);
 }
 
-/*---------------------------------------------------------------
-					Copy
-  ---------------------------------------------------------------*/
-CSimpleMap::CSimpleMap( const CSimpleMap &o )  :
-	m_posesObsPairs( o.m_posesObsPairs )
-{
-	for_each( m_posesObsPairs.begin(), m_posesObsPairs.end(), ObjectPairMakeUnique() );
-}
-
-/*---------------------------------------------------------------
-					Copy
-  ---------------------------------------------------------------*/
-CSimpleMap & CSimpleMap::operator = ( const CSimpleMap& o)
+CSimpleMap& CSimpleMap::operator=(const CSimpleMap& o)
 {
 	MRPT_START
-
-	//TPosePDFSensFramePair	pair;
-
-	if (this == &o) return *this;		// It may be used sometimes
+	if (this == &o) return *this;  // It may be used sometimes
 
 	m_posesObsPairs = o.m_posesObsPairs;
-	for_each( m_posesObsPairs.begin(), m_posesObsPairs.end(), ObjectPairMakeUnique() );
+	for_each(
+		m_posesObsPairs.begin(), m_posesObsPairs.end(), fn_pair_make_unique);
 
 	return *this;
-
 	MRPT_END
 }
 
-/*---------------------------------------------------------------
-						size
-  ---------------------------------------------------------------*/
-size_t CSimpleMap::size() const
+size_t CSimpleMap::size() const { return m_posesObsPairs.size(); }
+bool CSimpleMap::empty() const { return m_posesObsPairs.empty(); }
+void CSimpleMap::clear() { m_posesObsPairs.clear(); }
+void CSimpleMap::get(
+	size_t index, CPose3DPDF::Ptr& out_posePDF,
+	CSensoryFrame::Ptr& out_SF) const
 {
-	return m_posesObsPairs.size();
+	if (index >= m_posesObsPairs.size()) THROW_EXCEPTION("Index out of bounds");
+	out_posePDF = m_posesObsPairs[index].first;
+	out_SF = m_posesObsPairs[index].second;
 }
 
-bool CSimpleMap::empty() const {
-	return m_posesObsPairs.empty();
-}
-
-/*---------------------------------------------------------------
-						clear
-  ---------------------------------------------------------------*/
-void  CSimpleMap::clear()
-{
-	m_posesObsPairs.clear();
-}
-
-/*---------------------------------------------------------------
-						Destructor
-  ---------------------------------------------------------------*/
-CSimpleMap::~CSimpleMap()
-{
-	clear();
-}
-
-/*---------------------------------------------------------------
-							get const
-  ---------------------------------------------------------------*/
-void  CSimpleMap::get(
-		size_t	        index,
-		CPose3DPDFPtr &out_posePDF,
-		CSensoryFramePtr &out_SF ) const
-{
-	if (index>=m_posesObsPairs.size())
-		THROW_EXCEPTION("Index out of bounds");
-
-	out_posePDF	= m_posesObsPairs[index].first;
-	out_SF		= m_posesObsPairs[index].second;
-}
-
-/*---------------------------------------------------------------
-						remove
-  ---------------------------------------------------------------*/
-void  CSimpleMap::remove(size_t index)
+void CSimpleMap::remove(size_t index)
 {
 	MRPT_START
-
-	if (index>=m_posesObsPairs.size())
-		THROW_EXCEPTION("Index out of bounds");
-
-	m_posesObsPairs.erase( m_posesObsPairs.begin() + index );
-
+	if (index >= m_posesObsPairs.size()) THROW_EXCEPTION("Index out of bounds");
+	m_posesObsPairs.erase(m_posesObsPairs.begin() + index);
 	MRPT_END
 }
 
-
-/*---------------------------------------------------------------
-						set
-  ---------------------------------------------------------------*/
-void  CSimpleMap::set(
-	size_t	index,
-	const CPose3DPDFPtr &in_posePDF,
-	const CSensoryFramePtr & in_SF )
+void CSimpleMap::set(
+	size_t index, const CPose3DPDF::Ptr& in_posePDF,
+	const CSensoryFrame::Ptr& in_SF)
 {
 	MRPT_START
-
-	if (index>=m_posesObsPairs.size())
-		THROW_EXCEPTION("Index out of bounds");
-
+	if (index >= m_posesObsPairs.size()) THROW_EXCEPTION("Index out of bounds");
 	if (in_posePDF) m_posesObsPairs[index].first = in_posePDF;
-	if (in_SF) 		m_posesObsPairs[index].second = in_SF;
+	if (in_SF) m_posesObsPairs[index].second = in_SF;
+	MRPT_END
+}
+
+void CSimpleMap::set(
+	size_t index, const CPosePDF::Ptr& in_posePDF,
+	const CSensoryFrame::Ptr& in_SF)
+{
+	MRPT_START
+
+	if (index >= m_posesObsPairs.size()) THROW_EXCEPTION("Index out of bounds");
+
+	if (in_posePDF)
+		m_posesObsPairs[index].first =
+			CPose3DPDF::Ptr(CPose3DPDF::createFrom2D(*in_posePDF));
+	if (in_SF) m_posesObsPairs[index].second = in_SF;
 
 	MRPT_END
 }
 
-/*---------------------------------------------------------------
-						set 2D
-  ---------------------------------------------------------------*/
-void  CSimpleMap::set(
-	size_t	index,
-	const CPosePDFPtr &in_posePDF,
-	const CSensoryFramePtr &in_SF )
+void CSimpleMap::insert(
+	const CPose3DPDF* in_posePDF, const CSensoryFrame::Ptr& in_SF)
 {
 	MRPT_START
 
-	if (index>=m_posesObsPairs.size())
-		THROW_EXCEPTION("Index out of bounds");
+	TPosePDFSensFramePair pair;
 
-	if (in_posePDF) 	m_posesObsPairs[index].first = CPose3DPDFPtr( CPose3DPDF::createFrom2D( *in_posePDF ) );
-	if (in_SF) 			m_posesObsPairs[index].second = in_SF;
+	pair.second = in_SF;
+	pair.first = CPose3DPDF::Ptr(static_cast<CPose3DPDF*>(in_posePDF->clone()));
 
-	MRPT_END
-}
-
-
-/*---------------------------------------------------------------
-						insert
-  ---------------------------------------------------------------*/
-void  CSimpleMap::insert( const CPose3DPDF *in_posePDF, const CSensoryFramePtr &in_SF )
-{
-	MRPT_START
-
-	TPosePDFSensFramePair	pair;
-
-	pair.second  = in_SF;
-	pair.first	 = CPose3DPDFPtr( static_cast<CPose3DPDF*>(in_posePDF->duplicate()) );
-
-	m_posesObsPairs.push_back( pair );
+	m_posesObsPairs.push_back(pair);
 
 	MRPT_END
 }
@@ -179,18 +115,17 @@ void  CSimpleMap::insert( const CPose3DPDF *in_posePDF, const CSensoryFramePtr &
 /*---------------------------------------------------------------
 						insert
   ---------------------------------------------------------------*/
-void  CSimpleMap::insert(
-	const CPose3DPDFPtr &in_posePDF,
-	const CSensoryFramePtr &in_SF )
+void CSimpleMap::insert(
+	const CPose3DPDF::Ptr& in_posePDF, const CSensoryFrame::Ptr& in_SF)
 {
 	MRPT_START
 
-	TPosePDFSensFramePair	pair;
+	TPosePDFSensFramePair pair;
 
-	pair.second  = in_SF;
-	pair.first	 = in_posePDF;
+	pair.second = in_SF;
+	pair.first = in_posePDF;
 
-	m_posesObsPairs.push_back( pair );
+	m_posesObsPairs.push_back(pair);
 
 	MRPT_END
 }
@@ -198,16 +133,17 @@ void  CSimpleMap::insert(
 /*---------------------------------------------------------------
 						insert
   ---------------------------------------------------------------*/
-void  CSimpleMap::insert( const CPose3DPDF *in_posePDF, const CSensoryFrame &in_SF )
+void CSimpleMap::insert(
+	const CPose3DPDF* in_posePDF, const CSensoryFrame& in_SF)
 {
 	MRPT_START
 
-	TPosePDFSensFramePair	pair;
+	TPosePDFSensFramePair pair;
 
-	pair.second  = CSensoryFramePtr( new CSensoryFrame(in_SF) );
-	pair.first	 = CPose3DPDFPtr( static_cast<CPose3DPDF*>(in_posePDF->duplicate()) );
+	pair.second = CSensoryFrame::Ptr(new CSensoryFrame(in_SF));
+	pair.first = CPose3DPDF::Ptr(static_cast<CPose3DPDF*>(in_posePDF->clone()));
 
-	m_posesObsPairs.push_back( pair );
+	m_posesObsPairs.push_back(pair);
 
 	MRPT_END
 }
@@ -215,16 +151,16 @@ void  CSimpleMap::insert( const CPose3DPDF *in_posePDF, const CSensoryFrame &in_
 /*---------------------------------------------------------------
 						insert
   ---------------------------------------------------------------*/
-void  CSimpleMap::insert( const CPosePDF *in_posePDF, const CSensoryFrame &in_SF )
+void CSimpleMap::insert(const CPosePDF* in_posePDF, const CSensoryFrame& in_SF)
 {
 	MRPT_START
 
-	TPosePDFSensFramePair	pair;
+	TPosePDFSensFramePair pair;
 
-	pair.second  = CSensoryFramePtr( new CSensoryFrame(in_SF) );
-	pair.first	 = CPose3DPDFPtr( static_cast<CPose3DPDF*>(in_posePDF->duplicate()) );
+	pair.second = CSensoryFrame::Ptr(new CSensoryFrame(in_SF));
+	pair.first = CPose3DPDF::Ptr(static_cast<CPose3DPDF*>(in_posePDF->clone()));
 
-	m_posesObsPairs.push_back( pair );
+	m_posesObsPairs.push_back(pair);
 
 	MRPT_END
 }
@@ -232,16 +168,17 @@ void  CSimpleMap::insert( const CPosePDF *in_posePDF, const CSensoryFrame &in_SF
 /*---------------------------------------------------------------
 						insert
   ---------------------------------------------------------------*/
-void  CSimpleMap::insert( const CPosePDF *in_posePDF, const CSensoryFramePtr &in_SF )
+void CSimpleMap::insert(
+	const CPosePDF* in_posePDF, const CSensoryFrame::Ptr& in_SF)
 {
 	MRPT_START
 
-	TPosePDFSensFramePair	pair;
+	TPosePDFSensFramePair pair;
 
-	pair.second  = in_SF;
-	pair.first	 = CPose3DPDFPtr( static_cast<CPose3DPDF*>(in_posePDF->duplicate()) );
+	pair.second = in_SF;
+	pair.first = CPose3DPDF::Ptr(static_cast<CPose3DPDF*>(in_posePDF->clone()));
 
-	m_posesObsPairs.push_back( pair );
+	m_posesObsPairs.push_back(pair);
 
 	MRPT_END
 }
@@ -249,88 +186,94 @@ void  CSimpleMap::insert( const CPosePDF *in_posePDF, const CSensoryFramePtr &in
 /*---------------------------------------------------------------
 						insert  2D
   ---------------------------------------------------------------*/
-void  CSimpleMap::insert(
-	const CPosePDFPtr &in_posePDF,
-	const CSensoryFramePtr &in_SF )
+void CSimpleMap::insert(
+	const CPosePDF::Ptr& in_posePDF, const CSensoryFrame::Ptr& in_SF)
 {
-	insert( CPose3DPDFPtr( CPose3DPDF::createFrom2D( *in_posePDF ) ) ,in_SF);
+	insert(CPose3DPDF::Ptr(CPose3DPDF::createFrom2D(*in_posePDF)), in_SF);
 }
 
-/*---------------------------------------------------------------
-					writeToStream
-	Implements the writing to a CStream capability of
-	  CSerializable objects
-  ---------------------------------------------------------------*/
-void  CSimpleMap::writeToStream(mrpt::utils::CStream &out,int *version) const
+void CSimpleMap::insertToPos(
+	size_t index, const CPose3DPDF::Ptr& in_posePDF,
+	const CSensoryFrame::Ptr& in_SF)
 {
-	if (version)
-		*version = 1;
-	else
-	{
-		uint32_t		i,n;
-		n = m_posesObsPairs.size();
-		out << n;
-		for (i=0;i<n;i++)
-			out << *m_posesObsPairs[i].first << *m_posesObsPairs[i].second;
-	}
+	if (index >= m_posesObsPairs.size()) return;
+
+	MRPT_START
+
+	TPosePDFSensFramePair pair;
+
+	pair.second = in_SF;
+	pair.first = in_posePDF;
+
+	auto iter = m_posesObsPairs.begin() + index;
+	m_posesObsPairs.insert(iter, pair);
+
+	MRPT_END
 }
 
-/*---------------------------------------------------------------
-					readFromStream
-  ---------------------------------------------------------------*/
-void  CSimpleMap::readFromStream(mrpt::utils::CStream &in, int version)
+uint8_t CSimpleMap::serializeGetVersion() const { return 1; }
+void CSimpleMap::serializeTo(mrpt::serialization::CArchive& out) const
 {
-	switch(version)
+	out.WriteAs<uint32_t>(m_posesObsPairs.size());
+	for (const auto& p : m_posesObsPairs) out << *p.first << *p.second;
+}
+
+void CSimpleMap::serializeFrom(
+	mrpt::serialization::CArchive& in, uint8_t version)
+{
+	switch (version)
 	{
-	case 1:
+		case 1:
 		{
-			uint32_t	i,n;
+			uint32_t i, n;
 			clear();
 			in >> n;
 			m_posesObsPairs.resize(n);
-			for (i=0;i<n;i++)
+			for (i = 0; i < n; i++)
 				in >> m_posesObsPairs[i].first >> m_posesObsPairs[i].second;
-		} break;
-	case 0:
+		}
+		break;
+		case 0:
 		{
 			// There are 2D poses PDF instead of 3D: transform them:
-			uint32_t	i,n;
+			uint32_t i, n;
 			clear();
 			in >> n;
 			m_posesObsPairs.resize(n);
-			for (i=0;i<n;i++)
+			for (i = 0; i < n; i++)
 			{
-				CPosePDFPtr aux2Dpose;
+				CPosePDF::Ptr aux2Dpose;
 				in >> aux2Dpose >> m_posesObsPairs[i].second;
-				m_posesObsPairs[i].first = CPose3DPDFPtr( CPose3DPDF::createFrom2D( *aux2Dpose ) );
+				m_posesObsPairs[i].first =
+					CPose3DPDF::Ptr(CPose3DPDF::createFrom2D(*aux2Dpose));
 			}
-		} break;
-	default:
-		MRPT_THROW_UNKNOWN_SERIALIZATION_VERSION(version)
-
+		}
+		break;
+		default:
+			MRPT_THROW_UNKNOWN_SERIALIZATION_VERSION(version)
 	};
 }
-
 
 /*---------------------------------------------------------------
 					changeCoordinatesOrigin
   ---------------------------------------------------------------*/
-void CSimpleMap::changeCoordinatesOrigin( const CPose3D  &newOrigin )
+void CSimpleMap::changeCoordinatesOrigin(const CPose3D& newOrigin)
 {
-	for (TPosePDFSensFramePairList::iterator it=m_posesObsPairs.begin(); it!=m_posesObsPairs.end(); ++it)
+	for (TPosePDFSensFramePairList::iterator it = m_posesObsPairs.begin();
+		 it != m_posesObsPairs.end(); ++it)
 		it->first->changeCoordinatesReference(newOrigin);
 }
 
 /** Save this object to a .simplemap binary file (compressed with gzip)
-* \sa loadFromFile
-* \return false on any error.
-*/
-bool CSimpleMap::saveToFile(const std::string &filName) const
+ * \sa loadFromFile
+ * \return false on any error.
+ */
+bool CSimpleMap::saveToFile(const std::string& filName) const
 {
 	try
 	{
-		mrpt::utils::CFileGZOutputStream  f(filName);
-		f << *this;
+		mrpt::io::CFileGZOutputStream fo(filName);
+		archiveFrom(fo) << *this;
 		return true;
 	}
 	catch (...)
@@ -339,16 +282,17 @@ bool CSimpleMap::saveToFile(const std::string &filName) const
 	}
 }
 
-/** Load the contents of this object from a .simplemap binary file (possibly compressed with gzip)
-* \sa saveToFile
-* \return false on any error.
-*/
-bool CSimpleMap::loadFromFile(const std::string &filName)
+/** Load the contents of this object from a .simplemap binary file (possibly
+ * compressed with gzip)
+ * \sa saveToFile
+ * \return false on any error.
+ */
+bool CSimpleMap::loadFromFile(const std::string& filName)
 {
 	try
 	{
-		mrpt::utils::CFileGZInputStream  f(filName);
-		f >> *this;
+		mrpt::io::CFileGZInputStream fi(filName);
+		archiveFrom(fi) >> *this;
 		return true;
 	}
 	catch (...)

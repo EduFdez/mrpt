@@ -1,148 +1,120 @@
-/* +---------------------------------------------------------------------------+
-   |                     Mobile Robot Programming Toolkit (MRPT)               |
-   |                          http://www.mrpt.org/                             |
-   |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
-   | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-   | Released under BSD License. See details in http://www.mrpt.org/License    |
-   +---------------------------------------------------------------------------+ */
+/* +------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)            |
+   |                          http://www.mrpt.org/                          |
+   |                                                                        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file     |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                |
+   | Released under BSD License. See details in http://www.mrpt.org/License |
+   +------------------------------------------------------------------------+ */
 
-#include "obs-precomp.h"   // Precompiled headers
+#include "obs-precomp.h"  // Precompiled headers
 
 #include <mrpt/obs/CActionCollection.h>
 #include <mrpt/obs/CActionRobotMovement2D.h>
 #include <mrpt/obs/CActionRobotMovement3D.h>
 #include <mrpt/poses/CPosePDF.h>
-#include <mrpt/utils/CStream.h>
+#include <mrpt/serialization/CArchive.h>
+#include <mrpt/serialization/metaprogramming_serialization.h>
 
 using namespace mrpt;
 using namespace mrpt::obs;
 using namespace mrpt::poses;
-using namespace mrpt::utils;
-
-#include <mrpt/utils/metaprogramming.h>
-using namespace mrpt::utils::metaprogramming;
 
 IMPLEMENTS_SERIALIZABLE(CActionCollection, CSerializable, mrpt::obs)
 
-
-/*---------------------------------------------------------------
-						Constructor
-  ---------------------------------------------------------------*/
-CActionCollection::CActionCollection() : m_actions()
+CActionCollection::CActionCollection(CAction& a) : m_actions()
 {
+	m_actions.push_back(CAction::Ptr(static_cast<CAction*>(a.clone())));
 }
 
-/*---------------------------------------------------------------
-						Constructor
-  ---------------------------------------------------------------*/
-CActionCollection::CActionCollection(CAction &a ) : m_actions()
+uint8_t CActionCollection::serializeGetVersion() const { return 0; }
+void CActionCollection::serializeTo(mrpt::serialization::CArchive& out) const
 {
-	m_actions.push_back( CActionPtr( static_cast<CAction*>(a.duplicate()) ) );
+	out.WriteAs<uint32_t>(m_actions.size());
+	for (const auto& a : *this) out << *a;
 }
 
-/*---------------------------------------------------------------
-  Implements the writing to a CStream capability of CSerializable objects
- ---------------------------------------------------------------*/
-void  CActionCollection::writeToStream(mrpt::utils::CStream &out, int *version) const
+void CActionCollection::serializeFrom(
+	mrpt::serialization::CArchive& in, uint8_t version)
 {
-	if (version)
-		*version = 0;
-	else
+	switch (version)
 	{
-		uint32_t		n;
-
-		n = static_cast<uint32_t> ( m_actions.size() );
-		out << n;
-		for (const_iterator it=begin();it!=end();++it)
-			out << *(*it);
-	}
-}
-
-/*---------------------------------------------------------------
-  Implements the reading from a CStream capability of CSerializable objects
- ---------------------------------------------------------------*/
-void  CActionCollection::readFromStream(mrpt::utils::CStream &in, int version)
-{
-	switch(version)
-	{
-	case 0:
+		case 0:
 		{
-			uint32_t	n;
-
 			clear();
-
-			in >> n;
-			m_actions.resize(n);
-			for_each( begin(),end(), ObjectReadFromStreamToPtrs<CActionPtr>(&in) );
-
-		} break;
-	default:
-		MRPT_THROW_UNKNOWN_SERIALIZATION_VERSION(version)
+			m_actions.resize(in.ReadAs<uint32_t>());
+			for_each(
+				begin(), end(),
+				mrpt::serialization::metaprogramming::
+					ObjectReadFromStreamToPtrs<CAction::Ptr>(&in));
+		}
+		break;
+		default:
+			MRPT_THROW_UNKNOWN_SERIALIZATION_VERSION(version)
 	};
 }
 
 /*---------------------------------------------------------------
 						clear
  ---------------------------------------------------------------*/
-void  CActionCollection::clear()
-{
-	m_actions.clear();
-}
-
+void CActionCollection::clear() { m_actions.clear(); }
 /*---------------------------------------------------------------
 						get
  ---------------------------------------------------------------*/
-CActionPtr CActionCollection::get(size_t index)
+CAction::Ptr CActionCollection::get(size_t index)
 {
-	if (index>=m_actions.size())
-		THROW_EXCEPTION("Index out of bounds");
+	if (index >= m_actions.size()) THROW_EXCEPTION("Index out of bounds");
 
-	return m_actions[index].get_ptr();
+	return m_actions.at(index).get_ptr();
 }
 
+const CAction& CActionCollection::get(size_t index) const
+{
+	if (index >= m_actions.size()) THROW_EXCEPTION("Index out of bounds");
+
+	return *(m_actions.at(index).get_ptr());
+}
 
 /*---------------------------------------------------------------
 						size
  ---------------------------------------------------------------*/
-size_t  CActionCollection::size()
-{
-	return m_actions.size();
-}
-
+size_t CActionCollection::size() { return m_actions.size(); }
 /*---------------------------------------------------------------
 						insert
  ---------------------------------------------------------------*/
-void  CActionCollection::insert(CAction	&action)
+void CActionCollection::insert(CAction& action)
 {
-	m_actions.push_back( CActionPtr( static_cast<CAction*>( action.duplicate() )) );
+	m_actions.push_back(CAction::Ptr(static_cast<CAction*>(action.clone())));
 }
-
 
 /*---------------------------------------------------------------
 						getBestMovementEstimation
  ---------------------------------------------------------------*/
-CActionRobotMovement2DPtr  CActionCollection::getBestMovementEstimation() const
+CActionRobotMovement2D::Ptr CActionCollection::getBestMovementEstimation() const
 {
-	CActionRobotMovement2DPtr	bestEst;
-	double						bestDet = 1e3;
+	CActionRobotMovement2D::Ptr bestEst;
+	double bestDet = 1e3;
 
 	// Find the best
-	for (const_iterator it=begin();it!=end();++it)
+	for (const_iterator it = begin(); it != end(); ++it)
 	{
-		if ((*it)->GetRuntimeClass()->derivedFrom( CLASS_ID( CActionRobotMovement2D ) ) )
+		if ((*it)->GetRuntimeClass()->derivedFrom(
+				CLASS_ID(CActionRobotMovement2D)))
 		{
-			CActionRobotMovement2DPtr temp = CActionRobotMovement2DPtr( it->get_ptr() );
+			CActionRobotMovement2D::Ptr temp =
+				std::dynamic_pointer_cast<CActionRobotMovement2D>(
+					it->get_ptr());
 
-			if (temp->estimationMethod == CActionRobotMovement2D::emScan2DMatching )
+			if (temp->estimationMethod ==
+				CActionRobotMovement2D::emScan2DMatching)
 			{
 				return temp;
 			}
 
-			double	det = temp->poseChange->getCovariance().det();
+			double det = temp->poseChange->getCovariance().det();
 
 			// If it is the best until now, save it:
-			if ( det<bestDet )
+			if (det < bestDet)
 			{
 				bestEst = temp;
 				bestDet = det;
@@ -153,33 +125,35 @@ CActionRobotMovement2DPtr  CActionCollection::getBestMovementEstimation() const
 	return bestEst;
 }
 
-
 /*---------------------------------------------------------------
 							eraseByIndex
  ---------------------------------------------------------------*/
-void  CActionCollection::eraseByIndex(const size_t & index)
+void CActionCollection::eraseByIndex(const size_t& index)
 {
-	if (index>=m_actions.size())
-		THROW_EXCEPTION("Index out of bounds");
+	if (index >= m_actions.size()) THROW_EXCEPTION("Index out of bounds");
 
 	iterator it = m_actions.begin() + index;
-	m_actions.erase( it );
+	m_actions.erase(it);
 }
 
 /*---------------------------------------------------------------
 							eraseByIndex
  ---------------------------------------------------------------*/
-CActionRobotMovement2DPtr CActionCollection::getMovementEstimationByType( CActionRobotMovement2D::TEstimationMethod method)
+CActionRobotMovement2D::Ptr CActionCollection::getMovementEstimationByType(
+	CActionRobotMovement2D::TEstimationMethod method)
 {
 	// Find it:
-	for (iterator it=begin();it!=end();++it)
+	for (iterator it = begin(); it != end(); ++it)
 	{
-		if ((*it)->GetRuntimeClass()->derivedFrom( CLASS_ID( CActionRobotMovement2D ) ) )
+		if ((*it)->GetRuntimeClass()->derivedFrom(
+				CLASS_ID(CActionRobotMovement2D)))
 		{
-			CActionRobotMovement2DPtr temp = CActionRobotMovement2DPtr( it->get_ptr() );
+			CActionRobotMovement2D::Ptr temp =
+				std::dynamic_pointer_cast<CActionRobotMovement2D>(
+					it->get_ptr());
 
 			// Is it of the required type?
-			if ( temp->estimationMethod == method )
+			if (temp->estimationMethod == method)
 			{
 				// Yes!:
 				return temp;
@@ -188,34 +162,36 @@ CActionRobotMovement2DPtr CActionCollection::getMovementEstimationByType( CActio
 	}
 
 	// Not found:
-	return CActionRobotMovement2DPtr();
+	return CActionRobotMovement2D::Ptr();
 }
 
 /*---------------------------------------------------------------
 							erase
  ---------------------------------------------------------------*/
-CActionCollection::iterator CActionCollection::erase( const iterator &it)
+CActionCollection::iterator CActionCollection::erase(const iterator& it)
 {
 	MRPT_START
-	ASSERT_(it!=end());
+	ASSERT_(it != end());
 
 	return m_actions.erase(it);
 	MRPT_END
-
 }
 
 /*---------------------------------------------------------------
 							getFirstMovementEstimationMean
  ---------------------------------------------------------------*/
-bool CActionCollection::getFirstMovementEstimationMean( CPose3D &out_pose_increment ) const
+bool CActionCollection::getFirstMovementEstimationMean(
+	CPose3D& out_pose_increment) const
 {
-	CActionRobotMovement3DPtr act3D = getActionByClass<CActionRobotMovement3D>();
+	CActionRobotMovement3D::Ptr act3D =
+		getActionByClass<CActionRobotMovement3D>();
 	if (act3D)
 	{
 		out_pose_increment = act3D->poseChange.mean;
 		return true;
 	}
-	CActionRobotMovement2DPtr act2D = getActionByClass<CActionRobotMovement2D>();
+	CActionRobotMovement2D::Ptr act2D =
+		getActionByClass<CActionRobotMovement2D>();
 	if (act2D)
 	{
 		out_pose_increment = CPose3D(act2D->poseChange->getMeanVal());
@@ -227,18 +203,21 @@ bool CActionCollection::getFirstMovementEstimationMean( CPose3D &out_pose_increm
 /*---------------------------------------------------------------
 					getFirstMovementEstimation
  ---------------------------------------------------------------*/
-bool CActionCollection::getFirstMovementEstimation( CPose3DPDFGaussian &out_pose_increment ) const
+bool CActionCollection::getFirstMovementEstimation(
+	CPose3DPDFGaussian& out_pose_increment) const
 {
-	CActionRobotMovement3DPtr act3D = getActionByClass<CActionRobotMovement3D>();
+	CActionRobotMovement3D::Ptr act3D =
+		getActionByClass<CActionRobotMovement3D>();
 	if (act3D)
 	{
 		out_pose_increment = act3D->poseChange;
 		return true;
 	}
-	CActionRobotMovement2DPtr act2D = getActionByClass<CActionRobotMovement2D>();
+	CActionRobotMovement2D::Ptr act2D =
+		getActionByClass<CActionRobotMovement2D>();
 	if (act2D)
 	{
-		out_pose_increment.copyFrom( *act2D->poseChange );
+		out_pose_increment.copyFrom(*act2D->poseChange);
 		return true;
 	}
 	return false;

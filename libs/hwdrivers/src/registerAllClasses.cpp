@@ -1,21 +1,19 @@
-/* +---------------------------------------------------------------------------+
-   |                     Mobile Robot Programming Toolkit (MRPT)               |
-   |                          http://www.mrpt.org/                             |
-   |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
-   | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-   | Released under BSD License. See details in http://www.mrpt.org/License    |
-   +---------------------------------------------------------------------------+ */
+/* +------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)            |
+   |                          http://www.mrpt.org/                          |
+   |                                                                        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file     |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                |
+   | Released under BSD License. See details in http://www.mrpt.org/License |
+   +------------------------------------------------------------------------+ */
 
-#include "hwdrivers-precomp.h"   // Precompiled headers
+#include "hwdrivers-precomp.h"  // Precompiled headers
 
 #define MRPT_NO_WARN_BIG_HDR
 #include <mrpt/hwdrivers.h>
-#include <mrpt/utils/initializer.h>
+#include <mrpt/core/initializer.h>
 
-using namespace mrpt::utils;
 using namespace mrpt::hwdrivers;
-
 
 MRPT_INITIALIZER(registerAllClasses_mrpt_hwdrivers)
 {
@@ -29,7 +27,6 @@ MRPT_INITIALIZER(registerAllClasses_mrpt_hwdrivers)
 	CIMUXSens::doRegister();
 	CIMUXSens_MT4::doRegister();
 	CCameraSensor::doRegister();
-	CActivMediaRobotBase::doRegister();
 	CWirelessPower::doRegister();
 	CRaePID::doRegister();
 	CImpinjRFID::doRegister();
@@ -51,6 +48,6 @@ MRPT_INITIALIZER(registerAllClasses_mrpt_hwdrivers)
 	CIMUIntersense::doRegister();
 	CSkeletonTracker::doRegister();
 	CVelodyneScanner::doRegister();
+	CSICKTim561Eth::doRegister();
 #endif
 }
-

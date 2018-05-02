@@ -1,8 +1,6 @@
 # Check for system libassimp:
 #  http://assimp.sourceforge.net/
 # ===================================================
-
-
 SET(CMAKE_MRPT_HAS_ASSIMP 0)
 SET(CMAKE_MRPT_HAS_ASSIMP_SYSTEM 0)
 
@@ -13,14 +11,14 @@ SET(EMBEDDED_ASSIMP_DIR "${MRPT_BINARY_DIR}/otherlibs/assimp")
 # 1st) Try to locate the pkg via pkg-config:
 find_package(PkgConfig QUIET)
 IF(PKG_CONFIG_FOUND)
-	PKG_CHECK_MODULES(ASSIMP ${_QUIET} assimp)
+	PKG_CHECK_MODULES(ASSIMP QUIET assimp)
 	IF (ASSIMP_FOUND)
-		IF ($ENV{VERBOSE})	
+		IF ($ENV{VERBOSE})
 			MESSAGE(STATUS "Assimp: Found via pkg-config")
 			MESSAGE(STATUS " ASSIMP_LIBRARIES=${ASSIMP_LIBRARIES}")
 			MESSAGE(STATUS " ASSIMP_INCLUDE_DIRS=${ASSIMP_INCLUDE_DIRS}")
 		ENDIF ($ENV{VERBOSE})
-		
+
 		SET(CMAKE_MRPT_HAS_ASSIMP 1)
 		SET(CMAKE_MRPT_HAS_ASSIMP_SYSTEM 1)
 
@@ -34,66 +32,71 @@ IF (NOT ASSIMP_FOUND)
 
 		# Use embedded version:
 		# --------------------------
-		# Tune cmake vars for assimp build for mrpt:
-		SET (ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "If the supplementary tools for Assimp are built in addition to the library." FORCE)	
-		SET (ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "If the official samples are built as well (needs Glut)." FORCE)
-		SET (ASSIMP_BUILD_STATIC_LIB ON CACHE BOOL "Build Assimp static." FORCE)
-		SET (ASSIMP_BUILD_TESTS OFF CACHE BOOL "." FORCE)
-		set(ASSIMP_LIBRARY_SUFFIX "-mrpt" CACHE STRING "Suffix to append to library names" FORCE)
-		
-		add_subdirectory("${MRPT_SOURCE_DIR}/otherlibs/assimp/")
-		if(ENABLE_SOLUTION_FOLDERS)
-			set_target_properties(assimp PROPERTIES FOLDER "3rd party")
-		else(ENABLE_SOLUTION_FOLDERS)
-			SET_TARGET_PROPERTIES(assimp  PROPERTIES PROJECT_LABEL "(3rdparty) assimp")
-		endif(ENABLE_SOLUTION_FOLDERS)
-		MARK_AS_ADVANCED(
-			ASSIMP_BUILD_ASSIMP_TOOLS
-			ASSIMP_BUILD_SAMPLES
-			ASSIMP_BUILD_TESTS
-			AMD64
-			ASM686
-			ASSIMP_BIN_INSTALL_DIR
-			ASSIMP_BUILD_STATIC_LIB 
-			ASSIMP_DEBUG_POSTFIX
-			ASSIMP_ENABLE_BOOST_WORKAROUND
-			ASSIMP_NO_EXPORT
-			ASSIMP_INCLUDE_INSTALL_DIR
-			ASSIMP_LIB_INSTALL_DIR
-			ASSIMP_BIN_INSTALL_DIR
-			ASSIMP_INSTALL_PDB
-			ASSIMP_OPT_BUILD_PACKAGES
-			ASSIMP_PACKAGE_VERSION
-			ASSIMP_LIBRARY_SUFFIX
-			)
-			
+		# Include embedded version headers:
+		include(ExternalProject)
+		# download from GH
+		ExternalProject_Add(EP_assimp
+		  URL               "https://github.com/assimp/assimp/archive/v4.1.0.tar.gz"
+		  URL_MD5           "83b53a10c38d964bd1e69da0606e2727"
+		  SOURCE_DIR        "${MRPT_BINARY_DIR}/otherlibs/assimp/"
+		  CMAKE_ARGS 
+			-DASSIMP_BUILD_ASSIMP_TOOLS=OFF
+			-DASSIMP_BUILD_SAMPLES=OFF
+			-DASSIMP_BUILD_STATIC_LIB=ON
+			-DASSIMP_BUILD_TESTS=OFF
+			-DASSIMP_LIBRARY_SUFFIX=-mrpt
+			-DCMAKE_LIBRARY_OUTPUT_PATH=${MRPT_BINARY_DIR}/lib
+			-DLIBRARY_OUTPUT_PATH=${MRPT_BINARY_DIR}/lib
+			-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${MRPT_BINARY_DIR}/bin
+			-DRUNTIME_OUTPUT_DIRECTORY=${MRPT_BINARY_DIR}/bin
+			-DCMAKE_DEBUG_POSTFIX=${CMAKE_DEBUG_POSTFIX}
+		  INSTALL_COMMAND   ""
+		  TEST_COMMAND      ""
+		)
 
 		# 2nd attempt: via cmake
 		SET(ASSIMP_DIR "${EMBEDDED_ASSIMP_DIR}" CACHE PATH "Path to ASSIMP CMake config file" FORCE)
 		FIND_PACKAGE(ASSIMP QUIET)
-		
+
 		SET(ASSIMP_FOUND_VIA_CMAKE 1)
-		
+
 		SET(CMAKE_MRPT_HAS_ASSIMP 1)
 		SET(CMAKE_MRPT_HAS_ASSIMP_SYSTEM 0)
-		
-		# Override binary output dir:
-		SET_TARGET_PROPERTIES(assimp PROPERTIES 
-			ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/"
-			RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/"
-			)
-		
 	ENDIF (BUILD_ASSIMP)
-ENDIF(NOT ASSIMP_FOUND)
+ENDIF()
 
 IF (ASSIMP_FOUND_VIA_CMAKE)
 	# override wrong target libs in -config.cmake file:
 	set(ASSIMP_LIBRARIES "")
-	LIST(APPEND ASSIMP_LIBRARIES optimized "assimp-mrpt" debug "assimp-mrptd")
+
+	if(MSVC12)
+		SET(ASSIMP_MSVC_VERSION "vc120")
+	elseif(MSVC14)
+		SET(ASSIMP_MSVC_VERSION "vc140")
+	ENDIF(MSVC12)
+
+	if(MSVC12 OR MSVC14)
+		SET(ASSIMP_CUSTOM_LIB_NAME "assimp-mrpt-${ASSIMP_MSVC_VERSION}-mt")
+	else()
+		SET(ASSIMP_CUSTOM_LIB_NAME "assimp")
+		SET(ASSIMP_LIBRARY_DIRS "${MRPT_BINARY_DIR}/lib")
+	endif()
+
+	LIST(APPEND ASSIMP_LIBRARIES optimized "${ASSIMP_CUSTOM_LIB_NAME}" debug "${ASSIMP_CUSTOM_LIB_NAME}${CMAKE_DEBUG_POSTFIX}")
 
 	# override wrong include dirs:
-	SET(ASSIMP_INCLUDE_DIRS "${MRPT_SOURCE_DIR}/otherlibs/assimp/include/")
+	SET(ASSIMP_INCLUDE_DIRS
+		"${MRPT_BINARY_DIR}/otherlibs/assimp/include/"
+		"${MRPT_BINARY_DIR}/EP_assimp-prefix/src/EP_assimp-build/include/"
+	)
 
+	# Install assimp DLLs (for binary packages)
+	IF(WIN32)
+		FILE(GLOB_RECURSE EXTRA_DLLS "${MRPT_BINARY_DIR}/bin/Release/assimp-*.dll" "${MRPT_BINARY_DIR}/bin/Debug/assimp-*.dll")
+		FOREACH(F ${EXTRA_DLLS})
+			INSTALL(FILES "${F}" DESTINATION bin)
+		ENDFOREACH(F)
+	ENDIF()
 ENDIF (ASSIMP_FOUND_VIA_CMAKE)
 
 # ASSIMP_ROOT_DIR - the root directory where the installation can be found
@@ -103,14 +106,13 @@ ENDIF (ASSIMP_FOUND_VIA_CMAKE)
 # ASSIMP_LIBRARY_DIRS - link directories
 # ASSIMP_LIBRARIES - libraries to link plugins with
 IF (CMAKE_MRPT_HAS_ASSIMP)
+	if (NOT "${ASSIMP_LIBRARY_DIRS}" STREQUAL "")
+		LINK_DIRECTORIES("${ASSIMP_LIBRARY_DIRS}")
+	endif()
+
 	MARK_AS_ADVANCED(ASSIMP_DIR)
 
-	# Seems to be needed by all mrpt-* projects
-	IF(NOT ${ASSIMP_LIBRARY_DIRS} STREQUAL "")
-		LINK_DIRECTORIES("${ASSIMP_LIBRARY_DIRS}")
-	ENDIF(NOT ${ASSIMP_LIBRARY_DIRS} STREQUAL "")
-
-	IF ($ENV{VERBOSE})	
+	IF ($ENV{VERBOSE})
 		MESSAGE(STATUS "Assimp:")
 		MESSAGE(STATUS " ASSIMP_INCLUDE_DIRS: ${ASSIMP_INCLUDE_DIRS}")
 		MESSAGE(STATUS " ASSIMP_CXX_FLAGS: ${ASSIMP_CXX_FLAGS}")
@@ -120,4 +122,3 @@ IF (CMAKE_MRPT_HAS_ASSIMP)
 		MESSAGE(STATUS " ASSIMP_VERSION: ${ASSIMP_VERSION}")
 	ENDIF ($ENV{VERBOSE})
 ENDIF (CMAKE_MRPT_HAS_ASSIMP)
-	

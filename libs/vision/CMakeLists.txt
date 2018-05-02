@@ -19,12 +19,9 @@ IF(CMAKE_MRPT_HAS_SIFT_HESS)
 	LIST(APPEND vision_EXTRA_SRCS_NAME 	"sift-hess" "sift-hess" "sift-hess" "sift-hess")
 ENDIF()
 
-LIST(APPEND vision_EXTRA_SRCS
-	"${MRPT_SOURCE_DIR}/libs/vision/src/faster/*.cpp"
-	"${MRPT_SOURCE_DIR}/libs/vision/src/faster/*.h" )
-LIST(APPEND vision_EXTRA_SRCS_NAME 	"faster" "faster")
-
 IF(CMAKE_MRPT_HAS_OPENCV)
+	INCLUDE_DIRECTORIES(${CVD_INCLUDE_DIRS})
+
 	INCLUDE_DIRECTORIES(${OpenCV_INCLUDE_DIR} ${OpenCV_INCLUDE_DIRS} ${OPENCV_INCLUDE_DIRS} ${OPENCV_INCLUDEDIR})
 ENDIF()
 
@@ -36,12 +33,11 @@ define_mrpt_lib(
 	vision
 	# Dependencies:
 	mrpt-obs
-	# Deps of deps:
-	mrpt-opengl
-	mrpt-base
-	#mrpt-gui  # used to camera preview, etc. (only for debugging!)
-	mrpt-opengl  # needed by mrpt-gui
 	)
+
+IF(CMAKE_MRPT_HAS_OPENCV)
+	add_dependencies(mrpt-vision libcvd)
+ENDIF()
 
 IF(BUILD_mrpt-vision)
 	IF(CMAKE_MRPT_HAS_SIFT_HESS)
@@ -62,7 +58,7 @@ IF(BUILD_mrpt-vision)
 	ENDIF ()
 
 	IF(CMAKE_MRPT_HAS_OPENCV)
-		target_link_libraries(mrpt-vision ${OpenCV_LIBRARIES})
+		target_link_libraries(mrpt-vision PRIVATE ${OpenCV_LIBRARIES} ${CVD_LIB})
 	ENDIF()
 
 ENDIF()

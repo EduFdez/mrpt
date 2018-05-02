@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -484,7 +484,7 @@ int FGAPIENTRY glutEnterGameMode( void )
          * more changes and investigation.
          */
 
-        /* Get the current postion of the drawable area on screen */
+        /* Get the current Position of the drawable area on screen */
         XTranslateCoordinates(
             fgDisplay.Display,
             fgStructure.CurrentWindow->Window.Handle,

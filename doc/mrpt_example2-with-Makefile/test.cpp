@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -11,11 +11,10 @@
 #include <mrpt/obs/CObservationImage.h>
 #include <mrpt/obs/CObservationStereoImages.h>
 #include <mrpt/gui.h>
-#include <mrpt/utils/CTicTac.h>
+#include <mrpt/system/CTicTac.h>
 
 using namespace mrpt;
 using namespace mrpt::gui;
-using namespace mrpt::utils;
 using namespace mrpt::hwdrivers;
 using namespace std;
 
@@ -25,7 +24,7 @@ using namespace std;
 // ------------------------------------------------------
 void TestCameraCaptureAsk()
 {
-	CCameraSensorPtr cam = prepareVideoSourceFromUserSelection();
+	CCameraSensor::Ptr cam = prepareVideoSourceFromUserSelection();
 
 	if (!cam)
 	{
@@ -38,24 +37,24 @@ void TestCameraCaptureAsk()
 	cout << "Close the window to exit." << endl;
 
 	double counter = 0;
-	mrpt::utils::CTicTac	tictac;
+	mrpt::system::CTicTac	tictac;
 
 	while (win.isOpen())
 	{
 		if( !counter )
 			tictac.Tic();
 
-		mrpt::obs::CObservationPtr  obs = cam->getNextFrame();
+		mrpt::obs::CObservation::Ptr  obs = cam->getNextFrame();
 		ASSERT_(obs);
 
 		if (IS_CLASS(obs,CObservationImage))
 		{
-			CObservationImagePtr o=CObservationImagePtr(obs);
+			CObservationImage::Ptr o=CObservationImage::Ptr(obs);
 			win.showImage(o->image);
 		}
 		else if (IS_CLASS(obs,CObservationStereoImages))
 		{
-			CObservationStereoImagesPtr o=CObservationStereoImagesPtr(obs);
+			CObservationStereoImages::Ptr o=CObservationStereoImages::Ptr(obs);
 			win.showImage(o->imageRight);
 		}
 		if( ++counter == 10 )
@@ -64,7 +63,7 @@ void TestCameraCaptureAsk()
 			cout << "Frame Rate: " << counter/t << " fps" << endl;
 			counter = 0;
 		}
-		mrpt::system::sleep(2);
+		std::this_thread::sleep_for(2ms);
 	}
 
 	cout << "Closing..." << endl;

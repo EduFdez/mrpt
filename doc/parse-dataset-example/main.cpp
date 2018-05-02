@@ -16,7 +16,7 @@
 // This program requires the MRPT libraries ( http://www.mrpt.org/ )
 
 // Serialization, etc.
-#include <mrpt/utils/CFileGZInputStream.h>
+#include <mrpt/io/CFileGZInputStream.h>
 #include <mrpt/system/os.h>
 #include <mrpt/system/filesystem.h>
 
@@ -35,7 +35,6 @@
 
 using namespace mrpt;
 using namespace mrpt::math;
-using namespace mrpt::utils;
 using namespace mrpt::poses;
 using namespace mrpt::gui;
 using namespace mrpt::opengl;
@@ -57,8 +56,7 @@ int main(int argc, char **argv)
 		}
 
 		const string rawlog_file = string(argv[1]);
-		ASSERT_(mrpt::system::fileExists(rawlog_file))
-
+		ASSERT_(mrpt::system::fileExists(rawlog_file));
 		const TTimeStamp start_timestamp =
 			(argc==3) ?
 			mrpt::system::time_tToTimestamp(atof(argv[2])) :
@@ -68,15 +66,15 @@ int main(int argc, char **argv)
 			cout << "Using starting timestamp = " << mrpt::system::dateTimeLocalToString(start_timestamp) << endl;
 
 		// External images: autodetect the directory for images
-		CImage::IMAGES_PATH_BASE = CRawlog::detectImagesDirectory(rawlog_file);
+		CImage::setImagesPathBase(CRawlog::detectImagesDirectory(rawlog_file));
 
 		// GZ-compressed input stream:
 		CFileGZInputStream  fil(rawlog_file);
 
 		size_t nEntry = 0;
-		CActionCollectionPtr  acts;
-		CSensoryFramePtr      SF;
-		CObservationPtr       obs;
+		CActionCollection::Ptr  acts;
+		CSensoryFrame::Ptr      SF;
+		CObservation::Ptr       obs;
 
 		cout << "Parsing rawlog...\n";
 
@@ -100,7 +98,7 @@ int main(int argc, char **argv)
 			// Process GPS entries:
 			if (IS_CLASS(obs,CObservationGPS))
 			{
-				CObservationGPSPtr o = CObservationGPSPtr(obs);
+				CObservationGPS::Ptr o = CObservationGPS::Ptr(obs);
 				if (o->has_GGA_datum) 
 				{
 					const mrpt::obs::gnss::Message_NMEA_GGA &gga = o->getMsgByClass<mrpt::obs::gnss::Message_NMEA_GGA>();
@@ -122,17 +120,17 @@ int main(int argc, char **argv)
 			else
 			if (IS_CLASS(obs,CObservation2DRangeScan))
 			{
-				CObservation2DRangeScanPtr o = CObservation2DRangeScanPtr(obs);
+				CObservation2DRangeScan::Ptr o = CObservation2DRangeScan::Ptr(obs);
 				// o->...
 			}
 			else
 			if (IS_CLASS(obs,CObservationStereoImages))
 			{
-			    CObservationStereoImagesPtr o = CObservationStereoImagesPtr(obs);
+			    CObservationStereoImages::Ptr o = CObservationStereoImages::Ptr(obs);
 			    win.setImageView( o->imageLeft ); // Use a 3D window to display a 2D image (exploits OpenGL acceleration)
 			    win.repaint();
 
-			    // Internally, mrpt::utils::CImage are stored in OpenCV's IPL format, so you can efficiently get
+			    // Internally, mrpt::img::CImage are stored in OpenCV's IPL format, so you can efficiently get
 			    // them as "IplImage*" and call OpenCV APIs:
 			    //
 			    // const IplImage * img_left  = o->imageLeft.getAs<IplImage>();
@@ -141,7 +139,7 @@ int main(int argc, char **argv)
 			else
 			if (IS_CLASS(obs,CObservationIMU))
 			{
-				CObservationIMUPtr o = CObservationIMUPtr(obs);
+				CObservationIMU::Ptr o = CObservationIMU::Ptr(obs);
 				//cout << "IMU: yaw vel.=" << o->rawMeasurements[IMU_YAW_VEL] <<" rad/s" << endl;
 			}
 

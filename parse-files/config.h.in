@@ -2,7 +2,7 @@
    |                     Mobile Robot Programming Toolkit (MRPT)               |
    |                          http://www.mrpt.org/                             |
    |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file        |
    | See: http://www.mrpt.org/Authors - All rights reserved.                   |
    | Released under BSD License. See details in http://www.mrpt.org/License    |
    +---------------------------------------------------------------------------+ */
@@ -76,9 +76,6 @@ ${CMAKE_MRPT_BUILD_SHARED_LIB}
 /* PCL (The pointclouds library): */
 #define MRPT_HAS_PCL           ${CMAKE_MRPT_HAS_PCL}
 
-/* TBB (Intel threading lib): */
-#define MRPT_HAS_TBB           ${CMAKE_MRPT_HAS_TBB}
-
 /** The file ftdi.h exists (Linux only) */
 #define MRPT_HAS_FTDI             ${CMAKE_MRPT_HAS_FTDI}
 #define MRPT_FTDI_VERSION         0x${LIBFTDI_VERSION_MAJOR}${LIBFTDI_VERSION_MINOR}0
@@ -89,6 +86,8 @@ ${CMAKE_MRPT_BUILD_SHARED_LIB}
 
 /** wxWidgets is present in the system (required for UTILS::CDisplayWindow, etc.) */
 #define MRPT_HAS_WXWIDGETS        ${CMAKE_MRPT_HAS_WXWIDGETS}
+
+#define MRPT_HAS_Qt5              ${CMAKE_MRPT_HAS_Qt5}
 
 /** Has MRPT libjpeg? And whether it's in the system (Linux) or built-in (Windows, some rare cases in Linux). */
 #define MRPT_HAS_JPEG             ${CMAKE_MRPT_HAS_JPEG}
@@ -116,15 +115,9 @@ ${CMAKE_MRPT_BUILD_SHARED_LIB}
 /** The size of cells in mrpt::maps::COccupancyGridMap2D */
 #define	OCCUPANCY_GRIDMAP_CELL_SIZE_${MRPT_OCCUPANCY_GRID_CELLSIZE}BITS
 
-/** Set to 0 to disable MRPT_TRY_START/MRPT_TRY_END blocks. Not recommended but for intensively tested programs only. */
-#define MRPT_HAS_STACKED_EXCEPTIONS ${CMAKE_MRPT_HAS_STACKED_EXCEPTIONS}
-
 /** Enable Katakana, Hiragana & Kanji character sets in CMRPTCanvas.
   *  Disable this to save executable sizes if these fonts will be not used. */
 #define MRPT_HAS_ASIAN_FONTS ${CMAKE_MRPT_HAS_ASIAN_FONTS}
-
-/** Set to 0 to disable ASSERT_ statements. Not recommended but for intensively tested programs only. */
-#define MRPT_HAS_ASSERT ${CMAKE_MRPT_HAS_ASSERT}
 
 /** Only for Linux: the inotify kernel module has been found. Requires kernel 2.6.13.  */
 #define MRPT_HAS_INOTIFY ${CMAKE_MRPT_HAS_INOTIFY}
@@ -154,10 +147,6 @@ ${CMAKE_MRPT_BUILD_SHARED_LIB}
 #define MRPT_HAS_SSE4_1  ${CMAKE_MRPT_HAS_SSE4_1}   // This value can be set to 0 from CMake with DISABLE_SSE4_1
 #define MRPT_HAS_SSE4_2  ${CMAKE_MRPT_HAS_SSE4_2}   // This value can be set to 0 from CMake with DISABLE_SSE4_2
 #define MRPT_HAS_SSE4_A  ${CMAKE_MRPT_HAS_SSE4_A}   // This value can be set to 0 from CMake with DISABLE_SSE4_A
-
-
-/** Whether to include the ActivMedia Robotics ARIA: */
-#define MRPT_HAS_ARIA ${CMAKE_MRPT_HAS_ARIA}
 
 /** Whether to include RoboPeak LIDAR: */
 #define MRPT_HAS_ROBOPEAK_LIDAR ${CMAKE_MRPT_HAS_ROBOPEAK_LIDAR}
@@ -201,9 +190,6 @@ ${CMAKE_MRPT_BUILD_SHARED_LIB}
 
 /** Are we in a big-endian system? (Intel, amd, etc.. are little-endian) */
 #define MRPT_IS_BIG_ENDIAN ${CMAKE_MRPT_IS_BIG_ENDIAN}
-
-/** Use MRPT global profiler? */
-#define MRPT_ENABLE_EMBEDDED_GLOBAL_PROFILER ${CMAKE_MRPT_ENABLE_EMBEDDED_GLOBAL_PROFILER}
 
 /** Has SuiteSparse sublibs? */
 #define MRPT_HAS_SUITESPARSE ${CMAKE_MRPT_HAS_SUITESPARSE}
@@ -288,29 +274,18 @@ ${CMAKE_MRPT_BUILD_SHARED_LIB}
 #cmakedefine HAVE_OPENTHREAD
 #endif
 
-#ifndef HAVE_ERF
-#cmakedefine HAVE_ERF
-#endif
-
-#ifndef HAVE_POSIX_MEMALIGN
-#cmakedefine HAVE_POSIX_MEMALIGN
+#ifndef HAVE_STRTOK_R
+#cmakedefine HAVE_STRTOK_R
 #endif
 
 #ifndef HAVE_ALIGNED_MALLOC
 #cmakedefine HAVE_ALIGNED_MALLOC
 #endif
 
-#ifndef HAVE_STRTOK_R
-#cmakedefine HAVE_STRTOK_R
-#endif
-
 /* Standard types  */
 #ifndef HAVE_LONG_DOUBLE
 #cmakedefine HAVE_LONG_DOUBLE
 #endif
-
-/* Backwards compatibility of MRPT APIs: */
-#cmakedefine MRPT_BACKCOMPATIB_08X 1
 
 /* Defined only if MRPT is being build/was built with precompiled
     headers enabled */

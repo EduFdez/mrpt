@@ -1,15 +1,16 @@
-/* +---------------------------------------------------------------------------+
-   |                     Mobile Robot Programming Toolkit (MRPT)               |
-   |                          http://www.mrpt.org/                             |
-   |                                                                           |
-   | Copyright (c) 2005-2017, Individual contributors, see AUTHORS file        |
-   | See: http://www.mrpt.org/Authors - All rights reserved.                   |
-   | Released under BSD License. See details in http://www.mrpt.org/License    |
-   +---------------------------------------------------------------------------+ */
+/* +------------------------------------------------------------------------+
+   |                     Mobile Robot Programming Toolkit (MRPT)            |
+   |                          http://www.mrpt.org/                          |
+   |                                                                        |
+   | Copyright (c) 2005-2018, Individual contributors, see AUTHORS file     |
+   | See: http://www.mrpt.org/Authors - All rights reserved.                |
+   | Released under BSD License. See details in http://www.mrpt.org/License |
+   +------------------------------------------------------------------------+ */
 
 /*  Plane-based Map (PbMap) library
  *  Construction of plane-based maps and localization in it from RGBD Images.
- *  Writen by Eduardo Fernandez-Moral. See docs for <a href="group__mrpt__pbmap__grp.html" >mrpt-pbmap</a>
+ *  Writen by Eduardo Fernandez-Moral. See docs for <a
+ * href="group__mrpt__pbmap__grp.html" >mrpt-pbmap</a>
  */
 
 #ifndef __PBMAPLOCALISER_H
@@ -19,105 +20,103 @@
 
 #if MRPT_HAS_PCL
 
-#include <mrpt/utils/utils_defs.h>
-
-#include <mrpt/system/threads.h>
-
 #include <mrpt/pbmap/PbMap.h>
 #include <mrpt/pbmap/SubgraphMatcher.h>
 #include <mrpt/pbmap/ConsistencyTest.h>
-#include <mrpt/pbmap/link_pragmas.h>
+#include <thread>
 
-namespace mrpt {
-namespace pbmap {
+namespace mrpt
+{
+namespace pbmap
+{
+/*! This class is used to explore the PbMap (or other previously acquired
+ * PbMaps)
+ *  to find places observed previously (it has uses in e.g. place recognition or
+ * relocalization).
+ *  PbMapLocaliser run its own thread, which is created at initialization.
+ *
+ * \ingroup mrpt_pbmap_grp
+ */
+class PbMapLocaliser
+{
+   public:
+	/*!Constructor.*/
+	PbMapLocaliser(PbMap& mPbM, const std::string& config_file);
+	~PbMapLocaliser();
 
-    /*! This class is used to explore the PbMap (or other previously acquired PbMaps)
-       *  to find places observed previously (it has uses in e.g. place recognition or relocalization).
-       *  PbMapLocaliser run its own thread, which is created at initialization.
-       *
-       * \ingroup mrpt_pbmap_grp
-       */
-    class PBMAP_IMPEXP PbMapLocaliser
-    {
-    public:
+	/*!Vector to store the name of previous PbMaps (previous places).*/
+	std::vector<std::string> previousPbMapNames;
 
-        /*!Constructor.*/
-        PbMapLocaliser(PbMap &mPbM, const std::string &config_file);
-        ~PbMapLocaliser();
+	/*!Vector of vectors containing previous PbMaps.*/
+	std::vector<PbMap> previousPbMaps;
 
-        /*!Vector to store the name of previous PbMaps (previous places).*/
-        std::vector<std::string> previousPbMapNames;
+	///*!Vector to store the index of the floor plane for the previous PbMaps
+	///(-1 indicates that the floor was not detected).*/  // Mover a la clase
+	/// PbMapLocaliser  y montarlo en un define
+	//  std::vector<int> vFloors;
 
-        /*!Vector of vectors containing previous PbMaps.*/
-        std::vector<PbMap> previousPbMaps;
+	/*!Number of planes of our search space.*/
+	size_t totalPrevPlanes;
 
-        ///*!Vector to store the index of the floor plane for the previous PbMaps (-1 indicates that the floor was not detected).*/  // Mover a la clase PbMapLocaliser  y montarlo en un define
-        //  std::vector<int> vFloors;
+	/*!observedPlanes is a list containing the current observed planes.*/
+	std::vector<unsigned> vQueueObservedPlanes;
 
-        /*!Number of planes of our search space.*/
-        size_t totalPrevPlanes;
+	/*!List of places where the system has been localised, keeping also the associated point cloud corresponding to the PbMap.*/  // Mover a la clase PbMapLocaliser
+	std::map<std::string, pcl::PointXYZ> foundPlaces;
 
-        /*!observedPlanes is a list containing the current observed planes.*/
-        std::vector<unsigned> vQueueObservedPlanes;
+	/*!Point cloud of recognized place.*/
+	pcl::PointCloud<pcl::PointXYZRGBA>::Ptr alignedModelPtr;
 
-        /*!List of places where the system has been localised, keeping also the associated point cloud corresponding to the PbMap.*/  // Mover a la clase PbMapLocaliser
-        std::map<std::string, pcl::PointXYZ> foundPlaces;
+	std::map<unsigned, std::vector<std::pair<double, int>>> evalColor;
 
-        /*!Point cloud of recognized place.*/
-        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr alignedModelPtr;
+   private:
+	/*!The current PbMap.*/
+	PbMap& mPbMap;
 
-        std::map<unsigned, std::vector< std::pair<double,int> > > evalColor;
+	/*!The matching object.*/
+	SubgraphMatcher matcher;
 
-    private:
+	/*!Load previous PbMaps to search for previous places.*/
+	void LoadPreviousPbMaps(std::string fileMaps);
 
-        /*!The current PbMap.*/
-        PbMap &mPbMap;
+	/*!List of places that have been matched, together with their plane correspondences.*/  // Cambiar nombre
+	std::map<std::string, std::pair<int, double>> planeRecognitionLUT;
 
-        /*!The matching object.*/
-        SubgraphMatcher matcher;
+	/*!Search the subgraph defined by a plane (neighborhood of 1-connected planes) in the rest of the PbMap or PbMaps aquired till the moment.*/  // Cambiar nombre
+	bool searchPlaneContext(Plane& searchPlane);
 
-        /*!Load previous PbMaps to search for previous places.*/
-        void LoadPreviousPbMaps(std::string fileMaps);
+	/*!Search the 2nd order neighbors.*/
+	void compareSubgraphNeighbors(SubgraphMatcher& matcher);
 
-        /*!List of places that have been matched, together with their plane correspondences.*/  // Cambiar nombre
-        std::map<std::string, std::pair<int,double> > planeRecognitionLUT;
+	double getAreaMatch();
 
-        /*!Search the subgraph defined by a plane (neighborhood of 1-connected planes) in the rest of the PbMap or PbMaps aquired till the moment.*/  // Cambiar nombre
-        bool searchPlaneContext(Plane &searchPlane);
+	/*!Best previous PbMap correspondence.*/
+	unsigned bestMap;
 
-        /*!Search the 2nd order neighbors.*/
-        void compareSubgraphNeighbors(SubgraphMatcher &matcher);
+	/*!Best correspondence between pair of planes.*/
+	std::map<unsigned, unsigned> bestMatch;
 
-        double getAreaMatch();
+	/*!Score of the matched places.*/  // Cambiar nombre o Quitar!
+	double score;
 
-        /*!Best previous PbMap correspondence.*/
-        unsigned bestMap;
+   protected:
+	/*!This executes the PbMapLocaliser's thread*/
+	void run();
 
-        /*!Best correspondence between pair of planes.*/
-        std::map<unsigned, unsigned> bestMatch;
+	/*!PbMapLocaliser's thread handle*/
+	std::thread pbMapLocaliser_hd;
 
-        /*!Score of the matched places.*/  // Cambiar nombre o Quitar!
-        double score;
+	/*!PbMapLocaliser's exit thread*/
+	bool stop_pbMapLocaliser();
 
-    protected:
+	/*!PbMapLocaliser's stop controller*/
+	bool m_pbMapLocaliser_must_stop;
 
-        /*!This executes the PbMapLocaliser's thread*/
-        void run();
-
-        /*!PbMapLocaliser's thread handle*/
-        mrpt::system::TThreadHandle pbMapLocaliser_hd;
-
-        /*!PbMapLocaliser's exit thread*/
-        bool stop_pbMapLocaliser();
-
-        /*!PbMapLocaliser's stop controller*/
-        bool	m_pbMapLocaliser_must_stop;
-
-        /*!PbMapLocaliser's stop var*/
-        bool	m_pbMapLocaliser_finished;
-    };
-
-} } // End of namespaces
+	/*!PbMapLocaliser's stop var*/
+	bool m_pbMapLocaliser_finished;
+};
+}
+}  // End of namespaces
 
 #endif
 
